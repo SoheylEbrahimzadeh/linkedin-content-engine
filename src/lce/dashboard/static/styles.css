@@ -68,7 +68,22 @@ th { color: var(--muted); font-weight: 600; font-size: .85rem; white-space: nowr
 .stage { border: 1px solid var(--line); border-radius: 8px; padding: .6rem; display: flex; flex-direction: column; gap: .15rem; position: relative; }
 .stage.available { background: var(--ok-bg); border-color: transparent; }
 .stage.not_implemented { background: repeating-linear-gradient(45deg, var(--muted-bg), var(--muted-bg) 6px, transparent 6px, transparent 12px); color: var(--muted); }
+.stage.has-posts { background: var(--info-bg); border-color: transparent; }
+.stage.empty-bucket { color: var(--muted); }
+.big-count { font-size: 1.4rem; font-weight: 700; }
 .stage-name { font-weight: 600; }
+.run-steps { list-style: none; padding: 0; margin: .75rem 0 0; display: grid; gap: .35rem; }
+.step { display: grid; grid-template-columns: 1.8rem 10rem 1fr; align-items: center; gap: .5rem; padding: .35rem .5rem; border-radius: 8px; border: 1px solid var(--line); }
+.step.not_implemented { background: repeating-linear-gradient(45deg, var(--muted-bg), var(--muted-bg) 6px, transparent 6px, transparent 12px); color: var(--muted); border-style: dashed; }
+.step.not_reached { color: var(--muted); }
+.step-mark { display: inline-flex; width: 1.6rem; height: 1.6rem; border-radius: 50%; align-items: center; justify-content: center; font-weight: 700; }
+.step-mark.ok { background: var(--ok-bg); color: var(--ok); }
+.step-mark.warn { background: var(--warn-bg); color: var(--warn); }
+.step-mark.error { background: var(--error-bg); color: var(--error); }
+.step-mark.muted { background: var(--muted-bg); color: var(--muted); }
+.step-name { font-weight: 600; }
+.step-status { color: var(--muted); font-size: .85rem; }
+.sub { color: var(--muted); font-size: .75rem; margin-top: .2rem; }
 .stage-status, .stage-count { font-size: .8rem; }
 
 pre.post { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: .9rem; margin: 0; font-family: inherit; font-size: .95rem; }
@@ -97,5 +112,7 @@ pre.post.muted { color: var(--muted); }
   .kv { grid-template-columns: 1fr; }
   .kv dt { font-size: .8rem; margin-top: .35rem; }
   .day { min-height: 48px; }
+  .step { grid-template-columns: 1.8rem 1fr; }
+  .step-status { grid-column: 2; }
   .entry span:not(.badge) { display: none; }
 }

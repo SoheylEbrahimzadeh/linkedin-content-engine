@@ -1,8 +1,8 @@
 // Web Control Center. Read-only: renders the snapshot, never changes data.
 // All text goes through textContent; no HTML from data is ever interpreted.
 import {
-  ROUTES, calendarMonths, checkMode, describeRun, fmtDateTime, issueCounts, parseRoute,
-  publicationLabel, shortHash, show, splitApprovals, stateMeta,
+  ROUTES, calendarMonths, checkMode, claimLabel, describeRun, fmtDateTime, issueCounts, parseRoute,
+  publicationLabel, researchGroups, runStatus, shortHash, show, splitApprovals, stateMeta,
 } from "./lib.js";
 
 const cfg = window.LCE_CONFIG || {};
@@ -63,16 +63,33 @@ function viewDashboard(s) {
         ["Publishing", badge("not implemented", "muted")],
       ])),
     ),
-    card("Pipeline", h("ol", { class: "pipeline" }, s.pipeline.map((st) =>
-      h("li", { class: `stage ${st.status}` },
-        h("span", { class: "stage-name" }, st.label),
-        h("span", { class: "stage-status" }, st.status === "available" ? "available" : "not implemented"),
-        st.status === "available" ? h("span", { class: "stage-count" }, `${st.posts} post(s) here`) : null)))),
+    card("Where posts are now", h("p", { class: "note" }, "Current state of every post (one post counts once)."),
+      h("ol", { class: "pipeline" }, s.state_distribution.map((b) =>
+        h("li", { class: `stage ${b.implemented ? (b.count ? "has-posts" : "empty-bucket") : "not_implemented"}` },
+          h("span", { class: "stage-name" }, b.label),
+          h("span", { class: "stage-count big-count" }, String(b.count)),
+          b.implemented ? null : h("span", { class: "stage-status" }, "not implemented"))))),
+    latestRunCard(s.latest_run),
     card("Current posts", postsTable(s.posts)),
     card("Upcoming calendar", table(["Date", "Topic", "Status", "Approval", "Publication"],
       upcoming.map((e) => h("tr", {}, h("td", {}, e.date), h("td", {}, e.draft_ref ? link(`#/posts/${encodeURIComponent(e.draft_ref)}`, show(e.topic)) : show(e.topic)),
         h("td", {}, e.post_state ? stateBadge(e.post_state) : badge(show(e.status), "muted")), h("td", {}, show(e.approval_status)), h("td", {}, publicationLabel(e.publication_status)))))),
   ];
+}
+
+function latestRunCard(run) {
+  if (!run) return card("Latest pipeline run", empty("No post has run through the pipeline yet."));
+  return card("Latest pipeline run",
+    h("p", { class: "note" }, "Stages the most recently active post actually passed through, from its recorded state history.",
+      run.text_versions > 1 ? ` The text was revised; QA, duplicate check and approval count only for the current version (${run.text_versions} versions).` : ""),
+    kv([["Post", link(`#/posts/${encodeURIComponent(run.post_id)}`, show(run.topic))], ["Current state", stateBadge(run.state)], ["Last activity", when(run.last_activity)]]),
+    h("ol", { class: "run-steps" }, run.stages.map((st) => {
+      const m = runStatus(st.status);
+      return h("li", { class: `step ${st.status}` },
+        h("span", { class: `step-mark ${m.tone}`, "aria-hidden": "true" }, m.symbol),
+        h("span", { class: "step-name" }, st.label),
+        h("span", { class: "step-status" }, m.label, st.at ? ` · ${when(st.at)}` : ""));
+    })));
 }
 
 function postsTable(posts) {
@@ -134,15 +151,29 @@ function viewPost(s, id) {
   ];
 }
 
+function researchTable(list) {
+  return table(["Selection", "Candidate", "Title", "Origin", "Trust", "Claims", "Sources", "Used by"], list.map((c) => h("tr", {},
+    h("td", {}, c.selected ? badge("SELECTED", "ok") : badge("NOT SELECTED", "muted"), h("div", { class: "sub" }, `status: ${show(c.status)}`)),
+    h("td", {}, mono(c.candidate_id)), h("td", {}, show(c.title)), h("td", {}, show(c.origin)),
+    h("td", {}, c.untrusted ? badge("untrusted: true", "warn") : badge(`untrusted: ${show(c.untrusted)}`, "muted")),
+    h("td", {}, badge(claimLabel(c.claims_count), c.claims_count ? "info" : "muted"),
+      c.claims_count ? h("ul", { class: "claims" }, c.claims.map((x) => h("li", {}, `“${x.text}”`))) : null),
+    h("td", {}, (c.sources || []).length ? (c.sources || []).map((x) => h("div", {}, extLink(x.url))) : "none"),
+    h("td", {}, (c.used_by_posts || []).length ? c.used_by_posts.map((pid) => h("div", {}, link(`#/posts/${encodeURIComponent(pid)}`, pid))) : "—"))));
+}
+
 function viewResearch(s) {
-  return [card(`Research candidates (${s.research.length})`,
-    h("p", { class: "note" }, "Web content is stored as untrusted data. Claims are copied from sources; their trust level is never upgraded automatically."),
-    table(["Candidate", "Title", "Origin", "Trust", "Sources", "Claims", "Status"], s.research.map((c) => h("tr", {},
-      h("td", {}, mono(c.candidate_id)), h("td", {}, show(c.title)), h("td", {}, show(c.origin)),
-      h("td", {}, c.untrusted ? badge("untrusted: true", "warn") : badge(`untrusted: ${show(c.untrusted)}`, "muted")),
-      h("td", {}, (c.sources || []).length ? (c.sources || []).map((x) => h("div", {}, extLink(x.url))) : "none"),
-      h("td", {}, (c.claims || []).length ? h("ul", { class: "claims" }, c.claims.map((x) => h("li", {}, `“${x.text}”`))) : "none"),
-      h("td", {}, badge(show(c.status), c.status === "selected" ? "ok" : "muted"))))))];
+  const { selected, unselected } = researchGroups(s.research);
+  const withClaims = s.research.filter((c) => c.claims_count > 0).length;
+  return [
+    h("div", { class: "grid three" },
+      card("Selected", h("p", { class: "big" }, badge(String(selected.length), selected.length ? "ok" : "muted"))),
+      card("Not selected", h("p", { class: "big" }, badge(String(unselected.length), "muted"))),
+      card("With extracted claims", h("p", { class: "big" }, badge(`${withClaims} / ${s.research.length}`, "info")))),
+    h("p", { class: "note" }, "Web content is stored as untrusted data. Claims are copied from sources; their trust level is never upgraded automatically. \"Not selected\" only means no post was created from the candidate; no reason is recorded."),
+    card(`Selected (${selected.length})`, researchTable(selected)),
+    card(`Not selected (${unselected.length})`, researchTable(unselected)),
+  ];
 }
 
 function viewCalendar(s) {

@@ -85,6 +85,12 @@ def main() -> None:
         run_dupcheck(store, pid2)
         prepare(store, pid2)
 
+        # Found but not selected, no claims extracted (e.g. the page could not be read).
+        add_candidate(store, title="Example Analyst Note: automation budgets in 2025",
+                      origin="web_search", urls=["https://example.net/analyst-note-2025"],
+                      publisher="Example Analysts (fictional)", pillar="automation",
+                      summary="Fictional unselected candidate for the demo; no claims recorded.")
+
         c3 = add_candidate(store, title="Why teams love automation", origin="manual",
                            pillar="lessons")
         pid3 = select(store, candidate_id=c3["candidate_id"], pillar="lessons",

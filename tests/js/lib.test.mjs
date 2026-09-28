@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  UNKNOWN, calendarMonths, checkMode, describeRun, issueCounts, parseRoute, publicationLabel,
-  shortHash, show, splitApprovals, stateMeta,
+  UNKNOWN, calendarMonths, checkMode, claimLabel, describeRun, issueCounts, parseRoute,
+  publicationLabel, researchGroups, runStatus, shortHash, show, splitApprovals, stateMeta,
 } from "../../src/lce/dashboard/static/lib.js";
 
 test("unknown values are shown as unknown, never invented", () => {
@@ -64,4 +64,29 @@ test("routes", () => {
   assert.deepEqual(parseRoute("#/posts/abc%2Fd"), { name: "posts", id: "abc/d" });
   assert.deepEqual(parseRoute("#/nope"), { name: "dashboard", id: null });
   assert.deepEqual(parseRoute(""), { name: "dashboard", id: null });
+});
+
+test("run stage statuses are distinct and honest", () => {
+  assert.equal(runStatus("done").symbol, "✓");
+  assert.equal(runStatus("not_implemented").label, "not implemented");
+  assert.notEqual(runStatus("not_implemented").label, runStatus("not_reached").label);
+  assert.equal(runStatus("failed").tone, "error");
+  assert.equal(runStatus("waiting").label, "waiting for human");
+  assert.equal(runStatus("whatever").label, "whatever");
+  assert.equal(runStatus(undefined).label, UNKNOWN);
+});
+
+test("research groups and claim labels come from data only", () => {
+  const g = researchGroups([
+    { candidate_id: "a", status: "selected", selected: true, claims_count: 4 },
+    { candidate_id: "b", status: "new", selected: false, claims_count: 0 },
+    { candidate_id: "c", status: "discarded", selected: false },
+  ]);
+  assert.deepEqual(g.selected.map((c) => c.candidate_id), ["a"]);
+  assert.deepEqual(g.unselected.map((c) => c.candidate_id), ["b", "c"]);
+  assert.equal(claimLabel(4), "4 claims extracted");
+  assert.equal(claimLabel(1), "1 claim extracted");
+  assert.equal(claimLabel(0), "no claims extracted");
+  assert.equal(claimLabel(undefined), UNKNOWN);
+  assert.deepEqual(researchGroups(null), { selected: [], unselected: [] });
 });

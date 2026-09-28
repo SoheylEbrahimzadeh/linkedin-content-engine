@@ -130,6 +130,33 @@ export function describeRun(ev) {
   }
 }
 
+/** Status of a stage in the latest run. */
+export const RUN_STATUS = {
+  done: { symbol: "✓", label: "done", tone: "ok" },
+  waiting: { symbol: "…", label: "waiting for human", tone: "warn" },
+  failed: { symbol: "✗", label: "failed", tone: "error" },
+  rejected: { symbol: "✗", label: "rejected", tone: "muted" },
+  needs_input: { symbol: "!", label: "needs input", tone: "warn" },
+  not_reached: { symbol: "○", label: "not reached", tone: "muted" },
+  not_implemented: { symbol: "—", label: "not implemented", tone: "muted" },
+};
+
+export function runStatus(status) {
+  return RUN_STATUS[status] || { symbol: "?", label: show(status), tone: "muted" };
+}
+
+/** Selected vs. not selected, straight from candidate status (no inferred reasons). */
+export function researchGroups(research) {
+  const selected = [], unselected = [];
+  for (const c of research || []) (c.selected || c.status === "selected" ? selected : unselected).push(c);
+  return { selected, unselected };
+}
+
+export function claimLabel(n) {
+  if (typeof n !== "number") return UNKNOWN;
+  return n === 0 ? "no claims extracted" : `${n} claim${n === 1 ? "" : "s"} extracted`;
+}
+
 export const ROUTES = [
   ["dashboard", "Dashboard"], ["posts", "Posts"], ["research", "Research"],
   ["calendar", "Calendar"], ["approval", "Approval"], ["publishing", "Publishing"],

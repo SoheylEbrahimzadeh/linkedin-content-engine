@@ -41,6 +41,36 @@ STAGE_OF_STATE = {
     "QA_PASSED": "qa", "DUPLICATE_CHECKED": "duplicate", "AWAITING_APPROVAL": "approval",
     "APPROVED": "approval", "READY_TO_PUBLISH": "approval",
 }
+# Where posts are now: one bucket per state group of the real state model.
+# Publishing/Published have no state yet; they are listed as not implemented.
+STATE_BUCKETS = [
+    ("research", "Research", ("RESEARCHED",)),
+    ("planning", "Planning", ("SELECTED",)),
+    ("needs_input", "Needs input", ("NEEDS_INPUT",)),
+    ("draft", "Draft", ("DRAFTED",)),
+    ("humanize", "Humanize", ("HUMANIZED",)),
+    ("needs_revision", "Needs revision", ("NEEDS_REVISION",)),
+    ("qa", "QA passed", ("QA_PASSED",)),
+    ("duplicate", "Duplicate-checked", ("DUPLICATE_CHECKED",)),
+    ("awaiting_approval", "Awaiting approval", ("AWAITING_APPROVAL",)),
+    ("approved", "Approved", ("APPROVED",)),
+    ("ready", "Ready to publish", ("READY_TO_PUBLISH",)),
+    ("rejected", "Rejected", ("REJECTED",)),
+    ("publishing", "Publishing", ()),
+    ("published", "Published", ()),
+]
+# Stages a post passes through, and the state that proves each one was reached.
+RUN_STAGES = [
+    ("research", "Research", "RESEARCHED"),
+    ("planning", "Planning", "SELECTED"),
+    ("draft", "Draft", "DRAFTED"),
+    ("humanize", "Humanize", "HUMANIZED"),
+    ("qa", "QA", "QA_PASSED"),
+    ("duplicate", "Duplicate check", "DUPLICATE_CHECKED"),
+    ("approval", "Approval", "APPROVED"),
+]
+EDIT_STATES = {"DRAFTED", "HUMANIZED"}
+
 # Credential-like strings that must never reach the browser, even if they
 # somehow ended up in a data file.
 SECRET_RE = re.compile(
@@ -153,6 +183,85 @@ def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[d
         "has_approval_artifact": (folder / "APPROVAL.md").exists(),
         "calendar_entry": entry,
     }
+
+
+def state_distribution(posts: list[dict]) -> list[dict]:
+    """How many posts are in each state right now (real counts only)."""
+    counts: dict[str, int] = {}
+    for p in posts:
+        counts[p["state"]] = counts.get(p["state"], 0) + 1
+    known = {s for _, _, states in STATE_BUCKETS for s in states}
+    out = [{"id": bid, "label": label, "states": list(states), "implemented": bool(states),
+            "count": sum(counts.get(s, 0) for s in states)} for bid, label, states in STATE_BUCKETS]
+    for state in sorted(set(counts) - known):  # never hide a state we do not know
+        out.append({"id": state.lower(), "label": state, "states": [state], "implemented": True,
+                    "count": counts[state]})
+    return out
+
+
+def latest_run(posts: list[dict]) -> dict | None:
+    """Stages the most recently active post actually passed through, from its history.
+
+    Stages after the last text edit (QA, duplicate check, approval) only count if
+    they happened for the current version of the text.
+    """
+    def last_at(p: dict) -> str:
+        return max((str(h.get("at", "")) for h in p.get("history", [])), default="")
+
+    candidates = [p for p in posts if p.get("history")]
+    if not candidates:
+        return None
+    post = max(candidates, key=lambda p: (last_at(p), p["post_id"]))
+    history = post["history"]
+    states = [h.get("state") for h in history]
+    last_edit = max((i for i, s in enumerate(states) if s in EDIT_STATES), default=-1)
+    current = post["state"]
+    stages = []
+    for sid, label, proof in RUN_STAGES:
+        after_edit = sid in {"qa", "duplicate", "approval"}
+        start = last_edit + 1 if after_edit else 0
+        hits = [h for h in history[start:] if h.get("state") == proof]
+        if sid == "approval" and not hits and current == "READY_TO_PUBLISH":
+            hits = [h for h in history[start:] if h.get("state") == "READY_TO_PUBLISH"]
+        if hits:
+            stage = {"id": sid, "label": label, "status": "done", "at": hits[-1].get("at")}
+        else:
+            stage = {"id": sid, "label": label, "status": "not_reached", "at": None}
+        stages.append(stage)
+    by_id = {s["id"]: s for s in stages}
+    if current == "NEEDS_REVISION":
+        failed = "qa" if (post.get("qa") or {}).get("status") == "failed" else "duplicate"
+        by_id[failed]["status"] = "failed"
+    elif current == "NEEDS_INPUT":
+        by_id["planning"]["status"] = "needs_input"
+    elif current == "AWAITING_APPROVAL":
+        by_id["approval"]["status"] = "waiting"
+    elif current == "REJECTED":
+        by_id["approval"]["status"] = "rejected"
+    stages += [{"id": sid, "label": label, "status": "not_implemented", "at": None}
+               for sid, label, st in PIPELINE if st == "not_implemented"]
+    return {
+        "post_id": post["post_id"],
+        "topic": post.get("topic"),
+        "state": current,
+        "last_activity": last_at(post),
+        "text_versions": sum(1 for s in states if s == "HUMANIZED"),
+        "stages": stages,
+    }
+
+
+def research_view(store: DataStore, posts: list[dict]) -> list[dict]:
+    """Candidates with selection and claim facts taken from the data (no inferred reasons)."""
+    used_by: dict[str, list[str]] = {}
+    for p in posts:
+        if p.get("candidate_id"):
+            used_by.setdefault(p["candidate_id"], []).append(p["post_id"])
+    out = []
+    for c in sorted(store.candidates().values(), key=lambda c: str(c.get("created_at", ""))):
+        claims = c.get("claims") or []
+        out.append({**c, "selected": c.get("status") == "selected",
+                    "claims_count": len(claims), "used_by_posts": used_by.get(c["candidate_id"], [])})
+    return out
 
 
 def detect_issues(store: DataStore, posts: list[dict], calendar: list[dict],
@@ -285,12 +394,8 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
     states = {p["post_id"]: p["state"] for p in posts}
     calendar = [{**e, "post_state": states.get(e.get("draft_ref"))} for e in plan]
     calendar.sort(key=lambda e: str(e.get("date", "")))
-    research = sorted(store.candidates().values(), key=lambda c: str(c.get("created_at", "")))
+    research = research_view(store, posts)
     status = interview.status(store)
-    stage_counts: dict[str, int] = {}
-    for p in posts:
-        if p["stage"]:
-            stage_counts[p["stage"]] = stage_counts.get(p["stage"], 0) + 1
     if mode == "real":
         repo = git_info(store.root)
         label = data_label or str(store.root)
@@ -316,8 +421,10 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
                         "public": sum(1 for s in store.stories().values()
                                       if s.get("publication_status") == "PUBLIC")},
         },
-        "pipeline": [{"id": sid, "label": label_, "status": st,
-                      "posts": stage_counts.get(sid, 0)} for sid, label_, st in PIPELINE],
+        # Capabilities of the system (not post counts).
+        "pipeline": [{"id": sid, "label": label_, "status": st} for sid, label_, st in PIPELINE],
+        "state_distribution": state_distribution(posts),
+        "latest_run": latest_run(posts),
         "posts": posts,
         "research": research,
         "calendar": calendar,

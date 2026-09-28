@@ -171,3 +171,93 @@ def test_public_fixtures_do_not_contain_the_local_username():
             assert not re.search(r"local-tty:(?!demo)", text), p
             if len(user) >= 6:
                 assert user not in text, p
+
+
+# ── state distribution & latest run ──────────────────────────────────────
+NEEDS_REV = "20250510-why-teams-love-automation"
+
+
+def test_state_distribution_counts_current_states_only(real_store):
+    snap = build_snapshot(real_store, mode="real")
+    dist = {b["id"]: b for b in snap["state_distribution"]}
+    assert dist["approved"]["count"] == 1
+    assert dist["awaiting_approval"]["count"] == 1
+    assert dist["needs_revision"]["count"] == 1
+    assert sum(b["count"] for b in snap["state_distribution"]) == len(snap["posts"])
+    assert dist["publishing"]["implemented"] is False and dist["publishing"]["count"] == 0
+    assert dist["published"]["implemented"] is False and dist["published"]["count"] == 0
+    assert [b["id"] for b in snap["state_distribution"]][:2] == ["research", "planning"]
+    assert all("posts" not in s for s in snap["pipeline"])  # capabilities, not counts
+
+
+def test_state_distribution_of_empty_store(tmp_path):
+    snap = build_snapshot(DataStore.init(tmp_path / "d"), mode="real")
+    assert all(b["count"] == 0 for b in snap["state_distribution"])
+    assert snap["latest_run"] is None
+
+
+def _stages(run):
+    return {s["id"]: s["status"] for s in run["stages"]}
+
+
+def test_latest_run_follows_most_recent_activity(real_store):
+    run = build_snapshot(real_store, mode="real")["latest_run"]
+    assert run["post_id"] == NEEDS_REV  # last post touched by the fixture script
+    st = _stages(run)
+    assert st["research"] == st["planning"] == st["draft"] == st["humanize"] == "done"
+    assert st["qa"] == "failed"
+    assert st["duplicate"] == st["approval"] == "not_reached"
+    assert st["publishing"] == st["verification"] == st["analytics"] == "not_implemented"
+
+
+def _touch(store, pid):
+    post = store.load_post(pid)
+    post["history"].append({"at": "2099-01-01T00:00:00+00:00", "state": post["state"],
+                            "note": "test touch"})
+    store.save_post(post)
+
+
+def test_latest_run_for_approved_post_is_derived_not_hardcoded(real_store):
+    _touch(real_store, APPROVED)
+    run = build_snapshot(real_store, mode="real")["latest_run"]
+    assert run["post_id"] == APPROVED
+    st = _stages(run)
+    assert all(st[k] == "done" for k in ("research", "planning", "draft", "humanize", "qa",
+                                          "duplicate", "approval"))
+    assert [s["id"] for s in run["stages"]][-3:] == ["publishing", "verification", "analytics"]
+
+
+def test_latest_run_awaiting_approval(real_store):
+    _touch(real_store, AWAITING)
+    st = _stages(build_snapshot(real_store, mode="real")["latest_run"])
+    assert st["duplicate"] == "done" and st["approval"] == "waiting"
+
+
+def test_latest_run_counts_checks_only_for_current_text(real_store):
+    from lce.posts import reopen
+
+    reopen(real_store, APPROVED, "edit")  # back to HUMANIZED, approval discarded
+    run = build_snapshot(real_store, mode="real")["latest_run"]
+    st = _stages(run)
+    assert run["post_id"] == APPROVED and run["text_versions"] == 2
+    assert st["humanize"] == "done"
+    assert st["qa"] == st["duplicate"] == st["approval"] == "not_reached"
+
+
+# ── research selection ───────────────────────────────────────────────────
+def test_research_selected_vs_unselected_and_claims(real_store):
+    research = {c["candidate_id"]: c for c in build_snapshot(real_store, mode="real")["research"]}
+    selected = [c for c in research.values() if c["selected"]]
+    unselected = [c for c in research.values() if not c["selected"]]
+    assert selected and unselected
+    for c in selected:
+        assert c["status"] == "selected" and c["used_by_posts"]
+    for c in unselected:
+        assert c["used_by_posts"] == []
+    with_claims = [c for c in research.values() if c["claims_count"]]
+    assert with_claims and all(c["claims_count"] == len(c["claims"]) for c in research.values())
+    assert any(c["claims_count"] == 0 for c in research.values())
+    for c in research.values():
+        assert "reason" not in c and "verified" not in c  # nothing inferred
+    web = [c for c in research.values() if c["origin"] == "web_search"]
+    assert web and all(c["untrusted"] is True for c in web)
