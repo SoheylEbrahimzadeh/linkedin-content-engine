@@ -9,26 +9,37 @@ def test_every_state_has_rules():
     assert set(TRANSITIONS) == set(PostState)
 
 
-def test_audit_pass_never_publishes_directly():
-    with pytest.raises(InvalidTransition):
-        transition(S.AUDIT_PASSED, S.PUBLISHING)
-    with pytest.raises(InvalidTransition):
-        transition(S.AWAITING_APPROVAL, S.PUBLISHING)
+def test_no_publishing_states_in_phase_1():
+    names = {s.value for s in PostState}
+    assert not names & {"PUBLISHING", "PUBLISHED", "SCHEDULED", "NEEDS_RECONCILE"}
 
 
-def test_only_approved_reaches_publishing():
-    sources = {s for s, nxt in TRANSITIONS.items() if S.PUBLISHING in nxt}
-    assert sources == {S.APPROVED, S.NEEDS_RECONCILE}
+def test_only_human_approval_reaches_approved():
+    sources = {s for s, nxt in TRANSITIONS.items() if S.APPROVED in nxt}
+    assert sources == {S.AWAITING_APPROVAL}
+
+
+def test_ready_only_from_approved():
+    sources = {s for s, nxt in TRANSITIONS.items() if S.READY_TO_PUBLISH in nxt}
+    assert sources == {S.APPROVED}
+
+
+def test_qa_or_dupcheck_never_skip_approval():
+    for state in (S.QA_PASSED, S.DUPLICATE_CHECKED, S.HUMANIZED):
+        with pytest.raises(InvalidTransition):
+            transition(state, S.APPROVED)
+        with pytest.raises(InvalidTransition):
+            transition(state, S.READY_TO_PUBLISH)
 
 
 def test_happy_path():
-    s = S.PLANNED
-    for nxt in (S.DRAFTED, S.AUDIT_PASSED, S.AWAITING_APPROVAL, S.APPROVED, S.PUBLISHING,
-                S.PUBLISHED):
+    s = S.RESEARCHED
+    for nxt in (S.SELECTED, S.DRAFTED, S.HUMANIZED, S.QA_PASSED, S.DUPLICATE_CHECKED,
+                S.AWAITING_APPROVAL, S.APPROVED, S.READY_TO_PUBLISH):
         s = transition(s, nxt)
-    assert s in TERMINAL
+    assert s == S.READY_TO_PUBLISH
 
 
-def test_published_is_terminal():
-    with pytest.raises(InvalidTransition):
-        transition(S.PUBLISHED, S.PUBLISHING)
+def test_ready_only_goes_back_to_editing_or_rejected():
+    assert TRANSITIONS[S.READY_TO_PUBLISH] == {S.HUMANIZED, S.REJECTED}
+    assert TERMINAL == {S.REJECTED}

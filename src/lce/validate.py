@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import cache
 from importlib import resources
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -14,10 +15,12 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 LAYOUT: dict[str, str] = {
     "config/settings.yaml": "settings",
-    "profile/brand.yaml": "brand_profile",
-    "profile/voice.yaml": "voice_profile",
-    "story_bank/facts/*.yaml": "story_fact",
-    "posts/**/*.md": "post",
+    "profile/profile.yaml": "profile",
+    "profile/voice.yaml": "voice",
+    "story_bank/stories/*.yaml": "story",
+    "research/candidates/*.yaml": "research_candidate",
+    "plan/calendar.yaml": "plan",
+    "posts/*/post.yaml": "post",
 }
 
 
@@ -30,54 +33,50 @@ class ValidationError:
         return f"  {self.path}: {self.message}"
 
 
+@cache
 def load_schema(name: str) -> dict:
     text = resources.files("lce.schemas").joinpath(f"{name}.schema.json").read_text("utf-8")
     return json.loads(text)
 
 
-def _frontmatter(text: str) -> dict | None:
-    if not text.startswith("---\n"):
-        return None
-    end = text.find("\n---", 4)
-    if end == -1:
-        return None
-    return yaml.safe_load(text[4:end]) or {}
+@cache
+def _validator(kind: str) -> Draft202012Validator:
+    return Draft202012Validator(load_schema(kind), format_checker=FormatChecker())
 
 
-def _jsonable(value: object) -> object:
+def jsonable(value: object) -> object:
     """YAML turns unquoted dates into date objects; JSON Schema expects strings."""
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     if isinstance(value, dict):
-        return {k: _jsonable(v) for k, v in value.items()}
+        return {k: jsonable(v) for k, v in value.items()}
     if isinstance(value, list):
-        return [_jsonable(v) for v in value]
+        return [jsonable(v) for v in value]
     return value
 
 
-def _load(path: Path) -> object:
-    text = path.read_text(encoding="utf-8")
-    doc = _frontmatter(text) if path.suffix == ".md" else yaml.safe_load(text)
-    return _jsonable(doc)
-
-
-def _extra_checks(kind: str, doc: dict, rel: str, seen_ids: set[str]) -> list[ValidationError]:
+def validate_doc(kind: str, doc: object) -> list[str]:
+    """Schema and consistency errors for one document (empty list when valid)."""
+    if not isinstance(doc, dict):
+        return ["expected a mapping"]
+    doc = jsonable(doc)
     errors = []
+    for err in _validator(kind).iter_errors(doc):
+        where = "/".join(str(p) for p in err.absolute_path) or "(root)"
+        errors.append(f"{where}: {err.message}")
     if kind == "settings":
-        try:
-            ZoneInfo(doc.get("timezone", ""))
-        except (ZoneInfoNotFoundError, ValueError):
-            errors.append(ValidationError(rel, "timezone is not a valid IANA timezone"))
-        slots = doc.get("cadence", {}).get("slots", [])
-        if len(slots) != doc.get("cadence", {}).get("posts_per_week"):
-            errors.append(ValidationError(rel, "posts_per_week must equal the number of slots"))
-    if kind == "story_fact":
-        fid = doc.get("fact_id")
-        if fid in seen_ids:
-            errors.append(ValidationError(rel, f"duplicate fact_id {fid!r}"))
-        seen_ids.add(fid)
-        if Path(rel).stem != fid:
-            errors.append(ValidationError(rel, "file name must equal fact_id"))
+        if "timezone" in doc:
+            try:
+                ZoneInfo(doc["timezone"])
+            except (ZoneInfoNotFoundError, ValueError):
+                errors.append("timezone is not a valid IANA timezone")
+        cadence = doc.get("cadence")
+        if cadence and len(cadence.get("slots", [])) != cadence.get("posts_per_week"):
+            errors.append("cadence: posts_per_week must equal the number of slots")
+    if kind == "profile":
+        ids = [p.get("id") for p in doc.get("pillars", [])]
+        if len(ids) != len(set(ids)):
+            errors.append("pillars: duplicate pillar id")
     return errors
 
 
@@ -85,23 +84,19 @@ def validate_dir(root: Path) -> tuple[int, list[ValidationError]]:
     """Return (files_checked, errors)."""
     errors: list[ValidationError] = []
     checked = 0
-    seen_ids: set[str] = set()
-    fmt = FormatChecker()
     for pattern, kind in LAYOUT.items():
-        validator = Draft202012Validator(load_schema(kind), format_checker=fmt)
         for path in sorted(root.glob(pattern)):
             rel = str(path.relative_to(root))
             checked += 1
             try:
-                doc = _load(path)
+                doc = yaml.safe_load(path.read_text(encoding="utf-8"))
             except yaml.YAMLError as exc:
                 errors.append(ValidationError(rel, f"invalid YAML: {exc}"))
                 continue
-            if not isinstance(doc, dict):
-                errors.append(ValidationError(rel, "expected a mapping"))
-                continue
-            for err in validator.iter_errors(doc):
-                where = "/".join(str(p) for p in err.absolute_path) or "(root)"
-                errors.append(ValidationError(rel, f"{where}: {err.message}"))
-            errors.extend(_extra_checks(kind, doc, rel, seen_ids))
+            errors.extend(ValidationError(rel, m) for m in validate_doc(kind, doc))
+            id_key = {"story": "story_id", "research_candidate": "candidate_id"}.get(kind)
+            if id_key and isinstance(doc, dict) and path.stem != doc.get(id_key):
+                errors.append(ValidationError(rel, f"file name must equal {id_key}"))
+            if kind == "post" and isinstance(doc, dict) and path.parent.name != doc.get("post_id"):
+                errors.append(ValidationError(rel, "directory name must equal post_id"))
     return checked, errors

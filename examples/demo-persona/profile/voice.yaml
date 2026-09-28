@@ -2,10 +2,15 @@ demo: true
 language: en
 source: interview
 tone: [plain, direct, practical]
-avoid: [hype, emoji chains, engagement bait]
-formatting:
-  max_emojis: 1
-  max_hashtags: 3
-  max_chars: 2200
-cta_style: Ask a genuine question only when the answer would help the reader.
+formality: neutral
+sentence_length: {preference: mixed}
+technical_depth: medium
+storytelling_style: Short, concrete, one situation per post.
+opinions_vs_facts: Opinions are labelled as opinions.
+structure: {preferred: [problem, insight, takeaway]}
+cta: {allowed: true, style: A genuine question only when the answer would help others.}
+avoid_phrases: [game-changer, rockstar]
+emoji_policy: {max_per_post: 1}
+hashtag_policy: {max: 3, placement: end}
+formatting: {max_chars: 2200, bullets_allowed: true}
 sample_count: 0

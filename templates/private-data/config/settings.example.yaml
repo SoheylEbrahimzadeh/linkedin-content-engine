@@ -1,6 +1,5 @@
-# Copy to settings.yaml and adjust. Validated by `lce validate .`
-language: en
-languages_enabled: [en]
+# `lce init-data` creates config/settings.yaml; the interview fills timezone
+# and cadence. Validated by `lce validate .`
 timezone: UTC                    # any IANA timezone name, e.g. America/Chicago
 cadence:
   posts_per_week: 3
@@ -9,10 +8,11 @@ cadence:
     - {day: wed, time: "08:30"}
     - {day: thu, time: "08:30"}
 approval:
-  mode: pull_request
+  mode: local
   expire_unapproved: true        # unapproved posts are never published
 publisher:
-  provider: none                 # chosen in a later phase
-  max_lateness_minutes: 180
+  provider: none                 # Phase 1: no publisher exists
 llm:
   runtime: claude_code           # the engine never calls an LLM API
+research:
+  feeds: []                      # [{name: ..., url: https://...}] — free RSS/Atom feeds only

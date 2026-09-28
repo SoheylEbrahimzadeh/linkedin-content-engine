@@ -1,0 +1,4 @@
+# Placeholder. Rules for this language are written in Phase 4.
+# QA refuses to pass any post in a language whose status is not "ready".
+language: de
+status: planned

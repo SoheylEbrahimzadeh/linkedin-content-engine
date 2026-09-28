@@ -1,6 +1,4 @@
 demo: true
-language: en
-languages_enabled: [en]
 timezone: America/Chicago
 cadence:
   posts_per_week: 3
@@ -9,10 +7,11 @@ cadence:
     - {day: wed, time: "08:30"}
     - {day: thu, time: "08:30"}
 approval:
-  mode: pull_request
+  mode: local
   expire_unapproved: true
 publisher:
   provider: none
-  max_lateness_minutes: 180
 llm:
   runtime: claude_code
+research:
+  feeds: []

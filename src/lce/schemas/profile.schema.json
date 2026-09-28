@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/profile.schema.json",
+  "title": "Profile",
+  "description": "Private professional profile. Every field is optional; missing fields are collected by the interview.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "demo": {
+      "type": "boolean"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "current_role": {
+          "type": "string"
+        },
+        "headline": {
+          "type": "string"
+        },
+        "background": {
+          "type": "string"
+        }
+      }
+    },
+    "positioning": {
+      "type": "string"
+    },
+    "expertise": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "string"
+      }
+    },
+    "industries": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "audience": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "seniority": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "goals": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "pillars": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "max_share": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "topics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "public": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "forbidden": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "formats": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preferred": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "languages": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary": {
+          "enum": [
+            "en",
+            "de",
+            "fa"
+          ]
+        },
+        "enabled": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "en",
+              "de",
+              "fa"
+            ]
+          }
+        },
+        "planned": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "en",
+              "de",
+              "fa"
+            ]
+          }
+        }
+      }
+    },
+    "linkedin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile_url": {
+          "type": "string",
+          "pattern": "^https://(www\\.)?linkedin\\.com/"
+        },
+        "headline": {
+          "type": "string"
+        },
+        "about_summary": {
+          "type": "string"
+        }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "description": "Where answers came from, per field path.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1,58 +1,44 @@
-from pathlib import Path
+from conftest import DEMO, write
 
-from conftest import write
-
-from lce.validate import validate_dir
-
-DEMO = Path(__file__).resolve().parents[1] / "examples" / "demo-persona"
+from lce.validate import validate_dir, validate_doc
 
 
 def test_demo_persona_valid():
     checked, errors = validate_dir(DEMO)
-    assert checked >= 5
+    assert checked >= 7
     assert errors == [], [e.render() for e in errors]
 
 
-def test_public_fact_requires_approval_date(tmp_path):
-    write(tmp_path, "story_bank/facts/abc-fact.yaml", """
-fact_id: abc-fact
-title: Title
-description: Long enough description
-period: 2025
-my_role: Role
-evidence: []
-publication_status: PUBLIC
-sensitivity: low
-allowed_topics: []
-allowed_claims: []
-""")
+def test_public_story_requires_approval_date():
+    doc = {"story_id": "abc-story", "title": "Title", "experience": "Long enough text",
+           "publication_status": "PUBLIC", "sensitivity": "low", "reusable": True}
+    assert any("approved_at" in e for e in validate_doc("story", doc))
+    doc["publication_status"] = "PRIVATE"
+    assert validate_doc("story", doc) == []
+
+
+def test_settings_guards():
+    base = {"approval": {"mode": "local", "expire_unapproved": True},
+            "publisher": {"provider": "none"}, "llm": {"runtime": "claude_code"}}
+    assert validate_doc("settings", base) == []
+    assert validate_doc("settings", {**base, "llm": {"runtime": "api"}})
+    assert validate_doc("settings", {**base, "publisher": {"provider": "linkedin_official"}})
+    assert validate_doc("settings", {**base, "approval": {"mode": "local",
+                                                          "expire_unapproved": False}})
+    assert validate_doc("settings", {**base, "timezone": "Mars/Olympus"})
+    feeds = {**base, "research": {"feeds": [{"name": "x", "url": "http://insecure.example"}]}}
+    assert validate_doc("settings", feeds)
+
+
+def test_story_file_name_must_match(tmp_path):
+    write(tmp_path, "story_bank/stories/other.yaml",
+          "story_id: abc-story\ntitle: T x\nexperience: Long enough text\n"
+          "publication_status: PRIVATE\nsensitivity: low\nreusable: false\n")
     _, errors = validate_dir(tmp_path)
-    assert any("approved_at" in e.message for e in errors)
+    assert any("file name" in e.message for e in errors)
 
 
-def test_settings_rejects_llm_api_runtime_and_bad_timezone(tmp_path):
-    write(tmp_path, "config/settings.yaml", """
-language: en
-timezone: Mars/Olympus
-cadence: {posts_per_week: 1, slots: [{day: tue, time: "08:30"}]}
-approval: {mode: pull_request, expire_unapproved: true}
-publisher: {provider: none}
-llm: {runtime: api}
-""")
-    _, errors = validate_dir(tmp_path)
-    messages = " ".join(e.message for e in errors)
-    assert "timezone" in messages
-    assert "llm" in " ".join(e.render() for e in errors)
-
-
-def test_unapproved_posts_cannot_be_configured_to_publish(tmp_path):
-    write(tmp_path, "config/settings.yaml", """
-language: en
-timezone: UTC
-cadence: {posts_per_week: 1, slots: [{day: tue, time: "08:30"}]}
-approval: {mode: pull_request, expire_unapproved: false}
-publisher: {provider: none}
-llm: {runtime: claude_code}
-""")
-    _, errors = validate_dir(tmp_path)
-    assert errors
+def test_plan_publication_status_cannot_be_published():
+    doc = {"entries": [{"date": "2025-01-01", "topic": "t", "pillar": "p", "status": "planned",
+                        "publication_status": "published"}]}
+    assert validate_doc("plan", doc)

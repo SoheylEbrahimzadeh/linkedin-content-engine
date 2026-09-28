@@ -1,9 +1,10 @@
 """Resolve the private data directory and enforce the public/private boundary.
 
 Personal data (profile, story bank, drafts, history) must live in a directory
-outside the public engine repository. This module refuses to hand out a data
-directory that sits inside the engine repository, which is detected by the
-`.lce-engine-root` marker file at the repository root.
+outside the public engine repository. The engine refuses a data directory that
+sits inside the engine repository (detected by the `.lce-engine-root` marker)
+and requires the `.lce-data-root` marker, so it never writes into an arbitrary
+folder.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import os
 from pathlib import Path
 
 ENGINE_MARKER = ".lce-engine-root"
+DATA_MARKER = ".lce-data-root"
 DATA_DIR_ENV = "LCE_DATA_DIR"
 
 
@@ -28,23 +30,38 @@ def find_engine_root(start: Path) -> Path | None:
     return None
 
 
-def resolve_data_dir(value: str | None = None) -> Path:
-    """Return the validated private data directory.
-
-    `value` defaults to the LCE_DATA_DIR environment variable.
-    """
-    raw = value if value is not None else os.environ.get(DATA_DIR_ENV, "")
-    if not raw.strip():
-        raise DataDirError(f"{DATA_DIR_ENV} is not set; point it at your private data directory")
-    path = Path(raw).expanduser()
+def check_location(path: Path) -> Path:
+    """Validate a directory that is about to hold private data (marker not required)."""
     if not path.is_absolute():
-        raise DataDirError(f"{DATA_DIR_ENV} must be an absolute path")
+        raise DataDirError("the data directory must be an absolute path")
     if not path.is_dir():
-        raise DataDirError(f"{DATA_DIR_ENV} does not exist or is not a directory")
+        raise DataDirError("the data directory does not exist or is not a directory")
     engine_root = find_engine_root(path)
     if engine_root is not None:
         raise DataDirError(
-            f"{DATA_DIR_ENV} points inside the public engine repository ({engine_root}); "
+            f"the data directory points inside the public engine repository ({engine_root}); "
             "private data must live outside it"
         )
     return path.resolve()
+
+
+def resolve_data_dir(value: str | None = None, cwd: Path | None = None) -> Path:
+    """Return the validated private data directory.
+
+    Resolution order: explicit `value`, then $LCE_DATA_DIR, then the current
+    directory if it carries the data marker.
+    """
+    raw = value if value is not None else os.environ.get(DATA_DIR_ENV, "")
+    if raw.strip():
+        path = Path(raw).expanduser()
+    else:
+        here = (cwd or Path.cwd()).resolve()
+        if not (here / DATA_MARKER).is_file():
+            raise DataDirError(
+                f"{DATA_DIR_ENV} is not set and the current directory is not a data directory"
+            )
+        path = here
+    path = check_location(path)
+    if not (path / DATA_MARKER).is_file():
+        raise DataDirError(f"{path} is not an initialized data directory (missing {DATA_MARKER})")
+    return path

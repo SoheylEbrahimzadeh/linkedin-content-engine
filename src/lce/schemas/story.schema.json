@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/story.schema.json",
+  "title": "Story",
+  "description": "A real experience provided by the owner. Only PUBLIC stories may be used in drafts.",
+  "type": "object",
+  "required": [
+    "story_id",
+    "title",
+    "experience",
+    "publication_status",
+    "sensitivity",
+    "reusable"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "demo": {
+      "type": "boolean"
+    },
+    "story_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3
+    },
+    "experience": {
+      "type": "string",
+      "minLength": 10
+    },
+    "context": {
+      "type": "string"
+    },
+    "problem": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string"
+    },
+    "result": {
+      "type": "string"
+    },
+    "lesson": {
+      "type": "string"
+    },
+    "industry": {
+      "type": "string"
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "period": {
+      "type": "string"
+    },
+    "my_role": {
+      "type": "string"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "ref"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "enum": [
+              "self_reported",
+              "document",
+              "public_url",
+              "repository",
+              "other"
+            ]
+          },
+          "ref": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "publication_status": {
+      "enum": [
+        "PUBLIC",
+        "PRIVATE",
+        "NEEDS_APPROVAL"
+      ]
+    },
+    "sensitivity": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "reusable": {
+      "type": "boolean",
+      "description": "false = may be used in at most one post"
+    },
+    "allowed_claims": {
+      "type": "array",
+      "description": "Exact statements (incl. numbers) that may be made publicly.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sensitive_terms": {
+      "type": "array",
+      "description": "Names/terms that must never appear in a post.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "if": {
+    "properties": {
+      "publication_status": {
+        "const": "PUBLIC"
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "approved_at"
+    ]
+  }
+}

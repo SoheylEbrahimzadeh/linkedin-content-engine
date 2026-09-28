@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/plan.schema.json",
+  "title": "ContentPlan",
+  "type": "object",
+  "required": [
+    "entries"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "demo": {
+      "type": "boolean"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "date",
+          "topic",
+          "pillar",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "pillar": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "angle": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "planned",
+              "selected",
+              "needs_input",
+              "in_progress",
+              "awaiting_approval",
+              "approved",
+              "ready_to_publish",
+              "rejected",
+              "skipped"
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "candidate_id": {
+            "type": "string"
+          },
+          "duplicate_check": {
+            "enum": [
+              "pending",
+              "passed",
+              "failed"
+            ]
+          },
+          "draft_ref": {
+            "type": "string"
+          },
+          "approval_status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "publication_status": {
+            "enum": [
+              "not_published",
+              "ready_to_publish"
+            ],
+            "description": "Phase 1 never publishes."
+          }
+        }
+      }
+    }
+  }
+}

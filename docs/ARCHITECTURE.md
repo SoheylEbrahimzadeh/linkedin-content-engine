@@ -28,15 +28,24 @@ Research → Topic selection → Plan → Draft → Humanize → Audit → Verif
 
 ## Post lifecycle
 
-Defined in `src/lce/state.py`. `PUBLISHING` is reachable only from `APPROVED`
-(or from `NEEDS_RECONCILE` after a verified negative lookup). Unapproved posts
-expire at their slot; they are never published.
+Defined in `src/lce/state.py`:
+
+```
+RESEARCHED → SELECTED → DRAFTED → HUMANIZED → QA_PASSED → DUPLICATE_CHECKED
+          → AWAITING_APPROVAL → APPROVED → READY_TO_PUBLISH
+side states: NEEDS_INPUT, NEEDS_REVISION, REJECTED
+```
+
+Publishing states (`PUBLISHING`, `PUBLISHED`, reconciliation) are added only
+when a real publisher exists and has been verified. See
+[PIPELINE.md](PIPELINE.md).
 
 ## Approval
 
-Each draft is a pull request in the private repo. Merging is the approval, and
-it records the SHA-256 of the approved text (`approved_hash`). The publisher
-refuses to send any text whose hash differs.
+Phase 1: local approval in an interactive terminal, bound to the SHA-256 of
+the exact text (`approved_hash`). Phase 2 adds pull-request approval in the
+private repo with the same hash binding. Any publisher must refuse text whose
+hash differs from the approved hash.
 
 ## Duplicate prevention and idempotency
 

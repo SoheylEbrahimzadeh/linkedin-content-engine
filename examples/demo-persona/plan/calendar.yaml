@@ -1,0 +1,3 @@
+demo: true
+entries:
+  - {date: 2025-05-06, topic: Rules before models, pillar: automation, format: text, status: planned, duplicate_check: pending, approval_status: pending, publication_status: not_published}

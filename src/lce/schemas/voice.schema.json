@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/voice.schema.json",
+  "title": "VoiceProfile",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "demo": {
+      "type": "boolean"
+    },
+    "language": {
+      "enum": [
+        "en",
+        "de",
+        "fa"
+      ]
+    },
+    "source": {
+      "enum": [
+        "interview",
+        "sample_posts",
+        "both"
+      ]
+    },
+    "tone": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "formality": {
+      "enum": [
+        "casual",
+        "neutral",
+        "formal"
+      ]
+    },
+    "sentence_length": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preference": {
+          "enum": [
+            "short",
+            "mixed",
+            "long"
+          ]
+        },
+        "target_avg_words": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 40
+        }
+      }
+    },
+    "vocabulary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefer": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "structure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preferred": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "hook_style": {
+          "type": "string"
+        }
+      }
+    },
+    "storytelling_style": {
+      "type": "string"
+    },
+    "technical_depth": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "mixed"
+      ]
+    },
+    "opinions_vs_facts": {
+      "type": "string"
+    },
+    "cta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "style": {
+          "type": "string"
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "avoid_phrases": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "formatting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_chars": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 3000
+        },
+        "bullets_allowed": {
+          "type": "boolean"
+        },
+        "line_breaks": {
+          "type": "string"
+        }
+      }
+    },
+    "emoji_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_per_post": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "hashtag_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "placement": {
+          "enum": [
+            "end",
+            "inline",
+            "none"
+          ]
+        }
+      }
+    },
+    "sample_count": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

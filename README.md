@@ -4,9 +4,10 @@ A reusable, privacy-first content engine for LinkedIn. It plans, drafts, audits
 and — after explicit human approval — publishes posts, using only facts the
 author has verified and approved.
 
-> **Status: Phase 0 (scaffold).** Repository structure, schemas, privacy
-> tooling and CI are in place. The content pipeline and publishing adapters are
-> not implemented yet. See [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Status: Phase 1.** A local pipeline runs from research to an explicit,
+> hash-bound human approval and stops at `READY_TO_PUBLISH`. **There is no
+> publisher yet; nothing is ever sent to LinkedIn.** See
+> [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/PIPELINE.md](docs/PIPELINE.md).
 
 ## Principles
 
@@ -21,7 +22,8 @@ author has verified and approved.
   this code never calls an LLM API ([docs/COSTS.md](docs/COSTS.md)).
 - **Provider-agnostic publishing** behind one interface
   ([docs/PUBLISHING.md](docs/PUBLISHING.md)).
-- **Language-aware** humanizer and audit rules per language ([rules/](rules/)).
+- **Language-aware** humanizer and audit rules per language
+  ([src/lce/rules/](src/lce/rules/)).
 
 ## Architecture
 
@@ -38,6 +40,19 @@ pytest -q
 lce validate examples/demo-persona
 lce privacy-scan
 ```
+
+## Using it with your own data
+
+```bash
+lce init-data /path/outside/this/repo/my-data   # your private data directory
+export LCE_DATA_DIR=/path/outside/this/repo/my-data
+lce skills sync                                  # Claude Code skills into the data dir
+lce status                                       # what the interview still needs
+```
+
+Then open Claude Code in the data directory and use the `lce-interview`,
+`lce-research` and `lce-create-post` skills. Approve posts yourself with
+`lce approve <post_id> --hash <prefix>` in an interactive terminal.
 
 ## Credits
 
