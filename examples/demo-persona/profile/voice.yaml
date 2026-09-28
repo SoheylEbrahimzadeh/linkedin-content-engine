@@ -1,0 +1,11 @@
+demo: true
+language: en
+source: interview
+tone: [plain, direct, practical]
+avoid: [hype, emoji chains, engagement bait]
+formatting:
+  max_emojis: 1
+  max_hashtags: 3
+  max_chars: 2200
+cta_style: Ask a genuine question only when the answer would help the reader.
+sample_count: 0

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/post.schema.json",
+  "title": "PostRecord",
+  "description": "Frontmatter of one post file in the private data directory.",
+  "type": "object",
+  "required": ["post_id", "slot", "language", "pillar", "state"],
+  "additionalProperties": false,
+  "properties": {
+    "demo": {"type": "boolean"},
+    "post_id": {"type": "string"},
+    "slot": {"type": "string", "format": "date-time"},
+    "language": {"enum": ["en", "de", "fa"]},
+    "pillar": {"type": "string"},
+    "hook_formula": {"type": "string"},
+    "state": {"enum": ["PLANNED", "DRAFTED", "AUDIT_PASSED", "NEEDS_INPUT", "AWAITING_APPROVAL",
+                       "APPROVED", "REJECTED", "EXPIRED", "PUBLISHING", "NEEDS_RECONCILE",
+                       "PUBLISHED", "MISSED", "FAILED"]},
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "approved_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "idempotency_key": {"type": "string"},
+    "facts_used": {"type": "array", "items": {"type": "string"}},
+    "sources": {"type": "array", "items": {"type": "string"}},
+    "provider": {"type": "string"},
+    "remote_id": {"type": "string"},
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["at", "state"],
+        "properties": {"at": {"type": "string"}, "state": {"type": "string"}, "note": {"type": "string"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+default_install_hook_types: [pre-commit, pre-push]
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks-staged
+        name: gitleaks (staged changes)
+        entry: gitleaks git --pre-commit --staged --redact --no-banner --config .gitleaks.toml
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: gitleaks-history
+        name: gitleaks (full history before push)
+        entry: gitleaks git --redact --no-banner --config .gitleaks.toml
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

@@ -1,0 +1,2 @@
+# Marker: root of the public engine repository.
+# The engine refuses to use a data directory located anywhere below this file.

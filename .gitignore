@@ -1,0 +1,47 @@
+# ── Secrets & local environment ─────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.token
+*secret*
+!**/*secret*.md
+credentials*.json
+token*.json
+
+# ── Private runtime data: NEVER in this repository ──────────
+# Personal data lives in a separate private data directory ($LCE_DATA_DIR).
+# These paths are blocked here as a second line of defence.
+/private/
+/data/
+/profile/
+/story_bank/
+/plan/
+/research/
+/posts/
+/drafts/
+/runs/
+/history/
+/analytics/
+*.local.*
+*.private.*
+
+# ── Python / tooling ────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+.coverage
+htmlcov/
+
+# ── OS / editors ────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,37 @@
+title = "linkedin-content-engine gitleaks config"
+
+[extend]
+useDefault = true
+
+# Provider-specific token shapes that may appear in this ecosystem.
+[[rules]]
+id = "publora-api-key"
+description = "Publora API key"
+regex = '''\bsk_[A-Za-z0-9]{20,}\b'''
+tags = ["key", "publora"]
+
+[[rules]]
+id = "pixfaro-token"
+description = "Pixfaro token"
+regex = '''\bpf_live_[A-Za-z0-9]{16,}\b'''
+tags = ["key", "pixfaro"]
+
+[[rules]]
+id = "apify-token"
+description = "Apify API token"
+regex = '''\bapify_api_[A-Za-z0-9]{20,}\b'''
+tags = ["key", "apify"]
+
+[[rules]]
+id = "claude-oauth-token"
+description = "Claude subscription OAuth token"
+regex = '''\bsk-ant-oat\d{2}-[A-Za-z0-9_\-]{20,}\b'''
+tags = ["key", "anthropic"]
+
+[allowlist]
+description = "Placeholders in templates and docs"
+regexes = [
+  '''sk_your_key_here''',
+  '''pf_live_your_token_here''',
+  '''apify_api_your_token_here''',
+]

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/voice_profile.schema.json",
+  "title": "VoiceProfile",
+  "type": "object",
+  "required": ["language", "tone", "avoid"],
+  "additionalProperties": false,
+  "properties": {
+    "demo": {"type": "boolean"},
+    "language": {"enum": ["en", "de", "fa"]},
+    "source": {"enum": ["interview", "sample_posts", "both"]},
+    "tone": {"type": "array", "items": {"type": "string"}},
+    "avoid": {"type": "array", "items": {"type": "string"}},
+    "formatting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_emojis": {"type": "integer", "minimum": 0},
+        "max_hashtags": {"type": "integer", "minimum": 0},
+        "max_chars": {"type": "integer", "minimum": 100, "maximum": 3000}
+      }
+    },
+    "cta_style": {"type": "string"},
+    "sample_count": {"type": "integer", "minimum": 0}
+  }
+}

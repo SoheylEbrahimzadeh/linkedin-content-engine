@@ -1,0 +1,11 @@
+linkedin-content-engine
+Copyright (c) 2026 SoheylEbrahimzadeh. Licensed under the MIT License.
+
+This project is an independent implementation. Some concepts were studied in,
+and are credited to, the third-party project:
+
+  linkedin-skills — https://github.com/sergebulaev/linkedin-skills
+  Copyright (c) its respective authors. Licensed under the MIT License.
+
+No files from that project are included verbatim in this repository.
+See docs/ATTRIBUTION.md for the list of concepts and how they were adapted.

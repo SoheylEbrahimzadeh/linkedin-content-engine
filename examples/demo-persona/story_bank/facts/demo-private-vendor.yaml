@@ -1,0 +1,13 @@
+demo: true
+fact_id: demo-private-vendor
+title: Vendor evaluation (fictional, private)
+description: An example of a fact that must never appear in a draft because it is PRIVATE.
+period: 2025-Q2
+my_role: Evaluator
+evidence:
+  - type: other
+    ref: fictional example
+publication_status: PRIVATE
+sensitivity: high
+allowed_topics: []
+allowed_claims: []
