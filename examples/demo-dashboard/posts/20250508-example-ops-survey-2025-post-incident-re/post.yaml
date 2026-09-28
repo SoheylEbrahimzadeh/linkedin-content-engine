@@ -1,0 +1,59 @@
+demo: true
+post_id: 20250508-example-ops-survey-2025-post-incident-re
+created_at: '2026-09-28T19:44:49+00:00'
+plan_date: '2025-05-08'
+language: en
+topic: 'Example Ops Survey 2025: post-incident reviews'
+pillar: operations
+format: text
+angle: short incident reviews
+candidate_id: c-24292c125786
+sources:
+- url: https://example.org/ops-survey-2025
+  title: 'Example Ops Survey 2025: post-incident reviews'
+  publisher: Example Org (fictional)
+  accessed_at: '2026-09-28T19:44:49+00:00'
+claims:
+- text: 58% of small teams run no review after minor incidents
+  source_url: https://example.org/ops-survey-2025
+stories_used: []
+state: AWAITING_APPROVAL
+history:
+- at: '2026-09-28T19:44:49+00:00'
+  state: RESEARCHED
+  note: from candidate
+- at: '2026-09-28T19:44:49+00:00'
+  state: SELECTED
+  note: selected
+- at: '2026-09-28T19:44:49+00:00'
+  state: DRAFTED
+  note: draft saved
+- at: '2026-09-28T19:44:49+00:00'
+  state: HUMANIZED
+  note: candidate text saved
+- at: '2026-09-28T19:44:49+00:00'
+  state: QA_PASSED
+  note: QA passed
+- at: '2026-09-28T19:44:49+00:00'
+  state: DUPLICATE_CHECKED
+  note: duplicate check passed
+- at: '2026-09-28T19:44:49+00:00'
+  state: AWAITING_APPROVAL
+  note: approval artifact prepared
+draft_hash: 8aaaebaada564a4aa3b3c1a3a76afe9987a3b340d321010fe269ad137472cdef
+content_hash: 8aaaebaada564a4aa3b3c1a3a76afe9987a3b340d321010fe269ad137472cdef
+qa:
+  status: passed
+  content_hash: 8aaaebaada564a4aa3b3c1a3a76afe9987a3b340d321010fe269ad137472cdef
+  at: '2026-09-28T19:44:49+00:00'
+  errors: 0
+  warnings: 0
+duplicate:
+  status: passed
+  content_hash: 8aaaebaada564a4aa3b3c1a3a76afe9987a3b340d321010fe269ad137472cdef
+  at: '2026-09-28T19:44:49+00:00'
+  errors: 0
+  warnings: 0
+approval:
+  state: pending
+  artifact_hash: 59e9c6a3161155d5e2b5cda6c32d1b7017be12fb0eb24db4431eaed8da0452d7

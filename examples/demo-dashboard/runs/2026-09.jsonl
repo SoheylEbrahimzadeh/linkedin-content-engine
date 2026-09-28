@@ -1,0 +1,25 @@
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250506-why-simple-routing-rules-beat-a-model-fo", "state": "SELECTED", "note": "selected"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250506-why-simple-routing-rules-beat-a-model-fo", "state": "DRAFTED", "note": "draft saved"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250506-why-simple-routing-rules-beat-a-model-fo", "state": "HUMANIZED", "note": "candidate text saved"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "qa", "post_id": "20250506-why-simple-routing-rules-beat-a-model-fo", "status": "passed", "errors": 0, "warnings": 0, "codes": []}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250506-why-simple-routing-rules-beat-a-model-fo", "state": "QA_PASSED", "note": "QA passed"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "duplicate", "post_id": "20250506-why-simple-routing-rules-beat-a-model-fo", "status": "passed", "exact": 0, "near": 0, "similar": 0, "story_reuse": 0, "angle_reuse": 0, "topic_reuse": 0}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250506-why-simple-routing-rules-beat-a-model-fo", "state": "DUPLICATE_CHECKED", "note": "duplicate check passed"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250506-why-simple-routing-rules-beat-a-model-fo", "state": "AWAITING_APPROVAL", "note": "approval artifact prepared"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "approval", "post_id": "20250506-why-simple-routing-rules-beat-a-model-fo", "decision": "approved", "content_hash": "843c1c71369ccc94674d8e8c295c9bb3afa7855c7aa8d5a303c687beda8de175"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250506-why-simple-routing-rules-beat-a-model-fo", "state": "APPROVED", "note": "approved by human"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "research.add", "candidate_id": "c-24292c125786", "origin": "web_search"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250508-example-ops-survey-2025-post-incident-re", "state": "SELECTED", "note": "selected"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250508-example-ops-survey-2025-post-incident-re", "state": "DRAFTED", "note": "draft saved"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250508-example-ops-survey-2025-post-incident-re", "state": "HUMANIZED", "note": "candidate text saved"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "qa", "post_id": "20250508-example-ops-survey-2025-post-incident-re", "status": "passed", "errors": 0, "warnings": 0, "codes": []}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250508-example-ops-survey-2025-post-incident-re", "state": "QA_PASSED", "note": "QA passed"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "duplicate", "post_id": "20250508-example-ops-survey-2025-post-incident-re", "status": "passed", "exact": 0, "near": 0, "similar": 0, "story_reuse": 0, "angle_reuse": 0, "topic_reuse": 0}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250508-example-ops-survey-2025-post-incident-re", "state": "DUPLICATE_CHECKED", "note": "duplicate check passed"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250508-example-ops-survey-2025-post-incident-re", "state": "AWAITING_APPROVAL", "note": "approval artifact prepared"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "research.add", "candidate_id": "c-c68b014357d8", "origin": "manual"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250510-why-teams-love-automation", "state": "SELECTED", "note": "selected"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250510-why-teams-love-automation", "state": "DRAFTED", "note": "draft saved"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250510-why-teams-love-automation", "state": "HUMANIZED", "note": "candidate text saved"}
+{"at": "2026-09-28T19:44:49+00:00", "event": "qa", "post_id": "20250510-why-teams-love-automation", "status": "failed", "errors": 5, "warnings": 2, "codes": ["bait.engagement", "claim.unsupported_number", "emoji.excess", "length.too_short", "phrase.ai_tell", "phrase.forbidden", "source.missing"]}
+{"at": "2026-09-28T19:44:49+00:00", "event": "state", "post_id": "20250510-why-teams-love-automation", "state": "NEEDS_REVISION", "note": "QA failed"}

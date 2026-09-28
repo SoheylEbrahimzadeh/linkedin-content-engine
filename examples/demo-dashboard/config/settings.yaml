@@ -1,0 +1,17 @@
+demo: true
+timezone: America/Chicago
+cadence:
+  posts_per_week: 3
+  slots:
+    - {day: tue, time: "08:30"}
+    - {day: wed, time: "08:30"}
+    - {day: thu, time: "08:30"}
+approval:
+  mode: local
+  expire_unapproved: true
+publisher:
+  provider: none
+llm:
+  runtime: claude_code
+research:
+  feeds: []

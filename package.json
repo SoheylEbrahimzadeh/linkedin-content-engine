@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "name": "lce-dashboard-tests",
+  "description": "No dependencies. Only marks the dashboard's .js files as ES modules for node --test.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/js/lib.test.mjs"
+  }
+}

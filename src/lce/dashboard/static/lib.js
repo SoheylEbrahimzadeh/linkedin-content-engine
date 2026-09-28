@@ -1,0 +1,144 @@
+// Pure helpers for the Web Control Center (no DOM access; unit-tested with node --test).
+
+export const UNKNOWN = "unknown";
+
+export const STATE_META = {
+  RESEARCHED: { label: "Researched", tone: "info" },
+  SELECTED: { label: "Selected", tone: "info" },
+  NEEDS_INPUT: { label: "Needs input", tone: "warn" },
+  DRAFTED: { label: "Drafted", tone: "info" },
+  HUMANIZED: { label: "Humanized", tone: "info" },
+  NEEDS_REVISION: { label: "Needs revision", tone: "warn" },
+  QA_PASSED: { label: "QA passed", tone: "info" },
+  DUPLICATE_CHECKED: { label: "Duplicate-checked", tone: "info" },
+  AWAITING_APPROVAL: { label: "Awaiting approval", tone: "warn" },
+  APPROVED: { label: "Approved", tone: "ok" },
+  READY_TO_PUBLISH: { label: "Ready to publish", tone: "ok" },
+  REJECTED: { label: "Rejected", tone: "muted" },
+  FAILED: { label: "Failed", tone: "error" },
+  NEEDS_RECONCILE: { label: "Needs reconcile", tone: "error" },
+};
+
+export function stateMeta(state) {
+  if (state == null) return { label: UNKNOWN, tone: "muted" };
+  return STATE_META[state] || { label: String(state), tone: "muted" };
+}
+
+/** Show missing values as "unknown" instead of inventing them. */
+export function show(value) {
+  if (value === null || value === undefined || value === "") return UNKNOWN;
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "none";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return String(value);
+}
+
+export function shortHash(hash, n = 12) {
+  return typeof hash === "string" && hash.length >= n ? hash.slice(0, n) : UNKNOWN;
+}
+
+export function fmtDateTime(iso, timeZone) {
+  if (!iso) return UNKNOWN;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "medium", timeStyle: "short", timeZone: timeZone || undefined,
+    }).format(d);
+  } catch {
+    return d.toISOString();
+  }
+}
+
+export function publicationLabel(status) {
+  return {
+    not_published: "Not published",
+    ready_to_publish: "Ready (not published)",
+  }[status] || show(status);
+}
+
+/** Posts waiting for a human decision vs. already decided. */
+export function splitApprovals(posts) {
+  const pending = [], approved = [], other = [];
+  for (const p of posts || []) {
+    if (p.state === "AWAITING_APPROVAL") pending.push(p);
+    else if (p.state === "APPROVED" || p.state === "READY_TO_PUBLISH") approved.push(p);
+    else other.push(p);
+  }
+  return { pending, approved, other };
+}
+
+export function issueCounts(issues) {
+  const counts = { FAILED: 0, NEEDS_RECONCILE: 0, INCONSISTENT: 0 };
+  for (const i of issues || []) counts[i.kind] = (counts[i.kind] || 0) + 1;
+  return counts;
+}
+
+/** Mode must match between page config and data; never mix demo and real data. */
+export function checkMode(configMode, snapshot) {
+  const dataMode = snapshot && snapshot.meta ? snapshot.meta.mode : null;
+  if (configMode !== "real" && configMode !== "demo") {
+    return { ok: false, message: "Dashboard mode is not configured." };
+  }
+  if (dataMode !== configMode) {
+    return { ok: false, message: `Mode mismatch: page is '${configMode}', data is '${dataMode}'.` };
+  }
+  return { ok: true, message: configMode === "demo" ? "DEMO MODE — NO PRIVATE DATA" : "REAL DATA" };
+}
+
+/** Month grids (Monday first) for calendar entries; only months that have entries. */
+export function calendarMonths(entries) {
+  const byMonth = new Map();
+  for (const e of entries || []) {
+    if (!e || typeof e.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) continue;
+    const key = e.date.slice(0, 7);
+    if (!byMonth.has(key)) byMonth.set(key, []);
+    byMonth.get(key).push(e);
+  }
+  const months = [];
+  for (const key of [...byMonth.keys()].sort()) {
+    const [y, m] = key.split("-").map(Number);
+    const first = new Date(Date.UTC(y, m - 1, 1));
+    const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const offset = (first.getUTCDay() + 6) % 7; // Monday = 0
+    const cells = [];
+    for (let i = 0; i < offset; i++) cells.push(null);
+    for (let d = 1; d <= days; d++) {
+      const date = `${key}-${String(d).padStart(2, "0")}`;
+      cells.push({ day: d, date, entries: byMonth.get(key).filter((e) => e.date === date) });
+    }
+    while (cells.length % 7) cells.push(null);
+    const weeks = [];
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+    const label = first.toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+    months.push({ key, label, weeks });
+  }
+  return months;
+}
+
+export function describeRun(ev) {
+  const e = ev || {};
+  switch (e.event) {
+    case "state": return { title: `State → ${show(e.state)}`, detail: e.note || "", tone: stateMeta(e.state).tone };
+    case "qa": return { title: `QA ${show(e.status)}`, detail: `${show(e.errors)} errors, ${show(e.warnings)} warnings`, tone: e.status === "passed" ? "ok" : "warn" };
+    case "duplicate": return { title: `Duplicate check ${show(e.status)}`, detail: `exact ${show(e.exact)}, near ${show(e.near)}, similar ${show(e.similar)}`, tone: e.status === "passed" ? "ok" : "warn" };
+    case "approval": return { title: `Approval: ${show(e.decision)}`, detail: e.content_hash ? `hash ${shortHash(e.content_hash)}` : "", tone: e.decision === "approved" ? "ok" : "muted" };
+    case "research.add": return { title: "Research candidate added", detail: `${show(e.candidate_id)} (${show(e.origin)})`, tone: "info" };
+    case "research.fetch": return { title: "Feed fetch", detail: `${show(e.added)} added, ${show(e.errors)} errors`, tone: e.errors ? "warn" : "info" };
+    case "story.save": return { title: "Story saved", detail: `${show(e.story_id)} (${show(e.status)})`, tone: "info" };
+    case "history.import": return { title: "Past post imported", detail: show(e.name), tone: "info" };
+    default: return { title: show(e.event), detail: "", tone: "muted" };
+  }
+}
+
+export const ROUTES = [
+  ["dashboard", "Dashboard"], ["posts", "Posts"], ["research", "Research"],
+  ["calendar", "Calendar"], ["approval", "Approval"], ["publishing", "Publishing"],
+  ["monitoring", "Monitoring"], ["errors", "Errors / Reconciliation"],
+  ["analytics", "Analytics"], ["settings", "Settings"],
+];
+
+export function parseRoute(hash) {
+  const parts = String(hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
+  const name = ROUTES.some(([r]) => r === parts[0]) ? parts[0] : "dashboard";
+  return { name, id: parts[1] ? decodeURIComponent(parts[1]) : null };
+}

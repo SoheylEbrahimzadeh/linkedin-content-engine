@@ -355,6 +355,45 @@ def cmd_skills_sync(args):
     return 0
 
 
+# ── dashboard ─────────────────────────────────────────────────────────
+def _engine_root() -> Path:
+    from lce.config.paths import find_engine_root
+
+    root = find_engine_root(Path(__file__).resolve().parent)
+    if root is None:
+        raise StoreError("demo data is only available from a source checkout of the engine")
+    return root
+
+
+def cmd_dashboard_serve(args):
+    from lce.dashboard.server import demo_store, make_server
+
+    if args.demo:
+        store, mode = demo_store(_engine_root()), "demo"
+    else:
+        store, mode = _store(args), "real"
+    server = make_server(store, mode=mode, port=args.port)
+    port = server.server_address[1]
+    label = "DEMO MODE — NO PRIVATE DATA" if mode == "demo" else f"REAL DATA: {store.root}"
+    print(f"LCE Control Center ({label})")
+    print(f"  http://127.0.0.1:{port}/   (read-only, local only; Ctrl+C to stop)")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
+def cmd_dashboard_build_demo(args):
+    from lce.dashboard.build import build_demo
+
+    files = build_demo(_engine_root(), Path(args.out))
+    print(f"✓ demo site ({len(files)} files) in {Path(args.out).resolve()} — fictional data only")
+    return 0
+
+
 # ── parser ────────────────────────────────────────────────────────────
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="lce", description="LinkedIn content engine (Phase 1)")
@@ -474,6 +513,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = gcmd(g, "import", cmd_history_import, "import a past post for duplicate checks")
     p.add_argument("name")
     p.add_argument("--file", required=True)
+
+    g = group("dashboard", "Web Control Center (read-only)")
+    p = gcmd(g, "serve", cmd_dashboard_serve, "serve the dashboard on 127.0.0.1")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--demo", action="store_true", help="fictional demo data instead of your data")
+    p = gcmd(g, "build-demo", cmd_dashboard_build_demo, "static demo site (fictional data only)")
+    p.add_argument("--out", default="_site")
 
     g = group("skills", "Claude Code skills")
     gcmd(g, "sync", cmd_skills_sync, "copy skills into the data directory")

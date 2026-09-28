@@ -1,0 +1,8 @@
+demo: true
+story_id: demo-private-vendor
+title: Vendor evaluation (fictional, private)
+experience: An example of a story that must never appear in a draft because it is PRIVATE.
+publication_status: PRIVATE
+sensitivity: high
+reusable: false
+sensitive_terms: [Contoso Vendor Demo]

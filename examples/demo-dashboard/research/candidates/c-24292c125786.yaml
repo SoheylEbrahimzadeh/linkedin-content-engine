@@ -1,0 +1,17 @@
+demo: true
+candidate_id: c-24292c125786
+title: 'Example Ops Survey 2025: post-incident reviews'
+summary: Fictional source for the demo.
+origin: web_search
+untrusted: true
+sources:
+- url: https://example.org/ops-survey-2025
+  title: 'Example Ops Survey 2025: post-incident reviews'
+  publisher: Example Org (fictional)
+  accessed_at: '2026-09-28T19:44:49+00:00'
+claims:
+- text: 58% of small teams run no review after minor incidents
+  source_url: https://example.org/ops-survey-2025
+status: selected
+created_at: '2026-09-28T19:44:49+00:00'
+pillar: operations

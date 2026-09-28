@@ -1,0 +1,22 @@
+demo: true
+story_id: demo-ticket-routing
+title: Rule-based ticket routing pilot (fictional)
+experience: Jordan replaced manual triage of a shared inbox at Northwind Demo Co. with keyword rules.
+context: A five-person service team shared one inbox.
+problem: Tickets waited for someone to sort them by hand every morning.
+action: Wrote twelve keyword rules and ran them for four weeks next to manual triage.
+result: Manual triage dropped from about 40 minutes a day to about 10 during the pilot.
+lesson: Start with the boring rules; they cover more than you expect.
+industry: Professional services
+topics: [automation, operations]
+period: 2025-Q1
+my_role: Designed the rules and ran the pilot
+evidence:
+  - {type: self_reported, ref: fictional example}
+publication_status: PUBLIC
+sensitivity: low
+reusable: true
+allowed_claims:
+  - "Manual triage dropped from about 40 minutes a day to about 10 during the pilot."
+sensitive_terms: [Northwind Demo Co.]
+approved_at: 2025-04-01
