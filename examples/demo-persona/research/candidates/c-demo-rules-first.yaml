@@ -1,0 +1,11 @@
+demo: true
+candidate_id: c-demo-rules-first
+title: Why simple routing rules beat a model for small service teams
+summary: Fictional candidate used in tests and documentation.
+pillar: automation
+origin: manual
+untrusted: false
+sources: []
+claims: []
+status: new
+created_at: "2025-05-01T08:00:00+00:00"

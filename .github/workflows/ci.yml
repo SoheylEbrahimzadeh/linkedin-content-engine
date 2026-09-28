@@ -34,6 +34,12 @@ jobs:
         run: lce privacy-scan
       - name: Validate demo persona
         run: lce validate examples/demo-persona
+      - name: Validate dashboard demo data
+        run: lce validate examples/demo-dashboard
+      - name: Dashboard JS tests
+        run: node --version && node --test tests/js/lib.test.mjs
+      - name: Build static demo (fictional data only)
+        run: lce dashboard build-demo --out _site && ls -R _site
       - name: Install gitleaks (pinned, checksum-verified)
         env:
           GL_VERSION: "8.30.1"

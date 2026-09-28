@@ -1,0 +1,85 @@
+# Generic interview questions. Answers are stored ONLY in the private data
+# directory. `required: true` marks the minimum needed before drafting.
+# Types: text, list (separate items with ";"), enum, int, bool, yaml.
+questions:
+  # 1 ── positioning
+  - {id: role, group: positioning, target: profile, path: identity.current_role, type: text, required: true,
+     prompt: "What is your current role or professional identity, in one line?"}
+  - {id: positioning, group: positioning, target: profile, path: positioning, type: text, required: true,
+     prompt: "In one or two sentences: what should people associate you with on LinkedIn?"}
+  - {id: headline, group: positioning, target: profile, path: linkedin.headline, type: text,
+     prompt: "Your current or intended LinkedIn headline (optional)."}
+  # 2 ── audience
+  - {id: audience_roles, group: audience, target: profile, path: audience.roles, type: list, required: true,
+     prompt: "Who should read your posts? List the roles."}
+  - {id: audience_seniority, group: audience, target: profile, path: audience.seniority, type: list,
+     prompt: "Which seniority levels do you want to reach?"}
+  - {id: audience_industries, group: audience, target: profile, path: audience.industries, type: list,
+     prompt: "Which industries is your audience in?"}
+  - {id: audience_regions, group: audience, target: profile, path: audience.regions, type: list,
+     prompt: "Which regions or markets matter most?"}
+  - {id: goals, group: audience, target: profile, path: goals, type: list, required: true,
+     prompt: "What are your LinkedIn goals, in priority order?"}
+  # 3 ── expertise
+  - {id: expertise, group: expertise, target: profile, path: expertise, type: list, required: true,
+     prompt: "Up to 5 areas of expertise you want to be known for, most important first."}
+  - {id: industries, group: expertise, target: profile, path: industries, type: list,
+     prompt: "Industries you work in or can speak about with authority."}
+  # 4 ── pillars
+  - {id: pillars, group: pillars, target: profile, path: pillars, type: yaml, required: true,
+     prompt: "3–5 content pillars. For each: an id, a name, and a few topics."}
+  # 5 ── voice
+  - {id: voice_language, group: voice, target: voice, path: language, type: enum, options: [en, de, fa], required: true,
+     prompt: "Which language is this voice profile for?"}
+  - {id: tone, group: voice, target: voice, path: tone, type: list, required: true,
+     prompt: "Describe your tone in a few words (e.g. direct; practical; analytical)."}
+  - {id: formality, group: voice, target: voice, path: formality, type: enum, options: [casual, neutral, formal], required: true,
+     prompt: "How formal should posts be: casual, neutral or formal?"}
+  - {id: sentence_length, group: voice, target: voice, path: sentence_length.preference, type: enum, options: [short, mixed, long],
+     prompt: "Sentence length preference: short, mixed or long?"}
+  - {id: technical_depth, group: voice, target: voice, path: technical_depth, type: enum, options: [low, medium, high, mixed],
+     prompt: "How technical should posts be: low, medium, high or mixed?"}
+  - {id: storytelling, group: voice, target: voice, path: storytelling_style, type: text,
+     prompt: "How do you like to tell stories (if at all)?"}
+  - {id: opinions_vs_facts, group: voice, target: voice, path: opinions_vs_facts, type: text,
+     prompt: "How do you want to balance opinions and facts?"}
+  - {id: structure, group: voice, target: voice, path: structure.preferred, type: list,
+     prompt: "Preferred post structures (e.g. problem → insight → takeaway; short lesson; checklist)."}
+  - {id: cta_allowed, group: voice, target: voice, path: cta.allowed, type: bool,
+     prompt: "Should posts end with a call to action or question? (yes/no)"}
+  - {id: cta_style, group: voice, target: voice, path: cta.style, type: text,
+     prompt: "If yes, what kind of CTA feels natural to you?"}
+  - {id: avoid_phrases, group: voice, target: voice, path: avoid_phrases, type: list, required: true, allow_none: true,
+     prompt: "Words or phrases you never want to use (answer 'none' if there are none)."}
+  - {id: vocabulary_prefer, group: voice, target: voice, path: vocabulary.prefer, type: list,
+     prompt: "Words or terms you like to use."}
+  - {id: emoji_max, group: voice, target: voice, path: emoji_policy.max_per_post, type: int, required: true,
+     prompt: "Maximum emojis per post (0 = none)?"}
+  - {id: hashtag_max, group: voice, target: voice, path: hashtag_policy.max, type: int, required: true,
+     prompt: "Maximum hashtags per post?"}
+  - {id: hashtag_placement, group: voice, target: voice, path: hashtag_policy.placement, type: enum, options: [end, inline, none],
+     prompt: "Where should hashtags go: end, inline or none?"}
+  - {id: max_chars, group: voice, target: voice, path: formatting.max_chars, type: int,
+     prompt: "Preferred maximum post length in characters (LinkedIn's hard limit is 3000)?"}
+  - {id: bullets, group: voice, target: voice, path: formatting.bullets_allowed, type: bool,
+     prompt: "Are bullet lists OK? (yes/no)"}
+  # 7 ── topics
+  - {id: topics_public, group: topics, target: profile, path: topics.public, type: list, required: true,
+     prompt: "Topics you are comfortable discussing publicly."}
+  - {id: topics_avoid, group: topics, target: profile, path: topics.avoid, type: list, required: true,
+     prompt: "Topics you must never post about."}
+  - {id: forbidden_claims, group: topics, target: profile, path: forbidden.claims, type: list,
+     prompt: "Kinds of claims that must never appear (e.g. client names, revenue figures)."}
+  # 9 ── formats
+  - {id: formats, group: formats, target: profile, path: formats.preferred, type: list,
+     prompt: "Preferred post formats (e.g. text; text + image; document/carousel; short story; how-to)."}
+  # 10 ── frequency
+  - {id: timezone, group: frequency, target: settings, path: timezone, type: text, required: true,
+     prompt: "Your timezone (IANA name, e.g. America/Chicago)."}
+  - {id: cadence, group: frequency, target: settings, path: cadence, type: yaml, required: true,
+     prompt: "Posts per week and slots, e.g. {posts_per_week: 3, slots: [{day: tue, time: '08:30'}, ...]}."}
+  # 11 ── languages
+  - {id: language_primary, group: languages, target: profile, path: languages.primary, type: enum, options: [en, de, fa], required: true,
+     prompt: "Primary posting language?"}
+  - {id: languages_planned, group: languages, target: profile, path: languages.planned, type: list,
+     prompt: "Languages you may add later?"}

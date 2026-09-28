@@ -1,0 +1,39 @@
+demo: true
+entries:
+- date: '2025-05-06'
+  topic: Why simple routing rules beat a model for small service teams
+  pillar: automation
+  format: text
+  status: approved
+  duplicate_check: passed
+  approval_status: approved
+  publication_status: not_published
+  angle: rules before models
+  candidate_id: c-demo-rules-first
+  draft_ref: 20250506-why-simple-routing-rules-beat-a-model-fo
+  sources: []
+- date: '2025-05-08'
+  topic: 'Example Ops Survey 2025: post-incident reviews'
+  pillar: operations
+  status: awaiting_approval
+  duplicate_check: passed
+  approval_status: pending
+  publication_status: not_published
+  format: text
+  angle: short incident reviews
+  candidate_id: c-24292c125786
+  draft_ref: 20250508-example-ops-survey-2025-post-incident-re
+  sources:
+  - https://example.org/ops-survey-2025
+- date: '2025-05-10'
+  topic: Why teams love automation
+  pillar: lessons
+  status: in_progress
+  duplicate_check: pending
+  approval_status: pending
+  publication_status: not_published
+  format: text
+  angle: enthusiasm
+  candidate_id: c-c68b014357d8
+  draft_ref: 20250510-why-teams-love-automation
+  sources: []

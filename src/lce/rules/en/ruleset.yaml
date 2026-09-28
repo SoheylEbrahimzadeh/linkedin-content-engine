@@ -1,0 +1,87 @@
+# English ruleset (independent implementation; see docs/ATTRIBUTION.md).
+# severity: error blocks QA; warning is reported for the writer/reviewer.
+language: en
+status: ready
+limits:
+  hard_max_chars: 3000        # LinkedIn post limit (to be re-verified with the publisher phase)
+  min_chars: 250
+  hook_max_chars: 200         # first line/paragraph shown before "see more" (heuristic)
+  max_paragraph_chars: 450
+  wall_of_text_chars: 600     # longer than this with no blank line = malformed
+defaults:
+  max_hashtags: 3
+  max_emojis: 1
+lexicon:                      # AI-typical vocabulary → warning
+  - delve
+  - tapestry
+  - testament to
+  - in today's fast-paced world
+  - in today's digital age
+  - ever-evolving landscape
+  - navigate the complexities
+  - game-changer
+  - game changer
+  - paradigm shift
+  - unlock the power
+  - harness the power
+  - revolutionize
+  - seamless
+  - cutting-edge
+  - synergy
+  - elevate your
+  - embark on a journey
+  - let that sink in
+  - buckle up
+  - here's the kicker
+  - in conclusion
+  - at the end of the day
+  - it's worth noting
+  - moreover
+  - furthermore
+patterns:                     # structural tells → warning
+  - id: not-x-but-y
+    regex: "\\bit'?s not (?:just |only |about )?[^.\\n]{1,40}[,;—–-]\\s*it'?s\\b"
+    message: "'It's not X, it's Y' construction"
+  - id: rhetorical-opener
+    regex: "^(?:ever wondered|what if i told you|imagine this|here's the thing|picture this)\\b"
+    message: "formulaic opener"
+  - id: stacked-questions
+    regex: "\\?[^.!?\\n]{0,60}\\?[^.!?\\n]{0,60}\\?"
+    message: "three questions in a row"
+engagement_bait:              # → error
+  - "\\bcomment\\s+['\"“]?(?:yes|me|interested|below)\\b"
+  - "\\blike (?:this post )?if you agree\\b"
+  - "\\btag (?:someone|a friend|3|three)\\b"
+  - "\\b(?:repost|share) (?:this )?if\\b"
+  - "\\bfollow me for more\\b"
+  - "\\bdrop an? .{1,20} in the comments\\b"
+  - "\\bsmash (?:that|the) like\\b"
+  - "^\\s*agree\\?\\s*$"
+hype:                         # → warning (allowed only with a concrete argument)
+  - "\\bAI will (?:change|replace|transform) (?:everything|all|every)\\b"
+  - "\\b(?:10|100)x (?:your|productivity|faster)\\b"
+  - "\\bthe future is (?:here|now)\\b"
+  - "\\bno one is talking about\\b"
+source_markers:               # claims that need a cited source → error when none
+  - "\\b(?:studies|research|surveys?|data|reports?) (?:show|shows|found|suggests?|says)\\b"
+  - "\\baccording to\\b"
+  - "\\b(?:a|one) (?:recent )?(?:study|survey|report)\\b"
+personal_claims:              # first-person achievements → need a PUBLIC story
+  - "\\b(?:i|we)\\s+(?:led|built|reduced|increased|saved|delivered|launched|implemented|managed|shipped|cut|grew|automated|migrated|designed|rolled out|introduced|scaled)\\b"
+  - "\\b(?:my|our) (?:team|client|customer|project) (?:saved|reduced|cut|grew|achieved|delivered)\\b"
+placeholders:                 # → error (case-sensitive unless (?i))
+  - "(?i)\\[(?:todo|tbd|insert|placeholder|company|client|name|link|number)[^\\]]*\\]"
+  - "\\{\\{[^}]*\\}\\}"
+  - "(?i)<(?:insert|placeholder|todo)[^>]*>"
+  - "\\bXX+%?"
+  - "(?i)\\blorem ipsum\\b"
+  - "\\bTODO\\b"
+metrics:
+  max_em_dashes_per_100_words: 1.5
+  max_triads: 1
+  max_same_opener_run: 2
+  max_exclamations: 2
+  repeated_ngram_size: 4
+  repeated_ngram_max: 2
+  overused_word_min_count: 5
+  overused_word_share: 0.04

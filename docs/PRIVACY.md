@@ -31,6 +31,11 @@ OAuth tokens and API keys. When in doubt, data is treated as private.
 6. **GitHub**: secret scanning and push protection enabled on the repository.
 7. **Commit identity**: commits use the GitHub `noreply` address.
 
+## Runtime privacy checks on posts
+
+QA blocks any post containing denylist terms, contact details, sensitive
+terms from any story, or content from stories that are not `PUBLIC`.
+
 ## The privacy scanner
 
 `src/lce/privacy/scan.py` flags private paths, `.env` files, story-bank data

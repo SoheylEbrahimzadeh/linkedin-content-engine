@@ -27,6 +27,9 @@ token*.json
 *.local.*
 *.private.*
 
+# Built demo site (published separately, never committed here)
+/_site/
+
 # ── Python / tooling ────────────────────────────────────────
 __pycache__/
 *.py[cod]

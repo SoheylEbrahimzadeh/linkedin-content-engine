@@ -1,9 +1,0 @@
-# Language ruleset skeleton. Populated in Phase 1 (en) and Phase 4 (de, fa).
-# The pipeline refuses to publish in a language whose status is not "ready".
-language: en
-status: planned
-lexicon: []        # AI-typical words/phrases to flag
-patterns: []       # regex / structural patterns to flag
-metrics: {}        # thresholds, e.g. sentence-length variance, triads per post
-typography: {}     # language-specific typography rules
-blockers: []       # rule ids that fail the audit outright

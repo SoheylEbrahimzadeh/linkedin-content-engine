@@ -1,0 +1,46 @@
+{
+  "demo": true,
+  "post_id": "20250510-why-teams-love-automation",
+  "content_hash": "0bcd9b6f7de3cec96aedf009f4e05dde51c3274063cbce1ff0dd5261579e37a1",
+  "at": "2026-09-28T19:57:04+00:00",
+  "status": "failed",
+  "errors": [
+    {
+      "code": "phrase.forbidden",
+      "severity": "error",
+      "message": "uses a phrase you asked to avoid: 'game-changer'"
+    },
+    {
+      "code": "bait.engagement",
+      "severity": "error",
+      "message": "engagement-bait wording"
+    },
+    {
+      "code": "emoji.excess",
+      "severity": "error",
+      "message": "3 emojis (max 1)"
+    },
+    {
+      "code": "source.missing",
+      "severity": "error",
+      "message": "refers to research/data but the post has no source"
+    },
+    {
+      "code": "claim.unsupported_number",
+      "severity": "error",
+      "message": "number 73 is not backed by a PUBLIC story claim or a recorded source claim"
+    }
+  ],
+  "warnings": [
+    {
+      "code": "length.too_short",
+      "severity": "warning",
+      "message": "only 97 characters"
+    },
+    {
+      "code": "phrase.ai_tell",
+      "severity": "warning",
+      "message": "AI-typical wording: 'game-changer'"
+    }
+  ]
+}

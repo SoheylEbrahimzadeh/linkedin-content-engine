@@ -1,0 +1,60 @@
+demo: true
+post_id: 20250506-why-simple-routing-rules-beat-a-model-fo
+created_at: '2026-09-28T19:57:03+00:00'
+plan_date: '2025-05-06'
+language: en
+topic: Why simple routing rules beat a model for small service teams
+pillar: automation
+format: text
+angle: rules before models
+candidate_id: c-demo-rules-first
+sources: []
+claims: []
+stories_used:
+- demo-ticket-routing
+state: APPROVED
+history:
+- at: '2026-09-28T19:57:03+00:00'
+  state: RESEARCHED
+  note: from candidate
+- at: '2026-09-28T19:57:04+00:00'
+  state: SELECTED
+  note: selected
+- at: '2026-09-28T19:57:04+00:00'
+  state: DRAFTED
+  note: draft saved
+- at: '2026-09-28T19:57:04+00:00'
+  state: HUMANIZED
+  note: candidate text saved
+- at: '2026-09-28T19:57:04+00:00'
+  state: QA_PASSED
+  note: QA passed
+- at: '2026-09-28T19:57:04+00:00'
+  state: DUPLICATE_CHECKED
+  note: duplicate check passed
+- at: '2026-09-28T19:57:04+00:00'
+  state: AWAITING_APPROVAL
+  note: approval artifact prepared
+- at: '2026-09-28T19:57:04+00:00'
+  state: APPROVED
+  note: approved by human
+draft_hash: 843c1c71369ccc94674d8e8c295c9bb3afa7855c7aa8d5a303c687beda8de175
+content_hash: 843c1c71369ccc94674d8e8c295c9bb3afa7855c7aa8d5a303c687beda8de175
+qa:
+  status: passed
+  content_hash: 843c1c71369ccc94674d8e8c295c9bb3afa7855c7aa8d5a303c687beda8de175
+  at: '2026-09-28T19:57:04+00:00'
+  errors: 0
+  warnings: 0
+duplicate:
+  status: passed
+  content_hash: 843c1c71369ccc94674d8e8c295c9bb3afa7855c7aa8d5a303c687beda8de175
+  at: '2026-09-28T19:57:04+00:00'
+  errors: 0
+  warnings: 0
+approval:
+  state: approved
+  approved_hash: 843c1c71369ccc94674d8e8c295c9bb3afa7855c7aa8d5a303c687beda8de175
+  approved_at: '2026-09-28T19:57:04+00:00'
+  approved_by: demo-fixture
+  artifact_hash: e691a27c1b7e3910dfe88bd1a3cc3613dd62269e29b9c85b3c5331cc380b4977

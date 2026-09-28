@@ -1,0 +1,27 @@
+demo: true
+identity:
+  display_name: Jordan Sample
+  current_role: Fictional operations consultant
+positioning: Practical automation for small service teams, without the hype.
+expertise: [Workflow automation, Service desk operations, Process mapping]
+industries: [Professional services]
+audience:
+  roles: [Operations managers, Team leads]
+  seniority: [Manager]
+  industries: [Professional services]
+  regions: [Europe]
+goals: [Build a professional network, Share practical lessons]
+pillars:
+  - {id: automation, name: Workflow automation, topics: [ticket routing, approvals], max_share: 0.6}
+  - {id: operations, name: Service operations, topics: [SLAs, incident reviews]}
+  - {id: lessons, name: Lessons learned, topics: [experiments, mistakes]}
+topics:
+  public: [automation, service desks, process mapping]
+  avoid: [client names, internal financials]
+forbidden:
+  claims: [guaranteed savings]
+formats:
+  preferred: [text]
+languages:
+  primary: en
+  enabled: [en]

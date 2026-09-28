@@ -3,29 +3,59 @@
   "$id": "lce/settings.schema.json",
   "title": "Settings",
   "type": "object",
-  "required": ["language", "timezone", "cadence", "approval", "publisher", "llm"],
+  "required": [
+    "approval",
+    "publisher",
+    "llm"
+  ],
   "additionalProperties": false,
   "properties": {
-    "demo": {"type": "boolean"},
-    "language": {"type": "string", "enum": ["en", "de", "fa"]},
-    "languages_enabled": {"type": "array", "items": {"enum": ["en", "de", "fa"]}, "uniqueItems": true},
-    "timezone": {"type": "string", "description": "IANA timezone name, e.g. Europe/Berlin"},
+    "demo": {
+      "type": "boolean"
+    },
+    "timezone": {
+      "type": "string",
+      "description": "IANA timezone name"
+    },
     "cadence": {
       "type": "object",
-      "required": ["posts_per_week", "slots"],
+      "required": [
+        "posts_per_week",
+        "slots"
+      ],
       "additionalProperties": false,
       "properties": {
-        "posts_per_week": {"type": "integer", "minimum": 1, "maximum": 7},
+        "posts_per_week": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
         "slots": {
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["day", "time"],
+            "required": [
+              "day",
+              "time"
+            ],
             "additionalProperties": false,
             "properties": {
-              "day": {"enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
-              "time": {"type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"}
+              "day": {
+                "enum": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat",
+                  "sun"
+                ]
+              },
+              "time": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              }
             }
           }
         }
@@ -33,28 +63,131 @@
     },
     "approval": {
       "type": "object",
-      "required": ["mode", "expire_unapproved"],
+      "required": [
+        "mode",
+        "expire_unapproved"
+      ],
       "additionalProperties": false,
       "properties": {
-        "mode": {"enum": ["pull_request", "local"]},
-        "expire_unapproved": {"const": true, "description": "Unapproved posts are never published."}
+        "mode": {
+          "enum": [
+            "local",
+            "pull_request"
+          ]
+        },
+        "expire_unapproved": {
+          "const": true,
+          "description": "Unapproved posts are never published."
+        }
       }
     },
     "publisher": {
       "type": "object",
-      "required": ["provider"],
+      "required": [
+        "provider"
+      ],
       "additionalProperties": false,
       "properties": {
-        "provider": {"enum": ["none", "manual", "linkedin_official", "publora"]},
-        "max_lateness_minutes": {"type": "integer", "minimum": 0, "maximum": 1440}
+        "provider": {
+          "const": "none",
+          "description": "Phase 1: no publishing provider exists."
+        }
       }
     },
     "llm": {
       "type": "object",
-      "required": ["runtime"],
+      "required": [
+        "runtime"
+      ],
       "additionalProperties": false,
       "properties": {
-        "runtime": {"const": "claude_code", "description": "LLM steps run inside Claude Code; the engine never calls an LLM API."}
+        "runtime": {
+          "const": "claude_code",
+          "description": "LLM steps run inside Claude Code; the engine never calls an LLM API."
+        }
+      }
+    },
+    "research": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "feeds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "url"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^https://"
+              }
+            }
+          }
+        },
+        "max_items_per_feed": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        }
+      }
+    },
+    "duplicates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shingle_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "near_duplicate_jaccard": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "near_duplicate_containment": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "similar_warn_jaccard": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "story_reuse_window_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "story_max_uses": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "angle_window_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "topic_window_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "topic_similarity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
       }
     }
   }

@@ -2,33 +2,231 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "lce/post.schema.json",
   "title": "PostRecord",
-  "description": "Frontmatter of one post file in the private data directory.",
   "type": "object",
-  "required": ["post_id", "slot", "language", "pillar", "state"],
+  "required": [
+    "post_id",
+    "created_at",
+    "language",
+    "state"
+  ],
   "additionalProperties": false,
   "properties": {
-    "demo": {"type": "boolean"},
-    "post_id": {"type": "string"},
-    "slot": {"type": "string", "format": "date-time"},
-    "language": {"enum": ["en", "de", "fa"]},
-    "pillar": {"type": "string"},
-    "hook_formula": {"type": "string"},
-    "state": {"enum": ["PLANNED", "DRAFTED", "AUDIT_PASSED", "NEEDS_INPUT", "AWAITING_APPROVAL",
-                       "APPROVED", "REJECTED", "EXPIRED", "PUBLISHING", "NEEDS_RECONCILE",
-                       "PUBLISHED", "MISSED", "FAILED"]},
-    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "approved_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "idempotency_key": {"type": "string"},
-    "facts_used": {"type": "array", "items": {"type": "string"}},
-    "sources": {"type": "array", "items": {"type": "string"}},
-    "provider": {"type": "string"},
-    "remote_id": {"type": "string"},
+    "demo": {
+      "type": "boolean"
+    },
+    "post_id": {
+      "type": "string",
+      "pattern": "^\\d{8}-[a-z0-9-]{1,56}$"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "plan_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "language": {
+      "enum": [
+        "en",
+        "de",
+        "fa"
+      ]
+    },
+    "topic": {
+      "type": "string"
+    },
+    "pillar": {
+      "type": "string"
+    },
+    "format": {
+      "type": "string"
+    },
+    "angle": {
+      "type": "string"
+    },
+    "candidate_id": {
+      "type": "string"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "pattern": "^https?://"
+          },
+          "title": {
+            "type": "string"
+          },
+          "publisher": {
+            "type": "string"
+          },
+          "accessed_at": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "text",
+          "source_url"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 3
+          },
+          "source_url": {
+            "type": "string",
+            "pattern": "^https?://"
+          }
+        }
+      }
+    },
+    "stories_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "state": {
+      "enum": [
+        "RESEARCHED",
+        "SELECTED",
+        "NEEDS_INPUT",
+        "DRAFTED",
+        "HUMANIZED",
+        "NEEDS_REVISION",
+        "QA_PASSED",
+        "DUPLICATE_CHECKED",
+        "AWAITING_APPROVAL",
+        "APPROVED",
+        "READY_TO_PUBLISH",
+        "REJECTED"
+      ]
+    },
+    "draft_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "qa": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "passed",
+            "failed"
+          ]
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "at": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warnings": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "duplicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "passed",
+            "failed"
+          ]
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "at": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warnings": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "approved_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "approved_at": {
+          "type": "string"
+        },
+        "approved_by": {
+          "type": "string"
+        },
+        "artifact_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
     "history": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["at", "state"],
-        "properties": {"at": {"type": "string"}, "state": {"type": "string"}, "note": {"type": "string"}}
+        "required": [
+          "at",
+          "state"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
       }
     }
   }

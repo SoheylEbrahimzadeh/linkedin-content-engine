@@ -77,7 +77,10 @@ ANTHROPIC_CONFIG_RE = re.compile(
     r"|claude_code_oauth_" + r"token",
     re.IGNORECASE,
 )
-DATA_KEYS = {"fact_id", "publication_status", "allowed_claims", "story_bank"}
+DATA_KEYS = {
+    "fact_id", "story_id", "publication_status", "allowed_claims", "story_bank", "positioning",
+    "expertise", "avoid_phrases", "candidate_id", "post_id", "entries",
+}
 
 
 @dataclass(frozen=True)
