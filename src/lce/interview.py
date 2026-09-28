@@ -30,6 +30,14 @@ class Question:
     prompt: str
     required: bool = False
     options: tuple[str, ...] = ()
+    # List questions only: an explicit "none" answer is valid and stored as [].
+    allow_none: bool = False
+
+
+# Explicit answers meaning "no items" (case-insensitive, surrounding punctuation ignored).
+NONE_ANSWERS = frozenset({"none", "no", "nothing", "n/a", "no avoided phrases", "no phrases",
+                          "no items"})
+LITERAL_EMPTY = frozenset({"[]", "[ ]", "{}", '""', "''"})
 
 
 def questions() -> list[Question]:
@@ -73,13 +81,22 @@ def _doc(store: DataStore, target: str) -> dict:
     return store.read_doc(getattr(store, attr))
 
 
-def is_answered(value: object) -> bool:
-    return value is not None and value != "" and value != [] and value != {}
+def is_answered(q: Question, value: object) -> bool:
+    """Three states: unanswered (absent/None/empty), explicitly none, or answered.
+
+    An empty list counts as answered only for questions that allow an explicit
+    "none"; for every other question it still means unanswered.
+    """
+    if value is None:
+        return False
+    if value == []:
+        return q.type == "list" and q.allow_none
+    return value != "" and value != {}
 
 
 def status(store: DataStore) -> list[tuple[Question, bool]]:
     docs = {t: _doc(store, t) for t in TARGETS}
-    return [(q, is_answered(_get(docs[q.target], q.path))) for q in questions()]
+    return [(q, is_answered(q, _get(docs[q.target], q.path))) for q in questions()]
 
 
 def missing(store: DataStore, required_only: bool = False) -> list[Question]:
@@ -99,8 +116,18 @@ def coerce(q: Question, raw: str) -> object:
     if q.type == "text":
         return raw
     if q.type == "list":
+        if raw in LITERAL_EMPTY:
+            hint = "answer 'none'" if q.allow_none else "give at least one item"
+            raise StoreError(f"{q.id}: a literal empty value is not an answer; {hint}")
+        if raw.lower().strip(" .!") in NONE_ANSWERS:
+            if not q.allow_none:
+                raise StoreError(f"{q.id} needs at least one item")
+            return []
         items = [i.strip() for i in raw.replace("\n", ";").split(";")]
-        return [i for i in items if i]
+        items = [i for i in items if i]
+        if not items:
+            raise StoreError(f"{q.id} needs at least one item")
+        return items
     if q.type == "int":
         try:
             return int(raw)

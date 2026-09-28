@@ -20,6 +20,8 @@ them anywhere else, never paste them into the public engine repository.
 3. Read back how you will store each answer and store it only after the owner
    confirms: `lce interview set <question_id> --value "<answer>"`.
    - list answers: separate items with `;`
+   - an explicit "no items" answer is only valid where the question allows it
+     (e.g. `avoid_phrases`): use `--value none`, never `[]`
    - `pillars` and `cadence` are YAML, e.g.
      `--value "[{id: ai-automation, name: AI & Business Automation, topics: [AI agents, workflows]}]"`
 4. If a command fails validation, explain and ask again. Do not force values.

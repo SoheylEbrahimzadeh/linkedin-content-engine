@@ -49,8 +49,8 @@ questions:
      prompt: "Should posts end with a call to action or question? (yes/no)"}
   - {id: cta_style, group: voice, target: voice, path: cta.style, type: text,
      prompt: "If yes, what kind of CTA feels natural to you?"}
-  - {id: avoid_phrases, group: voice, target: voice, path: avoid_phrases, type: list, required: true,
-     prompt: "Words or phrases you never want to use."}
+  - {id: avoid_phrases, group: voice, target: voice, path: avoid_phrases, type: list, required: true, allow_none: true,
+     prompt: "Words or phrases you never want to use (answer 'none' if there are none)."}
   - {id: vocabulary_prefer, group: voice, target: voice, path: vocabulary.prefer, type: list,
      prompt: "Words or terms you like to use."}
   - {id: emoji_max, group: voice, target: voice, path: emoji_policy.max_per_post, type: int, required: true,
