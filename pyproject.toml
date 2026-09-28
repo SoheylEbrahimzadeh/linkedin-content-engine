@@ -32,6 +32,7 @@ where = ["src"]
 "lce.rules" = ["*/ruleset.yaml", "README.md"]
 "lce.data" = ["*.yaml"]
 "lce.claude_skills" = ["*/SKILL.md"]
+"lce.dashboard" = ["static/*"]
 
 [tool.ruff]
 line-length = 110

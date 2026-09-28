@@ -50,7 +50,14 @@ lce skills sync                                  # Claude Code skills into the d
 lce status                                       # what the interview still needs
 ```
 
-Then open Claude Code in the data directory and use the `lce-interview`,
+See the state of everything in the browser (read-only, local only):
+
+```bash
+lce dashboard serve        # http://127.0.0.1:8765/ — REAL DATA
+lce dashboard serve --demo # fictional data
+```
+
+More in [docs/DASHBOARD.md](docs/DASHBOARD.md). Then open Claude Code in the data directory and use the `lce-interview`,
 `lce-research` and `lce-create-post` skills. Approve posts yourself with
 `lce approve <post_id> --hash <prefix>` in an interactive terminal.
 
