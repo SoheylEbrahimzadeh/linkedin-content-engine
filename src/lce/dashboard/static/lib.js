@@ -157,6 +157,15 @@ export function claimLabel(n) {
   return n === 0 ? "no claims extracted" : `${n} claim${n === 1 ? "" : "s"} extracted`;
 }
 
+/** Evidence limitation of a duplicate check; null when there is nothing to qualify. */
+export function duplicateEvidenceNote(report) {
+  if (!report || typeof report.compared_against !== "number") return null;
+  if (report.compared_against > 0) return null;
+  return report.status === "passed"
+    ? "Duplicate check passed — no previous posts were available for comparison (compared against 0 posts). This is not evidence that the post is original."
+    : "No previous posts were available for comparison (compared against 0 posts).";
+}
+
 export const ROUTES = [
   ["dashboard", "Dashboard"], ["posts", "Posts"], ["research", "Research"],
   ["calendar", "Calendar"], ["approval", "Approval"], ["publishing", "Publishing"],

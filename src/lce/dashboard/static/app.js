@@ -2,7 +2,7 @@
 // All text goes through textContent; no HTML from data is ever interpreted.
 import {
   ROUTES, calendarMonths, checkMode, claimLabel, describeRun, fmtDateTime, issueCounts, parseRoute,
-  publicationLabel, researchGroups, runStatus, shortHash, show, splitApprovals, stateMeta,
+  duplicateEvidenceNote, publicationLabel, researchGroups, runStatus, shortHash, show, splitApprovals, stateMeta,
 } from "./lib.js";
 
 const cfg = window.LCE_CONFIG || {};
@@ -140,7 +140,9 @@ function viewPost(s, id) {
       kv([["Stories used", p.stories_used], ["Candidate", p.candidate_id]])),
     h("div", { class: "grid" },
       card(`QA — ${show(p.qa && p.qa.status)}`, findings(p.qa_report)),
-      card(`Duplicate check — ${show(p.duplicate && p.duplicate.status)}`, dup ? kv([
+      card(`Duplicate check — ${show(p.duplicate && p.duplicate.status)}`,
+        duplicateEvidenceNote(dup) ? h("p", { class: "evidence-note" }, duplicateEvidenceNote(dup)) : null,
+        dup ? kv([
         ["Compared against", `${dup.compared_against} post(s)`], ["Exact", dup.exact], ["Near", dup.near.map((x) => x.ref)],
         ["Similar", dup.similar.map((x) => x.ref)], ["Story reuse", dup.story_reuse.map((x) => x.story)],
         ["Angle reuse", dup.angle_reuse], ["Topic reuse", dup.topic_reuse.map((x) => x.ref)],

@@ -261,3 +261,26 @@ def test_research_selected_vs_unselected_and_claims(real_store):
         assert "reason" not in c and "verified" not in c  # nothing inferred
     web = [c for c in research.values() if c["origin"] == "web_search"]
     assert web and all(c["untrusted"] is True for c in web)
+
+
+def test_zero_history_duplicate_check_is_exposed_unchanged(tmp_path):
+    """First post ever: the snapshot must carry compared_against == 0 and the real status."""
+    from conftest import GOOD_POST, selected_post
+
+    from lce.dupcheck import run_dupcheck
+    from lce.posts import save_draft, save_humanized
+    from lce.qa import run_qa
+
+    src = ROOT / "examples" / "demo-persona"
+    shutil.copytree(src, tmp_path / "d")
+    store = DataStore.open(str(tmp_path / "d"))
+    pid = selected_post(store)
+    save_draft(store, pid, GOOD_POST)
+    save_humanized(store, pid, GOOD_POST)
+    run_qa(store, pid, denylist=[])
+    run_dupcheck(store, pid)
+    post = posts_by_id(build_snapshot(store, mode="real"))[pid]
+    assert post["duplicate"]["status"] == "passed"
+    assert post["duplicate_report"]["compared_against"] == 0
+    assert post["duplicate_report"]["exact"] == post["duplicate_report"]["near"] == []
+    assert post["state"] == "DUPLICATE_CHECKED"

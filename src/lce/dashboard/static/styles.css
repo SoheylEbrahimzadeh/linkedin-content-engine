@@ -61,6 +61,7 @@ th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--
 th { color: var(--muted); font-weight: 600; font-size: .85rem; white-space: nowrap; }
 .empty { color: var(--muted); font-style: italic; }
 .note { color: var(--muted); font-size: .9rem; }
+.evidence-note { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: .5rem .7rem; margin: 0 0 .75rem; font-size: .9rem; }
 .ok-msg { color: var(--ok); font-weight: 600; margin: 0; }
 .big { font-size: 1.6rem; margin: 0; }
 

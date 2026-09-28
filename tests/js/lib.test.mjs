@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  UNKNOWN, calendarMonths, checkMode, claimLabel, describeRun, issueCounts, parseRoute,
+  UNKNOWN, calendarMonths, checkMode, claimLabel, describeRun, duplicateEvidenceNote, issueCounts, parseRoute,
   publicationLabel, researchGroups, runStatus, shortHash, show, splitApprovals, stateMeta,
 } from "../../src/lce/dashboard/static/lib.js";
 
@@ -89,4 +89,15 @@ test("research groups and claim labels come from data only", () => {
   assert.equal(claimLabel(0), "no claims extracted");
   assert.equal(claimLabel(undefined), UNKNOWN);
   assert.deepEqual(researchGroups(null), { selected: [], unselected: [] });
+});
+
+test("zero-history duplicate check is qualified, not presented as evidence", () => {
+  const note = duplicateEvidenceNote({ status: "passed", compared_against: 0, exact: [], near: [], similar: [] });
+  assert.match(note, /^Duplicate check passed — no previous posts were available for comparison/);
+  assert.match(note, /0 posts/);
+  assert.equal(duplicateEvidenceNote({ status: "passed", compared_against: 3 }), null);
+  assert.match(duplicateEvidenceNote({ status: "failed", compared_against: 0 }), /No previous posts/);
+  assert.doesNotMatch(duplicateEvidenceNote({ status: "failed", compared_against: 0 }), /passed/);
+  assert.equal(duplicateEvidenceNote(null), null);
+  assert.equal(duplicateEvidenceNote({ status: "passed" }), null); // unknown count: no claim either way
 });
