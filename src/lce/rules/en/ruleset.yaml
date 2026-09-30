@@ -48,6 +48,31 @@ patterns:                     # structural tells → warning
   - id: stacked-questions
     regex: "\\?[^.!?\\n]{0,60}\\?[^.!?\\n]{0,60}\\?"
     message: "three questions in a row"
+  - id: reveal-question
+    regex: "(?:^|[.!?]\\s+)the (?:result|catch|kicker|twist|lesson|answer|truth|problem|outcome)\\?"
+    message: "reveal-question bridge ('The result?')"
+  - id: reveal-bridge
+    regex: "^here'?s (?:what|why|how)\\b"
+    message: "reveal bridge ('Here's what/why/how')"
+  - id: staccato-stack
+    regex: "\\bno [^.!?\\n]{1,30}\\.\\s+no [^.!?\\n]{1,30}\\.\\s+(?:just|only)\\b"
+    message: "staccato stack ('No X. No Y. Just Z.')"
+  - id: performed-sincerity
+    regex: "\\b(?:let me be (?:honest|real|clear)|i'?ll be honest|real talk|honestly\\?|to be (?:completely |brutally )?honest)"
+    message: "performed sincerity marker"
+generic_close:                # closing sentence that asks for reactions without saying anything → warning
+  - "^(?:so,?\\s+)?(?:thoughts|any thoughts|your thoughts)\\s*\\?$"
+  - "^(?:so,?\\s+)?what (?:do you think|are your thoughts|about you)\\s*\\?$"
+  - "^(?:agree or disagree|am i wrong|who else|anyone else|right)\\s*\\?$"
+  - "^(?:let me know (?:what you think|your thoughts)|share your thoughts)(?: (?:below|in the comments))?[.!]?$"
+cta_markers:                  # closing call-to-action wording; checked against the voice profile's cta.allowed
+  - "\\b(?:dm|message) me\\b"
+  - "\\blet me know\\b"
+  - "\\b(?:in|to) the comments\\b"
+  - "\\b(?:book|schedule) a (?:call|chat|demo|meeting)\\b"
+  - "\\blink in (?:the )?(?:first )?comment\\b"
+  - "\\bfollow (?:me|along)\\b"
+  - "\\b(?:subscribe|sign up)\\b"
 engagement_bait:              # → error
   - "\\bcomment\\s+['\"“]?(?:yes|me|interested|below)\\b"
   - "\\blike (?:this post )?if you agree\\b"

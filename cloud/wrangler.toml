@@ -27,6 +27,8 @@ migrations_dir = "migrations"
 ACCESS_TEAM_DOMAIN = ""
 ACCESS_AUD = ""
 
+[previews]
+
 # Dashboard files are bundled as text and served by the Worker (no extra service).
 [[rules]]
 type = "Text"
