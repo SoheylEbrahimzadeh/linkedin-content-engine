@@ -79,7 +79,7 @@ def test_pipeline_lists_scheduling_as_available_and_publishing_not():
     snap = snapshot_for(demo_store(ROOT), "demo")
     caps = {p["id"]: p["status"] for p in snap["pipeline"]}
     assert caps["scheduling"] == "available" and caps["publishing"] == "manual"
-    assert caps["verification"] == "not_implemented"
+    assert caps["verification"] == "available"
 
 
 def test_demo_uses_fixed_demo_clock_and_fictional_jobs():

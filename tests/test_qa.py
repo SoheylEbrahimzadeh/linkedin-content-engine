@@ -105,6 +105,44 @@ def test_cta_respects_voice_profile():
     assert "cta.not_allowed" not in codes(ask)  # no CTA policy recorded
 
 
+def test_repeated_hook_or_closing_against_recent_posts():
+    body = ("Routing rules beat a model when the categories are stable.\n\n"
+            "Write them down before you automate anything.\n\n"
+            "Which category in your queue changes most often?")
+    def run(text, recent):
+        return {f.code for f in run_checks(text, rules=RULES, voice=VOICE, profile=PROFILE,
+                                           post={"sources": [], "claims": [], "stories_used": []},
+                                           stories=STORIES, denylist=[], recent=recent)}
+    same_hook = "Routing rules beat a model for most teams.\n\nOther body.\n\nA different ending."
+    same_close = "Another opening line entirely.\n\nBody.\n\nWhich category in your queue changes most often?"
+    unrelated = "Service desks need owners, not tools.\n\nBody text here.\n\nThat is the whole lesson."
+    assert "repetition.hook_recent" in run(body, [same_hook])
+    assert "repetition.closing_recent" in run(body, [same_close])
+    assert not {"repetition.hook_recent", "repetition.closing_recent"} & run(body, [unrelated])
+    assert not {"repetition.hook_recent", "repetition.closing_recent"} & run(body, [])
+
+
+def test_run_qa_compares_with_recent_posts_in_the_store(store):
+    from datetime import date
+
+    from lce.planning import select
+    from lce.posts import save_draft, save_humanized
+    from lce.research import add_candidate
+
+    first = selected_post(store)
+    save_draft(store, first, GOOD_POST)
+    save_humanized(store, first, GOOD_POST)
+    cand = add_candidate(store, title="Second topic", origin="manual")
+    second = select(store, candidate_id=cand["candidate_id"], pillar="operations",
+                    angle="another angle", fmt="text", plan_date=date(2025, 5, 8))["post_id"]
+    copy = GOOD_POST.replace("twelve keyword rules", "a dozen keyword rules")
+    save_draft(store, second, copy)
+    save_humanized(store, second, copy)
+    report = run_qa(store, second, denylist=[])
+    codes_ = {w["code"] for w in report["warnings"]}
+    assert {"repetition.hook_recent", "repetition.closing_recent"} <= codes_
+
+
 def test_non_ready_language_fails(store):
     pid = selected_post(store)
     post = store.load_post(pid)

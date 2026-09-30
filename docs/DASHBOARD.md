@@ -60,3 +60,11 @@ snapshot, never from the browser clock.
 - Issues: `FAILED`, `NEEDS_RECONCILE` (files and recorded state disagree, e.g.
   text changed after approval) and `INCONSISTENT` (metadata out of sync) are
   detected deterministically; normal pipeline states are not issues.
+
+## Cloud (any device)
+
+The same app is served by the Worker at `<api_base>/pipeline/`, behind
+Cloudflare Access, reading the D1 mirror that `lce cloud sync` uploads (see
+docs/CLOUD.md, "Full pipeline on any device"). After changing files in
+`src/lce/dashboard/static/`, run `python scripts/sync_cloud_dashboard.py`; a
+test fails while the Worker copy is stale.

@@ -22,7 +22,7 @@ def test_published_post_shows_record_and_status(store):
     rec = snap["publishing"]["records"][0]
     assert rec["remote_id"] == "urn:li:share:77" and rec["verified_by"] == "api_response"
     stages = {s["id"]: s["status"] for s in snap["latest_run"]["stages"]}
-    assert stages["publishing"] == "done" and stages["verification"] == "not_implemented"
+    assert stages["publishing"] == "done" and stages["verification"] == "done"
     dist = {b["id"]: b["count"] for b in snap["state_distribution"]}
     assert dist["published"] == 1
     assert snap["issues"] == []

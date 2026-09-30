@@ -110,3 +110,5 @@ metrics:
   repeated_ngram_max: 2
   overused_word_min_count: 5
   overused_word_share: 0.04
+  recent_days: 30             # posts compared for repeated hooks and closings
+  recent_similarity: 0.6      # word overlap (or same first three words) = repeated

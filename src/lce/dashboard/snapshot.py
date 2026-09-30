@@ -32,8 +32,9 @@ PIPELINE = [
     ("qa", "QA", "available"),
     ("duplicate", "Duplicate check", "available"),
     ("approval", "Approval", "available"),
-    ("publishing", "Publishing", "manual"),  # human-triggered `lce publish` only
-    ("verification", "Verification", "not_implemented"),  # no read-back permission
+    ("publishing", "Publishing", "manual"),  # after human approval: `lce publish` or a consented cloud slot
+    # API 201 + post URN, or the owner's reconcile; LinkedIn grants no read-back
+    ("verification", "Verification", "available"),
     ("analytics", "Analytics", "manual"),  # owner-supplied metrics (`lce analytics`)
 ]
 STAGE_OF_STATE = {
@@ -268,8 +269,12 @@ def latest_run(posts: list[dict]) -> dict | None:
                   "NEEDS_RECONCILE": "needs_reconcile", "PUBLISHING": "running"}.get(current)
     stages.append({"id": "publishing", "label": "Publishing",
                    "status": pub_status or "not_reached", "at": pub[-1].get("at") if pub else None})
-    stages += [{"id": sid, "label": label, "status": "not_implemented", "at": None}
-               for sid, label, st in PIPELINE if st == "not_implemented"]
+    record = post.get("publication") or {}
+    verified = current == "PUBLISHED" and record.get("verified_by")
+    stages.append({"id": "verification", "label": "Verification",
+                   "status": "done" if verified else "needs_reconcile" if current == "NEEDS_RECONCILE"
+                   else "not_reached",
+                   "at": record.get("published_at") if verified else None})
     stages.append({"id": "analytics", "label": "Analytics",
                    "status": "done" if post.get("has_metrics") else "not_reached", "at": None})
     return {

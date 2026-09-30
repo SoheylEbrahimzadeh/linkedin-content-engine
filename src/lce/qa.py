@@ -25,6 +25,7 @@ from lce.textutil import (
     content_hash,
     count_emojis,
     hashtags,
+    jaccard,
     paragraphs,
     sentences,
     words,
@@ -68,9 +69,25 @@ def _allowed_numbers(post: dict, stories: dict[str, dict]) -> set[str]:
     return allowed
 
 
+def _opening(text: str) -> str:
+    return text.strip().split("\n", 1)[0]
+
+
+def _closing(text: str) -> str:
+    paras = [c for c in (HASHTAG_RE.sub("", p).strip() for p in paragraphs(text)) if c]
+    return (sentences(paras[-1]) or [""])[-1] if paras else ""
+
+
+def _similar(a: str, b: str, threshold: float) -> bool:
+    wa, wb = words(a), words(b)
+    if len(wa) >= 3 and wa[:3] == wb[:3]:
+        return True
+    return jaccard(set(wa), set(wb)) >= threshold
+
+
 def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict,
                stories: dict[str, dict], denylist: list[str],
-               brand: dict | None = None) -> list[Finding]:
+               brand: dict | None = None, recent: list[str] | None = None) -> list[Finding]:
     f: list[Finding] = []
     add = lambda code, sev, msg: f.append(Finding(code, sev, msg))  # noqa: E731
     body = text.strip()
@@ -143,6 +160,14 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
         or any(re.search(rx, closing, re.I) for rx in rules.get("cta_markers", []))
     ):
         add("cta.not_allowed", WARNING, "the closing asks readers to act; your voice profile disables CTAs")
+
+    # ── variety against recent posts (same hook or sign-off every time) ─
+    threshold = metrics.get("recent_similarity", 0.6)
+    opening = _opening(body)
+    if opening and any(_similar(opening, _opening(r), threshold) for r in recent or []):
+        add("repetition.hook_recent", WARNING, "opens like a recent post; vary the hook")
+    if last_sentence and any(_similar(last_sentence, _closing(r), threshold) for r in recent or []):
+        add("repetition.closing_recent", WARNING, "ends like a recent post; vary the closing")
 
     # ── hashtags & emoji ──────────────────────────────────────────────
     tags = hashtags(body)
@@ -242,6 +267,24 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
     return f
 
 
+def _recent_texts(store: DataStore, post: dict, rules: dict) -> list[str]:
+    from datetime import date
+
+    from lce.planning import recent_posts
+
+    day = date.fromisoformat(post.get("plan_date") or post["created_at"][:10])
+    out = []
+    for other in recent_posts(store, day, rules["metrics"].get("recent_days", 30),
+                              exclude=post["post_id"]):
+        try:
+            t = current_text(store, other["post_id"])
+        except StoreError:
+            continue
+        if t.strip():
+            out.append(t)
+    return out
+
+
 def run_qa(store: DataStore, post_id: str, denylist: list[str] | None = None) -> dict:
     post = store.load_post(post_id)
     if PostState(post["state"]) != PostState.HUMANIZED:
@@ -253,7 +296,7 @@ def run_qa(store: DataStore, post_id: str, denylist: list[str] | None = None) ->
             text, rules=rules, voice=store.voice(), profile=store.profile(), post=post,
             stories=store.stories(),
             denylist=load_denylist() if denylist is None else denylist,
-            brand=store.brand(),
+            brand=store.brand(), recent=_recent_texts(store, post, rules),
         )
     except RulesetNotReady as exc:
         findings = [Finding("language.not_ready", ERROR, str(exc))]
