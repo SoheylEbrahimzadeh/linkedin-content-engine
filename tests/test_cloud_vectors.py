@@ -22,7 +22,8 @@ def test_worker_never_contains_credentials_or_llm_or_scrapers():
                    "publora", "buffer.com", "zapier"):
         assert needle not in src.lower(), needle
     toml = (ROOT / "cloud" / "wrangler.toml").read_text()
-    assert "00000000-0000-0000-0000-000000000000" in toml  # placeholder only
+    config = "\n".join(line.split("#", 1)[0] for line in toml.splitlines())
+    assert "database_id" not in config  # resolved by name; never an account identifier
     assert "LINKEDIN_TOKEN =" not in toml and "api_token" not in toml.lower()
 
 
