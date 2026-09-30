@@ -552,6 +552,38 @@ def cmd_linkedin_whoami(args):
     return 0
 
 
+# ── cloud (Phase 4B) ──────────────────────────────────────────────────
+def cmd_cloud(args):
+    from lce import cloud
+
+    store = _store(args)
+    client = cloud.make_client(store)
+    if args.sub == "push":
+        out = cloud.push(store, args.post, client)
+        print(f"✓ {args.post} delegated to the cloud ({out.get('state')}); local publish is now refused")
+    elif args.sub == "consent":
+        out = cloud.consent(store, args.post, args.slot, client)
+        print(f"✓ consent {out['consent_id']}: {args.post} at {out['slot']['local']} "
+              "(only if auto_publish is on)")
+    elif args.sub == "revoke":
+        client.call("DELETE", f"/consents/{args.consent}")
+        print(f"✓ consent {args.consent} revoked")
+    elif args.sub == "status":
+        snap = client.call("GET", "/snapshot")
+        s = snap["settings"]
+        print(f"auto_publish: {s['auto_publish']}   provider: {s['provider']}   "
+              f"token present: {s['token_present']}   token expires: {s.get('token_expires_at')}")
+        nxt = snap.get("next_scheduled_publication")
+        print(f"next scheduled: {nxt['post_id'] + ' at ' + nxt['slot_utc'] if nxt else 'none'}")
+        for p in snap.get("posts", []):
+            print(f"- {p['post_id']} [{p['state']}]")
+    elif args.sub == "pull":
+        for c in cloud.pull(store, client):
+            print(f"✓ {c['post_id']} → {c['state']} (mirrored)")
+        print("✓ pulled")
+    return 0
+
+
 # ── dashboard ─────────────────────────────────────────────────────────
 def _engine_root() -> Path:
     from lce.config.paths import find_engine_root
@@ -750,6 +782,15 @@ def build_parser() -> argparse.ArgumentParser:
     g = group("linkedin", "LinkedIn account settings (no secrets are ever printed)")
     gcmd(g, "status", cmd_linkedin_status, "config, token presence and expiry")
     gcmd(g, "whoami", cmd_linkedin_whoami, "look up your person URN (network call)")
+
+    g = group("cloud", "cloud publisher (Cloudflare Worker)")
+    gcmd(g, "push", cmd_cloud, "delegate an approved post to the cloud (interactive)").add_argument("post")
+    p = gcmd(g, "consent", cmd_cloud, "schedule a delegated post for one slot (interactive)")
+    p.add_argument("post")
+    p.add_argument("--slot", required=True, help="slot id, e.g. 2026-10-07-wed-0030")
+    gcmd(g, "revoke", cmd_cloud, "revoke a consent").add_argument("consent")
+    gcmd(g, "status", cmd_cloud, "kill switch, token presence, next publication")
+    gcmd(g, "pull", cmd_cloud, "mirror cloud outcomes into local posts")
 
     g = group("dashboard", "Web Control Center (read-only)")
     p = gcmd(g, "serve", cmd_dashboard_serve, "serve the dashboard on 127.0.0.1")

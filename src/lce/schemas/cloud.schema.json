@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/cloud.schema.json",
+  "title": "CloudConfig",
+  "description": "config/cloud.yaml: where the LCE cloud Worker lives. Never contains credentials.",
+  "type": "object",
+  "required": [
+    "api_base"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "demo": {
+      "type": "boolean"
+    },
+    "api_base": {
+      "type": "string",
+      "pattern": "^https://[A-Za-z0-9.-]+(:\\d+)?/?$"
+    }
+  }
+}

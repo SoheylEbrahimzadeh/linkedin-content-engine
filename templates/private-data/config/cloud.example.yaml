@@ -1,0 +1,4 @@
+# Copy to config/cloud.yaml once the Worker is deployed (Phase 4C/4D).
+# No credentials here: the CLI gets a short-lived Cloudflare Access token at run
+# time from `cloudflared access token` (or $LCE_CF_ACCESS_TOKEN).
+api_base: https://lce-cloud.REPLACE-ME.workers.dev

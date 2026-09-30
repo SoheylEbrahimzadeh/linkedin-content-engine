@@ -123,6 +123,9 @@ def prepare(store: DataStore, post_id: str, publisher: LinkedInPublisher) -> Pre
     if approval.get("state") != "approved" or approval.get("approved_hash") != h \
             or post.get("content_hash") != h:
         raise StoreError("the text does not match the approved hash; nothing is sent")
+    if (store.post_dir(post_id) / "delegation.json").exists():
+        raise StoreError("this post is delegated to the cloud publisher; only the cloud may "
+                         "publish it (one publisher per post)")
     existing = load_publication(store, post_id)
     if existing and existing["state"] in {"publishing", "needs_reconcile", "published"}:
         raise StoreError(f"a publish attempt is already recorded ({existing['state']}); "

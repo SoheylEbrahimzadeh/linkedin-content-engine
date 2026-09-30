@@ -1,0 +1,442 @@
+{
+ "generated_by": "scripts/make_cloud_vectors.py",
+ "texts": [
+  {
+   "text": "Hello world",
+   "normalized": "Hello world\n",
+   "hash": "1894a19c85ba153acbf743ac4e43fc004c891604b26f8c69e1e83ea2afc7c48f",
+   "little": "Hello world"
+  },
+  {
+   "text": "Line one  \r\nLine two\t\r\n\r\n",
+   "normalized": "Line one\nLine two\n",
+   "hash": "ac98c501f944c7948e6d3b004c195429c1c560027d9f96284ec2d6028d72381b",
+   "little": "Line one  \r\nLine two"
+  },
+  {
+   "text": "  leading and trailing  \n\n",
+   "normalized": "leading and trailing\n",
+   "hash": "e596afdfd125f17fc05027f46a0ae505b9b8d0b3e3819906782fdeca48be57f5",
+   "little": "leading and trailing"
+  },
+  {
+   "text": "Café (decomposed) vs Café",
+   "normalized": "Café (decomposed) vs Café\n",
+   "hash": "7fc914e160d3be2dd1208824bd1d4d4f23e64f72aac29d77e7676b5036c59d2b",
+   "little": "Café \\(decomposed\\) vs Café"
+  },
+  {
+   "text": "Persian: سلام دنیا ۱۲۳ #تست",
+   "normalized": "Persian: سلام دنیا ۱۲۳ #تست\n",
+   "hash": "b024901df8dbac93fa56bf96f49f93adb3fb93dbd6f55272fcacbebf1b4aa457",
+   "little": "Persian: سلام دنیا ۱۲۳ #تست"
+  },
+  {
+   "text": "Emoji 🚀 and symbols (a) [b] {c} <d> @e #f _g *h ~i |j \\k",
+   "normalized": "Emoji 🚀 and symbols (a) [b] {c} <d> @e #f _g *h ~i |j \\k\n",
+   "hash": "2cc98d74f858b784f04410b97a364bb0ccb93735fedbe71026f4313726038623",
+   "little": "Emoji 🚀 and symbols \\(a\\) \\[b\\] \\{c\\} \\<d\\> \\@e #f \\_g \\*h \\~i \\|j \\\\k"
+  },
+  {
+   "text": "BOM﻿ inside and NEL end",
+   "normalized": "BOM﻿ inside and NEL end\n",
+   "hash": "0913ca98aa81a2825f6535c3c0ae9afd604f1f47c12506ddf135cd309afe5e7d",
+   "little": "BOM﻿ inside and NEL end"
+  },
+  {
+   "text": "Separators\u001c\u001d end   x　",
+   "normalized": "Separators\u001c\u001d end   x\n",
+   "hash": "dfc4d4927f0913321974178532619a9669c57c3f35617435e2ac074fa931a520",
+   "little": "Separators\u001c\u001d end   x"
+  },
+  {
+   "text": "#Start hashtag, mid#not, # alone, #1, (#paren)\n#Line",
+   "normalized": "#Start hashtag, mid#not, # alone, #1, (#paren)\n#Line\n",
+   "hash": "dd6fe3d4f16d91ad7c862e06a74c1ea64f7182fc560f713789bb37304ef9f3ef",
+   "little": "#Start hashtag, mid\\#not, \\# alone, #1, \\(\\#paren\\)\n#Line"
+  },
+  {
+   "text": "Tabs\tand nbsp ",
+   "normalized": "Tabs\tand nbsp\n",
+   "hash": "1332d604d3f145f2d60c2945d074242e89ceccbf48d36b1581e29796b08efe15",
+   "little": "Tabs\tand nbsp"
+  }
+ ],
+ "schedules": [
+  {
+   "settings": {
+    "timezone": "America/Denver",
+    "cadence": {
+     "posts_per_week": 3,
+     "slots": [
+      {
+       "day": "mon",
+       "time": "11:10"
+      },
+      {
+       "day": "wed",
+       "time": "00:30"
+      },
+      {
+       "day": "fri",
+       "time": "15:45"
+      }
+     ]
+    }
+   },
+   "start": "2026-03-01T00:00:00+00:00",
+   "end": "2026-03-15T00:00:00+00:00",
+   "slots": [
+    {
+     "slot_id": "2026-03-02-mon-1110",
+     "day": "mon",
+     "time": "11:10",
+     "local": "2026-03-02T11:10:00-07:00",
+     "utc": "2026-03-02T18:10:00+00:00",
+     "timezone": "America/Denver",
+     "dst_adjusted": false
+    },
+    {
+     "slot_id": "2026-03-04-wed-0030",
+     "day": "wed",
+     "time": "00:30",
+     "local": "2026-03-04T00:30:00-07:00",
+     "utc": "2026-03-04T07:30:00+00:00",
+     "timezone": "America/Denver",
+     "dst_adjusted": false
+    },
+    {
+     "slot_id": "2026-03-06-fri-1545",
+     "day": "fri",
+     "time": "15:45",
+     "local": "2026-03-06T15:45:00-07:00",
+     "utc": "2026-03-06T22:45:00+00:00",
+     "timezone": "America/Denver",
+     "dst_adjusted": false
+    },
+    {
+     "slot_id": "2026-03-09-mon-1110",
+     "day": "mon",
+     "time": "11:10",
+     "local": "2026-03-09T11:10:00-06:00",
+     "utc": "2026-03-09T17:10:00+00:00",
+     "timezone": "America/Denver",
+     "dst_adjusted": false
+    },
+    {
+     "slot_id": "2026-03-11-wed-0030",
+     "day": "wed",
+     "time": "00:30",
+     "local": "2026-03-11T00:30:00-06:00",
+     "utc": "2026-03-11T06:30:00+00:00",
+     "timezone": "America/Denver",
+     "dst_adjusted": false
+    },
+    {
+     "slot_id": "2026-03-13-fri-1545",
+     "day": "fri",
+     "time": "15:45",
+     "local": "2026-03-13T15:45:00-06:00",
+     "utc": "2026-03-13T21:45:00+00:00",
+     "timezone": "America/Denver",
+     "dst_adjusted": false
+    }
+   ]
+  },
+  {
+   "settings": {
+    "timezone": "Europe/Berlin",
+    "cadence": {
+     "posts_per_week": 1,
+     "slots": [
+      {
+       "day": "sun",
+       "time": "02:30"
+      }
+     ]
+    }
+   },
+   "start": "2026-03-27T00:00:00+00:00",
+   "end": "2026-03-31T00:00:00+00:00",
+   "slots": [
+    {
+     "slot_id": "2026-03-29-sun-0230",
+     "day": "sun",
+     "time": "02:30",
+     "local": "2026-03-29T03:30:00+02:00",
+     "utc": "2026-03-29T01:30:00+00:00",
+     "timezone": "Europe/Berlin",
+     "dst_adjusted": true
+    }
+   ]
+  },
+  {
+   "settings": {
+    "timezone": "Europe/Berlin",
+    "cadence": {
+     "posts_per_week": 1,
+     "slots": [
+      {
+       "day": "sun",
+       "time": "02:30"
+      }
+     ]
+    }
+   },
+   "start": "2026-10-23T00:00:00+00:00",
+   "end": "2026-10-27T00:00:00+00:00",
+   "slots": [
+    {
+     "slot_id": "2026-10-25-sun-0230",
+     "day": "sun",
+     "time": "02:30",
+     "local": "2026-10-25T02:30:00+02:00",
+     "utc": "2026-10-25T00:30:00+00:00",
+     "timezone": "Europe/Berlin",
+     "dst_adjusted": false
+    }
+   ]
+  },
+  {
+   "settings": {
+    "timezone": "America/Chicago",
+    "cadence": {
+     "posts_per_week": 2,
+     "slots": [
+      {
+       "day": "mon",
+       "time": "09:15"
+      },
+      {
+       "day": "fri",
+       "time": "17:45"
+      }
+     ]
+    }
+   },
+   "start": "2026-12-27T00:00:00+00:00",
+   "end": "2027-01-06T00:00:00+00:00",
+   "slots": [
+    {
+     "slot_id": "2026-12-28-mon-0915",
+     "day": "mon",
+     "time": "09:15",
+     "local": "2026-12-28T09:15:00-06:00",
+     "utc": "2026-12-28T15:15:00+00:00",
+     "timezone": "America/Chicago",
+     "dst_adjusted": false
+    },
+    {
+     "slot_id": "2027-01-01-fri-1745",
+     "day": "fri",
+     "time": "17:45",
+     "local": "2027-01-01T17:45:00-06:00",
+     "utc": "2027-01-01T23:45:00+00:00",
+     "timezone": "America/Chicago",
+     "dst_adjusted": false
+    },
+    {
+     "slot_id": "2027-01-04-mon-0915",
+     "day": "mon",
+     "time": "09:15",
+     "local": "2027-01-04T09:15:00-06:00",
+     "utc": "2027-01-04T15:15:00+00:00",
+     "timezone": "America/Chicago",
+     "dst_adjusted": false
+    }
+   ]
+  },
+  {
+   "settings": {
+    "timezone": "Pacific/Auckland",
+    "cadence": {
+     "posts_per_week": 1,
+     "slots": [
+      {
+       "day": "mon",
+       "time": "06:00"
+      }
+     ]
+    }
+   },
+   "start": "2026-09-20T00:00:00+00:00",
+   "end": "2026-10-06T00:00:00+00:00",
+   "slots": [
+    {
+     "slot_id": "2026-09-21-mon-0600",
+     "day": "mon",
+     "time": "06:00",
+     "local": "2026-09-21T06:00:00+12:00",
+     "utc": "2026-09-20T18:00:00+00:00",
+     "timezone": "Pacific/Auckland",
+     "dst_adjusted": false
+    },
+    {
+     "slot_id": "2026-09-28-mon-0600",
+     "day": "mon",
+     "time": "06:00",
+     "local": "2026-09-28T06:00:00+13:00",
+     "utc": "2026-09-27T17:00:00+00:00",
+     "timezone": "Pacific/Auckland",
+     "dst_adjusted": false
+    },
+    {
+     "slot_id": "2026-10-05-mon-0600",
+     "day": "mon",
+     "time": "06:00",
+     "local": "2026-10-05T06:00:00+13:00",
+     "utc": "2026-10-04T17:00:00+00:00",
+     "timezone": "Pacific/Auckland",
+     "dst_adjusted": false
+    }
+   ]
+  }
+ ],
+ "responses": [
+  {
+   "status": 201,
+   "headers": {
+    "x-restli-id": "urn:li:share:7000000000000000001"
+   },
+   "outcome": "published",
+   "remote_id": "urn:li:share:7000000000000000001",
+   "retryable": null
+  },
+  {
+   "status": 201,
+   "headers": {
+    "x-restli-id": "urn:li:ugcPost:42"
+   },
+   "outcome": "published",
+   "remote_id": "urn:li:ugcPost:42",
+   "retryable": null
+  },
+  {
+   "status": 201,
+   "headers": {},
+   "outcome": "ambiguous",
+   "remote_id": null,
+   "retryable": null
+  },
+  {
+   "status": 201,
+   "headers": {
+    "x-restli-id": "garbage"
+   },
+   "outcome": "ambiguous",
+   "remote_id": null,
+   "retryable": null
+  },
+  {
+   "status": 400,
+   "headers": {},
+   "outcome": "rejected",
+   "remote_id": null,
+   "retryable": false
+  },
+  {
+   "status": 401,
+   "headers": {},
+   "outcome": "rejected",
+   "remote_id": null,
+   "retryable": false
+  },
+  {
+   "status": 403,
+   "headers": {},
+   "outcome": "rejected",
+   "remote_id": null,
+   "retryable": false
+  },
+  {
+   "status": 404,
+   "headers": {},
+   "outcome": "rejected",
+   "remote_id": null,
+   "retryable": false
+  },
+  {
+   "status": 422,
+   "headers": {},
+   "outcome": "rejected",
+   "remote_id": null,
+   "retryable": false
+  },
+  {
+   "status": 429,
+   "headers": {},
+   "outcome": "rejected",
+   "remote_id": null,
+   "retryable": true
+  },
+  {
+   "status": 409,
+   "headers": {},
+   "outcome": "ambiguous",
+   "remote_id": null,
+   "retryable": null
+  },
+  {
+   "status": 500,
+   "headers": {},
+   "outcome": "ambiguous",
+   "remote_id": null,
+   "retryable": null
+  },
+  {
+   "status": 502,
+   "headers": {},
+   "outcome": "ambiguous",
+   "remote_id": null,
+   "retryable": null
+  },
+  {
+   "status": 503,
+   "headers": {},
+   "outcome": "ambiguous",
+   "remote_id": null,
+   "retryable": null
+  },
+  {
+   "status": 504,
+   "headers": {},
+   "outcome": "ambiguous",
+   "remote_id": null,
+   "retryable": null
+  },
+  {
+   "status": 302,
+   "headers": {},
+   "outcome": "ambiguous",
+   "remote_id": null,
+   "retryable": null
+  },
+  {
+   "status": 200,
+   "headers": {},
+   "outcome": "ambiguous",
+   "remote_id": null,
+   "retryable": null
+  }
+ ],
+ "request": {
+  "text": "Emoji 🚀 and symbols (a) [b] {c} <d> @e #f _g *h ~i |j \\k",
+  "headers": {
+   "Linkedin-Version": "202609",
+   "X-Restli-Protocol-Version": "2.0.0",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "author": "urn:li:person:Vector1",
+   "commentary": "Emoji 🚀 and symbols \\(a\\) \\[b\\] \\{c\\} \\<d\\> \\@e #f \\_g \\*h \\~i \\|j \\\\k",
+   "visibility": "PUBLIC",
+   "distribution": {
+    "feedDistribution": "MAIN_FEED",
+    "targetEntities": [],
+    "thirdPartyDistributionChannels": []
+   },
+   "lifecycleState": "PUBLISHED",
+   "isReshareDisabledByAuthor": false
+  }
+ }
+}
