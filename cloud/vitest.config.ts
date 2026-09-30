@@ -11,7 +11,7 @@ export default defineConfig(async () => {
           bindings: {
             TEST_MIGRATIONS: migrations,
             ACCESS_TEAM_DOMAIN: "test-team.cloudflareaccess.com",
-            ACCESS_AUD: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            ACCESS_AUD: "ab".repeat(32),
           },
         },
       }),

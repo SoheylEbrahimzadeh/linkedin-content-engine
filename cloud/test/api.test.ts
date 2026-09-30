@@ -15,7 +15,7 @@ const b64 = (b: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uin
   .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 async function token(claims: Record<string, unknown> = {}, key = keys.privateKey, kid = "k1") {
   const h = b64(new TextEncoder().encode(JSON.stringify({ alg: "RS256", kid })));
-  const p = b64(new TextEncoder().encode(JSON.stringify({ aud: ["0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"], iss: `https://${TEAM}`,
+  const p = b64(new TextEncoder().encode(JSON.stringify({ aud: ["ab".repeat(32)], iss: `https://${TEAM}`,
     exp: Math.floor(NOW / 1000) + 600, email: "owner@example.com", ...claims })));
   const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(`${h}.${p}`));
   return `${h}.${p}.${b64(sig)}`;
