@@ -1,16 +1,16 @@
 """Provider-agnostic publishing contract.
 
-No provider adapters exist yet. Candidate providers (official LinkedIn API,
-a third-party scheduler, manual fallback) are evaluated in a later phase, and
-every provider-specific claim (scopes, token lifetime, limits, pricing) must be
-verified against that provider's official documentation before an adapter is
-written. See docs/PUBLISHING.md.
+Adapters: `lce.publish.linkedin` (official LinkedIn Posts API) is the only
+provider. See docs/PUBLISHING.md.
 
-Idempotency contract every adapter must honour:
-- `publish` is called at most once per idempotency key without a prior
-  `find_existing` check. An ambiguous failure (timeout, 5xx after the request
-  was sent) must NOT be retried blindly: the caller moves the post to
-  NEEDS_RECONCILE and asks `find_existing` whether the post already exists.
+Contract every adapter must honour:
+- `publish` returns PUBLISHED, REJECTED (definitely not created) or AMBIGUOUS
+  (the request may have reached the provider; outcome unknown).
+- An AMBIGUOUS result is never retried by code. The caller moves the post to
+  NEEDS_RECONCILE and a human decides.
+- `capabilities` must be truthful. If the provider cannot look up existing
+  posts (`can_find_existing = False`), `find_existing`/`get_status` raise
+  UnsupportedCapability instead of guessing.
 """
 
 from __future__ import annotations
@@ -72,10 +72,38 @@ class RemoteStatus(StrEnum):
     NOT_FOUND = "not_found"
 
 
+class UnsupportedCapability(NotImplementedError):
+    pass
+
+
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    can_publish: bool
+    can_find_existing: bool
+    can_get_status: bool
+    can_schedule: bool
+    supports_media: bool
+    max_chars: int | None
+    notes: tuple[str, ...] = ()
+
+
+# Truthful, static description of each provider (read by the dashboard without
+# importing the sending path).
+PROVIDER_CAPABILITIES: dict[str, ProviderCapabilities] = {
+    "linkedin_api": ProviderCapabilities(
+        can_publish=True, can_find_existing=False, can_get_status=False, can_schedule=False,
+        supports_media=False, max_chars=3000,
+        notes=("reading member posts needs r_member_social (restricted by LinkedIn)",
+               "no provider-side idempotency key; ambiguous results need a human decision",
+               "text posts only in Phase 3")),
+}
+
+
 @runtime_checkable
 class Publisher(Protocol):
     name: str
     supports_native_scheduling: bool
+    capabilities: ProviderCapabilities
 
     def validate(self, post: PostPayload) -> list[Issue]: ...
 

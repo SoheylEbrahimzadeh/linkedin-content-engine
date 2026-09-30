@@ -36,9 +36,9 @@ RESEARCHED → SELECTED → DRAFTED → HUMANIZED → QA_PASSED → DUPLICATE_CH
 side states: NEEDS_INPUT, NEEDS_REVISION, REJECTED
 ```
 
-Publishing states (`PUBLISHING`, `PUBLISHED`, reconciliation) are added only
-when a real publisher exists and has been verified. See
-[PIPELINE.md](PIPELINE.md).
+Publishing (Phase 3): `READY_TO_PUBLISH → PUBLISHING → PUBLISHED |
+PUBLISH_FAILED | NEEDS_RECONCILE`, started only by `lce publish` (interactive,
+human). See [PUBLISHING.md](PUBLISHING.md) and [PIPELINE.md](PIPELINE.md).
 
 ## Scheduling (Phase 2)
 

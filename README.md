@@ -4,10 +4,11 @@ A reusable, privacy-first content engine for LinkedIn. It plans, drafts, audits
 and — after explicit human approval — publishes posts, using only facts the
 author has verified and approved.
 
-> **Status: Phase 2.** Scheduled, persisted jobs prepare posts up to an
-> explicit, hash-bound human approval. **There is no publisher yet; nothing is
-> ever sent to LinkedIn.** See [docs/ROADMAP.md](docs/ROADMAP.md),
-> [docs/PIPELINE.md](docs/PIPELINE.md) and [docs/AUTOMATION.md](docs/AUTOMATION.md).
+> **Status: Phase 3.** Scheduled jobs prepare posts up to a hash-bound human
+> approval; approved posts can be published to your own LinkedIn profile via
+> the official API **only by you**, with `lce publish` in an interactive
+> terminal. See [docs/ROADMAP.md](docs/ROADMAP.md), [docs/AUTOMATION.md](docs/AUTOMATION.md)
+> and [docs/PUBLISHING.md](docs/PUBLISHING.md).
 
 ## Principles
 

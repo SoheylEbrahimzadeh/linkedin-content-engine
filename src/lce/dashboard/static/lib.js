@@ -14,6 +14,9 @@ export const STATE_META = {
   AWAITING_APPROVAL: { label: "Awaiting approval", tone: "warn" },
   APPROVED: { label: "Approved", tone: "ok" },
   READY_TO_PUBLISH: { label: "Ready to publish", tone: "ok" },
+  PUBLISHING: { label: "Publishing (in progress or interrupted)", tone: "warn" },
+  PUBLISHED: { label: "Published", tone: "ok" },
+  PUBLISH_FAILED: { label: "Publish failed (not created)", tone: "error" },
   REJECTED: { label: "Rejected", tone: "muted" },
   FAILED: { label: "Failed", tone: "error" },
   NEEDS_RECONCILE: { label: "Needs reconcile", tone: "error" },
@@ -53,6 +56,9 @@ export function publicationLabel(status) {
   return {
     not_published: "Not published",
     ready_to_publish: "Ready (not published)",
+    publishing: "Publishing…",
+    published: "Published",
+    unknown: "Unknown — needs reconciliation",
   }[status] || show(status);
 }
 
@@ -135,6 +141,11 @@ export function describeRun(ev) {
     case "job.transition": return { title: `Job ${show(e.job_id)}: ${show(e.from)} → ${show(e.to)}`, detail: show(e.reason), tone: jobStateMeta(e.to).tone };
     case "job.step": return { title: `Job step ${show(e.step)} ${show(e.status)}`, detail: e.detail || "", tone: e.status === "failed" ? "error" : "info" };
     case "job.error": return { title: `Job error: ${show(e.kind)}`, detail: `${e.retryable ? "retryable" : "not retryable"} — ${show(e.message)}`, tone: "error" };
+    case "publish.intent": return { title: `Publish attempt ${show(e.attempt)} started`, detail: "intent recorded before sending", tone: "info" };
+    case "publish.published": return { title: "Published on LinkedIn", detail: show(e.remote_id), tone: "ok" };
+    case "publish.failed": return { title: "Publish failed (not created)", detail: `${show(e.reason)}${e.http_status ? `, HTTP ${e.http_status}` : ""}`, tone: "error" };
+    case "publish.ambiguous": return { title: "Publish outcome unknown", detail: `${show(e.reason)} — needs reconciliation`, tone: "error" };
+    case "publish.reconciled": return { title: "Publish reconciled by owner", detail: show(e.decision), tone: "info" };
     case "job.linked": return { title: `Job ${show(e.job_id)} linked to post`, detail: show(e.post_id), tone: "info" };
     default: return { title: show(e.event), detail: "", tone: "muted" };
   }
@@ -145,6 +156,8 @@ export const RUN_STATUS = {
   done: { symbol: "✓", label: "done", tone: "ok" },
   waiting: { symbol: "…", label: "waiting for human", tone: "warn" },
   failed: { symbol: "✗", label: "failed", tone: "error" },
+  running: { symbol: "…", label: "in progress / interrupted", tone: "warn" },
+  needs_reconcile: { symbol: "?", label: "outcome unknown — reconcile", tone: "error" },
   rejected: { symbol: "✗", label: "rejected", tone: "muted" },
   needs_input: { symbol: "!", label: "needs input", tone: "warn" },
   not_reached: { symbol: "○", label: "not reached", tone: "muted" },

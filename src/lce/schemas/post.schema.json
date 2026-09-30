@@ -112,7 +112,11 @@
         "AWAITING_APPROVAL",
         "APPROVED",
         "READY_TO_PUBLISH",
-        "REJECTED"
+        "REJECTED",
+        "PUBLISHING",
+        "PUBLISHED",
+        "PUBLISH_FAILED",
+        "NEEDS_RECONCILE"
       ]
     },
     "draft_hash": {

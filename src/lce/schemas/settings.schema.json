@@ -89,8 +89,11 @@
       "additionalProperties": false,
       "properties": {
         "provider": {
-          "const": "none",
-          "description": "Phase 1: no publishing provider exists."
+          "enum": [
+            "none",
+            "linkedin_api"
+          ],
+          "description": "none = no publishing; linkedin_api = official LinkedIn Posts API, human-triggered only."
         }
       }
     },

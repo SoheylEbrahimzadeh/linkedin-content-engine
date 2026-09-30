@@ -45,12 +45,15 @@ def test_publication_is_never_claimed(real_store):
     snap = build_snapshot(real_store, mode="real")
     assert {p["publication_status"] for p in snap["posts"]} == {"not_published"}
     pub = snap["publishing"]
-    assert pub["provider_configured"] is False
-    assert pub["linkedin_access"] == "not_configured"
-    assert pub["capability"] == "not_implemented"
+    assert pub["provider"] == "none" and pub["provider_enabled"] is False
+    assert pub["linkedin_config"] is None and pub["records"] == []
+    assert pub["token"]["checked"] is False and pub["token"]["stored_in"] == "macOS Keychain"
+    assert pub["trigger"].startswith("manual only")
+    assert pub["capabilities"]["can_find_existing"] is False
     assert snap["analytics"]["available"] is False
     stages = {s["id"]: s["status"] for s in snap["pipeline"]}
-    assert stages["publishing"] == stages["verification"] == stages["analytics"] == "not_implemented"
+    assert stages["publishing"] == "manual"
+    assert stages["verification"] == stages["analytics"] == "not_implemented"
     assert "published" not in {s["status"] for s in snap["pipeline"]}
 
 
@@ -184,8 +187,8 @@ def test_state_distribution_counts_current_states_only(real_store):
     assert dist["awaiting_approval"]["count"] == 1
     assert dist["needs_revision"]["count"] == 1
     assert sum(b["count"] for b in snap["state_distribution"]) == len(snap["posts"])
-    assert dist["publishing"]["implemented"] is False and dist["publishing"]["count"] == 0
-    assert dist["published"]["implemented"] is False and dist["published"]["count"] == 0
+    assert dist["publishing"]["count"] == 0 and dist["published"]["count"] == 0
+    assert dist["publish_failed"]["count"] == dist["needs_reconcile"]["count"] == 0
     assert [b["id"] for b in snap["state_distribution"]][:2] == ["research", "planning"]
     assert all("posts" not in s for s in snap["pipeline"])  # capabilities, not counts
 
@@ -207,7 +210,8 @@ def test_latest_run_follows_most_recent_activity(real_store):
     assert st["research"] == st["planning"] == st["draft"] == st["humanize"] == "done"
     assert st["qa"] == "failed"
     assert st["duplicate"] == st["approval"] == "not_reached"
-    assert st["publishing"] == st["verification"] == st["analytics"] == "not_implemented"
+    assert st["publishing"] == "not_reached"
+    assert st["verification"] == st["analytics"] == "not_implemented"
 
 
 def _touch(store, pid):

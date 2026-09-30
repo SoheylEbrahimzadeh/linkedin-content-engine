@@ -32,16 +32,21 @@ PIPELINE = [
     ("qa", "QA", "available"),
     ("duplicate", "Duplicate check", "available"),
     ("approval", "Approval", "available"),
-    ("publishing", "Publishing", "not_implemented"),
-    ("verification", "Verification", "not_implemented"),
+    ("publishing", "Publishing", "manual"),  # human-triggered `lce publish` only
+    ("verification", "Verification", "not_implemented"),  # no read-back permission
     ("analytics", "Analytics", "not_implemented"),
 ]
 STAGE_OF_STATE = {
     "RESEARCHED": "research", "SELECTED": "planning", "NEEDS_INPUT": "planning",
     "DRAFTED": "draft", "HUMANIZED": "humanize", "NEEDS_REVISION": "humanize",
     "QA_PASSED": "qa", "DUPLICATE_CHECKED": "duplicate", "AWAITING_APPROVAL": "approval",
-    "APPROVED": "approval", "READY_TO_PUBLISH": "approval",
+    "APPROVED": "approval", "READY_TO_PUBLISH": "approval", "PUBLISHING": "publishing",
+    "PUBLISHED": "publishing", "PUBLISH_FAILED": "publishing", "NEEDS_RECONCILE": "publishing",
 }
+PUBLICATION_STATUS = {"READY_TO_PUBLISH": "ready_to_publish", "PUBLISHING": "publishing",
+                      "PUBLISHED": "published", "PUBLISH_FAILED": "not_published",
+                      "NEEDS_RECONCILE": "unknown"}
+PUBLISH_STATES = {"PUBLISHING", "PUBLISHED", "PUBLISH_FAILED", "NEEDS_RECONCILE"}
 # Where posts are now: one bucket per state group of the real state model.
 # Publishing/Published have no state yet; they are listed as not implemented.
 STATE_BUCKETS = [
@@ -57,8 +62,10 @@ STATE_BUCKETS = [
     ("approved", "Approved", ("APPROVED",)),
     ("ready", "Ready to publish", ("READY_TO_PUBLISH",)),
     ("rejected", "Rejected", ("REJECTED",)),
-    ("publishing", "Publishing", ()),
-    ("published", "Published", ()),
+    ("publishing", "Publishing", ("PUBLISHING",)),
+    ("published", "Published", ("PUBLISHED",)),
+    ("publish_failed", "Publish failed", ("PUBLISH_FAILED",)),
+    ("needs_reconcile", "Needs reconcile", ("NEEDS_RECONCILE",)),
 ]
 # Stages a post passes through, and the state that proves each one was reached.
 RUN_STAGES = [
@@ -166,7 +173,9 @@ def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[d
         "approval_events": [e for e in events
                             if e.get("event") == "approval" and e.get("post_id") == pid],
         # Phase 1 has no publisher: nothing can be published.
-        "publication_status": (entry or {}).get("publication_status", "not_published"),
+        "publication_status": PUBLICATION_STATUS.get(
+            meta["state"], (entry or {}).get("publication_status", "not_published")),
+        "publication": _read_json(folder / "publication.json"),
         "content_hash": meta.get("content_hash"),
         "actual_hash": actual_hash,
         "draft_hash": meta.get("draft_hash"),
@@ -239,6 +248,11 @@ def latest_run(posts: list[dict]) -> dict | None:
         by_id["approval"]["status"] = "waiting"
     elif current == "REJECTED":
         by_id["approval"]["status"] = "rejected"
+    pub = [h for h in history if h.get("state") in PUBLISH_STATES]
+    pub_status = {"PUBLISHED": "done", "PUBLISH_FAILED": "failed",
+                  "NEEDS_RECONCILE": "needs_reconcile", "PUBLISHING": "running"}.get(current)
+    stages.append({"id": "publishing", "label": "Publishing",
+                   "status": pub_status or "not_reached", "at": pub[-1].get("at") if pub else None})
     stages += [{"id": sid, "label": label, "status": "not_implemented", "at": None}
                for sid, label, st in PIPELINE if st == "not_implemented"]
     return {
@@ -331,6 +345,53 @@ def automation_view(store: DataStore, posts: list[dict], events: list[dict]) -> 
     return out
 
 
+def publishing_view(store: DataStore, posts: list[dict], mode: str) -> dict:
+    """Publishing configuration and records. Never touches the token or the Keychain."""
+    from lce import clock
+    from lce.publish.base import PROVIDER_CAPABILITIES
+    from lce.validate import validate_doc
+
+    provider = store.settings().get("publisher", {}).get("provider")
+    cfg_path = store.root / "config" / "linkedin.yaml"
+    cfg = store.read_doc(cfg_path) if cfg_path.exists() else None
+    cfg_errors = validate_doc("linkedin", cfg) if cfg else []
+    view: dict = {
+        "provider": provider,
+        "provider_enabled": provider == "linkedin_api",
+        "linkedin_config": None,
+        "config_errors": cfg_errors,
+        "token": {"stored_in": "macOS Keychain", "checked": False,
+                  "how_to_check": "lce linkedin status", "expires_at": None, "days_left": None},
+        "capabilities": None,
+        "trigger": "manual only: `lce publish <post>` in an interactive terminal",
+        "records": [],
+    }
+    caps = PROVIDER_CAPABILITIES.get("linkedin_api")
+    view["capabilities"] = {k: getattr(caps, k) for k in (
+        "can_publish", "can_find_existing", "can_get_status", "can_schedule", "supports_media",
+        "max_chars")} | {"notes": list(caps.notes)}
+    if cfg and not cfg_errors:
+        view["linkedin_config"] = {k: cfg.get(k) for k in ("api_version", "visibility")}
+        view["linkedin_config"]["person_urn"] = cfg.get("person_urn") if mode == "real" else None
+        now = clock.now()
+        if cfg.get("token_expires_at"):
+            exp = clock.parse_iso(cfg["token_expires_at"])
+            view["token"].update(expires_at=cfg["token_expires_at"], days_left=(exp - now).days)
+        v = cfg.get("api_version", "")
+        age = (now.year - int(v[:4])) * 12 + now.month - int(v[4:]) if len(v) == 6 else None
+        view["linkedin_config"]["api_version_age_months"] = age
+    for p in posts:
+        rec = p.get("publication")
+        if rec:
+            view["records"].append({k: rec.get(k) for k in (
+                "post_id", "state", "remote_id", "url", "published_at", "verified_by",
+                "api_version")} | {"attempts": len(rec.get("attempts", [])),
+                                   "last_attempt": (rec.get("attempts") or [None])[-1]})
+    view["posts"] = [{"post_id": p["post_id"], "state": p["state"],
+                      "publication_status": p["publication_status"]} for p in posts]
+    return view
+
+
 def detect_issues(store: DataStore, posts: list[dict], calendar: list[dict],
                   events: list[dict], bad_lines: list[dict], validation: dict,
                   automation: dict | None = None) -> list[dict]:
@@ -349,6 +410,12 @@ def detect_issues(store: DataStore, posts: list[dict], calendar: list[dict],
         pid, state = p["post_id"], p["state"]
         if state == "FAILED":
             add("FAILED", "error", "post is in FAILED state", pid)
+        if state == "PUBLISH_FAILED":
+            add("FAILED", "warning", "publish attempt failed (not created on LinkedIn); "
+                "run `lce publish` again or reject", pid)
+        if state == "PUBLISHING":
+            add("NEEDS_RECONCILE", "error", "publish attempt was interrupted; "
+                "run `lce publish reconcile`", pid)
         if state == "NEEDS_RECONCILE":
             add("NEEDS_RECONCILE", "error", "post needs reconciliation", pid)
         if p["content_hash"] and p["actual_hash"] and p["content_hash"] != p["actual_hash"]:
@@ -362,7 +429,7 @@ def detect_issues(store: DataStore, posts: list[dict], calendar: list[dict],
             if (p["duplicate"] or {}).get("content_hash") != p["content_hash"]:
                 add("INCONSISTENT", "error",
                     "duplicate check does not belong to the current text", pid)
-        if state in {"APPROVED", "READY_TO_PUBLISH"}:
+        if state in {"APPROVED", "READY_TO_PUBLISH"} | PUBLISH_STATES:
             if p["approval"]["approved_hash"] != p["actual_hash"]:
                 add("NEEDS_RECONCILE", "error", "approved hash differs from the current text", pid)
             if not p["approval_events"]:
@@ -517,17 +584,11 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
         "runs": events,
         "issues": issues,
         "settings": safe_settings(store),
-        "publishing": {
-            "provider": store.settings().get("publisher", {}).get("provider"),
-            "provider_configured": False,
-            "linkedin_access": "not_configured",
-            "capability": "not_implemented",
-            "posts": [{"post_id": p["post_id"], "state": p["state"],
-                       "publication_status": p["publication_status"]} for p in posts],
-        },
+        "publishing": publishing_view(store, posts, mode),
         "automation": automation,
         "analytics": {"available": False,
-                      "reason": "No publication data exists; publishing is not implemented."},
+                      "reason": "Analytics are not implemented. LinkedIn does not grant this app "
+                                "read access to post statistics."},
     }
     return redact(snapshot)
 

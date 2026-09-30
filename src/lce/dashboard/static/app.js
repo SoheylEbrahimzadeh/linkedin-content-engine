@@ -63,7 +63,7 @@ function viewDashboard(s) {
         ["Required missing", hl.interview.required_missing.length ? hl.interview.required_missing.join(", ") : badge("none — ready for drafting", "ok")],
         ["Story bank", `${hl.stories.total} stories (${hl.stories.public} PUBLIC)`],
         ["Open issues", counts.FAILED + counts.NEEDS_RECONCILE + counts.INCONSISTENT ? link("#/errors", `${counts.FAILED} failed, ${counts.NEEDS_RECONCILE} reconcile, ${counts.INCONSISTENT} inconsistent`) : badge("none", "ok")],
-        ["Publishing", badge("not implemented", "muted")],
+        ["Publishing", s.publishing.provider_enabled ? badge("manual (lce publish)", "info") : badge("provider not enabled", "muted")],
       ])),
     ),
     automationCard(s.automation),
@@ -272,17 +272,42 @@ function viewApproval(s) {
 }
 
 function viewPublishing(s) {
-  const pub = s.publishing;
+  const pub = s.publishing, cfg = pub.linkedin_config, caps = pub.capabilities, tok = pub.token;
+  const yesNo = (v) => badge(v ? "yes" : "no", v ? "ok" : "muted");
+  const tokenLine = tok.days_left == null ? "expiry not recorded"
+    : tok.days_left < 0 ? badge("EXPIRED", "error") : tok.days_left < 14 ? badge(`${tok.days_left} days left — renew soon`, "warn") : `${tok.days_left} days left`;
   return [
-    card("Publishing status", kv([
-      ["Publishing provider", badge(pub.provider_configured ? "configured" : "NOT CONFIGURED", "muted")],
-      ["Provider setting", pub.provider],
-      ["LinkedIn access", badge("NOT CONFIGURED", "muted")],
-      ["Publishing capability", badge("NOT IMPLEMENTED", "muted")],
-    ]), h("p", { class: "note" }, "LinkedIn integration is a future phase. No credentials are requested or stored, and nothing is ever marked as published here.")),
+    h("p", { class: "note" }, "Publishing is human-triggered only: ", mono("lce publish <post>"), " in an interactive terminal, typed confirmation, approved hash must match. The scheduler, this dashboard and any automation cannot publish."),
+    h("div", { class: "grid" },
+      card("Provider", kv([
+        ["Provider setting", show(pub.provider)],
+        ["Enabled", pub.provider_enabled ? badge("linkedin_api", "info") : badge("not enabled", "muted")],
+        ["Config (config/linkedin.yaml)", cfg ? badge("valid", "ok") : pub.config_errors.length ? badge(`invalid: ${pub.config_errors.join("; ")}`, "error") : badge("not configured", "muted")],
+        ["API version", cfg ? `${cfg.api_version}${cfg.api_version_age_months != null && cfg.api_version_age_months >= 10 ? " — update soon (versions are supported ≥ 12 months)" : ""}` : "—"],
+        ["Author", cfg && cfg.person_urn ? mono(cfg.person_urn) : "—"],
+        ["Visibility", cfg ? show(cfg.visibility || "PUBLIC") : "—"],
+      ])),
+      card("Access token", kv([
+        ["Stored in", tok.stored_in],
+        ["Presence", h("span", {}, "not checked here — run ", mono(tok.how_to_check))],
+        ["Expiry", tokenLine],
+      ]), h("p", { class: "note" }, "The token is never read, shown or stored by the dashboard.")),
+      card("What LinkedIn allows this app", kv([
+        ["Create posts", yesNo(caps.can_publish)], ["Look up existing posts", yesNo(caps.can_find_existing)],
+        ["Read post status", yesNo(caps.can_get_status)], ["Schedule on LinkedIn", yesNo(caps.can_schedule)],
+        ["Media", yesNo(caps.supports_media)], ["Max characters", show(caps.max_chars)],
+      ]), h("ul", { class: "findings" }, caps.notes.map((n) => h("li", {}, n))))),
+    card(`Publication records (${pub.records.length})`, table(["Post", "State", "LinkedIn", "Published at", "Verified by", "Attempts", "Last attempt"],
+      pub.records.map((r) => h("tr", {},
+        h("td", {}, link(`#/posts/${encodeURIComponent(r.post_id)}`, r.post_id)),
+        h("td", {}, badge(r.state, r.state === "published" ? "ok" : r.state === "needs_reconcile" || r.state === "publishing" ? "error" : "warn")),
+        h("td", {}, r.url ? extLink(r.url) : r.remote_id ? mono(r.remote_id) : "—"),
+        h("td", {}, r.published_at ? when(r.published_at) : "—"), h("td", {}, show(r.verified_by)),
+        h("td", {}, String(r.attempts)),
+        h("td", {}, r.last_attempt ? `${r.last_attempt.outcome}${r.last_attempt.http_status ? ` (HTTP ${r.last_attempt.http_status})` : ""}${r.last_attempt.reason ? ` — ${r.last_attempt.reason}` : ""}` : "—"))))),
     card("Posts", table(["Post", "State", "Publication status"], pub.posts.map((p) => h("tr", {},
       h("td", {}, link(`#/posts/${encodeURIComponent(p.post_id)}`, p.post_id)), h("td", {}, stateBadge(p.state)),
-      h("td", {}, badge(p.publication_status.toUpperCase(), "muted")))))),
+      h("td", {}, badge(publicationLabel(p.publication_status), p.publication_status === "published" ? "ok" : p.publication_status === "unknown" ? "error" : "muted")))))),
   ];
 }
 

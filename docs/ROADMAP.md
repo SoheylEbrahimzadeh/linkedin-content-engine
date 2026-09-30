@@ -7,5 +7,6 @@
 | 1.5 ✅ | Read-only Web Control Center (local real data, static fictional demo for GitHub Pages) | none |
 | 2 ✅ | Automation & scheduling: timezone/DST-aware slots, one persisted job per slot, lock + leases, retries, reconciliation, dry run, deterministic steps up to human approval, agent handoff for LLM steps (`lce-run-jobs`), dashboard views. No trigger configured, no publishing | none |
 | 2.x (not started) | Unattended trigger (Claude Code routine or a local scheduler calling `lce automation run-once`) and pull-request-based approval in the private repo | GitHub app install only |
-| 3 | Publishing adapter(s), scheduler, reconciliation, token health checks | one provider credential, after explicit approval |
-| 4 | German and Persian rulesets; additional approval channels; analytics | as required |
+| 3 ✅ (untested against LinkedIn) | Human-triggered publishing via the official LinkedIn Posts API: adapter, little escaping, Keychain token, intent record, deterministic outcome handling, manual reconciliation, dashboard. First live test pending your setup | LinkedIn access token in the macOS Keychain (created by you) |
+| 4 | Publishing at the scheduled time (trigger), token health, verification strategy | as decided |
+| 5 | German and Persian rulesets; additional approval channels; analytics | as required |

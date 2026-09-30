@@ -12,17 +12,23 @@ from lce.cli import build_parser, main
 A = "anthrop" + "ic"
 
 
-def test_cli_has_no_publish_command():
+def test_cli_publishing_commands_are_explicit_and_nothing_else():
     sub = next(a for a in build_parser()._actions if a.dest == "command")
     names = set(sub.choices)
-    assert not {n for n in names if re.search(r"publish|post-now|send|schedule", n)}
+    assert {"publish", "linkedin"} <= names
+    assert not {n for n in names if re.search(r"schedule|post-now|send|auto-?publish", n)}
 
 
 def test_no_provider_hosts_or_llm_sdk_in_source():
-    src = "\n".join(p.read_text() for p in (ROOT / "src").rglob("*.py"))
-    for needle in ("api.linkedin.com", "linkedin.com/oauth", "publora.com", "import " + A,
-                   "from " + A, "api." + A + ".com"):
-        assert needle not in src, needle
+    files = {p: p.read_text() for p in (ROOT / "src").rglob("*.py")}
+    adapter = ROOT / "src" / "lce" / "publish" / "linkedin.py"
+    for path, src in files.items():
+        if path != adapter:
+            assert "api.linkedin.com" not in src, path  # only the official adapter talks to LinkedIn
+        for needle in ("linkedin.com/oauth", "publora.com", "buffer.com", "hootsuite", "zapier",
+                       "import " + A, "from " + A, "api." + A + ".com", "openai",
+                       "playwright", "selenium", "li_at"):
+            assert needle not in src, (needle, path)
 
 
 def test_no_llm_or_provider_dependencies():
@@ -34,9 +40,32 @@ def test_no_llm_or_provider_dependencies():
         assert bad not in deps.lower(), bad
 
 
-def test_publish_package_has_only_the_interface():
+def test_publish_package_has_only_the_linkedin_provider():
     files = {p.name for p in (ROOT / "src" / "lce" / "publish").glob("*.py")}
-    assert files == {"__init__.py", "base.py"}
+    assert files == {"__init__.py", "base.py", "credentials.py", "linkedin.py", "little.py"}
+
+
+def _imports(path):
+    import ast
+
+    tree = ast.parse(path.read_text())
+    mods = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            mods |= {a.name for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            mods.add(node.module)
+    return mods
+
+
+def test_only_the_cli_imports_the_publishing_path():
+    """Scheduler, jobs, dashboard, research and every other module cannot publish."""
+    allowed = {ROOT / "src" / "lce" / "cli.py", ROOT / "src" / "lce" / "publishing.py"}
+    for path in (ROOT / "src" / "lce").rglob("*.py"):
+        if path in allowed or path.parent.name == "publish":
+            continue
+        mods = _imports(path)
+        assert not {"lce.publishing", "lce.publish.linkedin", "lce.publish.credentials"} & mods, path
 
 
 def test_no_real_data_files_outside_examples_and_templates():

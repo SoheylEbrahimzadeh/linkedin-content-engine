@@ -118,3 +118,15 @@ test("scheduler and job events are described", () => {
   assert.match(describeRun({ event: "job.error", kind: "filesystem", retryable: true, message: "m" }).detail, /^retryable/);
   assert.equal(describeRun({ event: "scheduler.config_invalid", message: "x" }).tone, "error");
 });
+
+test("publishing states and labels are honest", async () => {
+  const lib = await import("../../src/lce/dashboard/static/lib.js");
+  assert.equal(lib.stateMeta("PUBLISHED").tone, "ok");
+  assert.equal(lib.stateMeta("PUBLISH_FAILED").tone, "error");
+  assert.match(lib.stateMeta("PUBLISHING").label, /interrupted/);
+  assert.equal(lib.publicationLabel("unknown"), "Unknown — needs reconciliation");
+  assert.equal(lib.publicationLabel("published"), "Published");
+  assert.match(lib.runStatus("needs_reconcile").label, /reconcile/);
+  assert.equal(lib.describeRun({ event: "publish.ambiguous", reason: "http_503" }).tone, "error");
+  assert.equal(lib.describeRun({ event: "publish.published", remote_id: "urn:li:share:1" }).detail, "urn:li:share:1");
+});

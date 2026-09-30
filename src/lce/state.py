@@ -1,9 +1,14 @@
 """Post lifecycle state machine.
 
-Phase 1 ends at READY_TO_PUBLISH. There is deliberately no PUBLISHING or
-PUBLISHED state: those are added only when a real publisher exists and has
-been verified. APPROVED is reachable only through an explicit human approval
-(see lce.approval), never because QA or the duplicate check passed.
+Publishing (Phase 3) starts only from READY_TO_PUBLISH and only through the
+explicit, human-confirmed `lce publish` command (lce.publishing):
+
+    READY_TO_PUBLISH → PUBLISHING → PUBLISHED
+                                  → PUBLISH_FAILED   (definitely not created)
+                                  → NEEDS_RECONCILE  (may or may not exist on LinkedIn)
+
+APPROVED is reachable only through an explicit human approval (lce.approval),
+never because QA or the duplicate check passed.
 """
 
 from __future__ import annotations
@@ -23,6 +28,10 @@ class PostState(StrEnum):
     AWAITING_APPROVAL = "AWAITING_APPROVAL"
     APPROVED = "APPROVED"
     READY_TO_PUBLISH = "READY_TO_PUBLISH"
+    PUBLISHING = "PUBLISHING"
+    PUBLISHED = "PUBLISHED"
+    PUBLISH_FAILED = "PUBLISH_FAILED"
+    NEEDS_RECONCILE = "NEEDS_RECONCILE"
     REJECTED = "REJECTED"
 
 
@@ -41,7 +50,13 @@ TRANSITIONS: dict[PostState, frozenset[PostState]] = {
     S.AWAITING_APPROVAL: frozenset({S.APPROVED, S.HUMANIZED, S.REJECTED}),
     # Reopening an approved post discards the approval.
     S.APPROVED: frozenset({S.READY_TO_PUBLISH, S.HUMANIZED, S.REJECTED}),
-    S.READY_TO_PUBLISH: frozenset({S.HUMANIZED, S.REJECTED}),
+    S.READY_TO_PUBLISH: frozenset({S.PUBLISHING, S.HUMANIZED, S.REJECTED}),
+    S.PUBLISHING: frozenset({S.PUBLISHED, S.PUBLISH_FAILED, S.NEEDS_RECONCILE}),
+    # Definitely not created on LinkedIn: may be sent again (human-triggered) or dropped.
+    S.PUBLISH_FAILED: frozenset({S.READY_TO_PUBLISH, S.REJECTED}),
+    # Unknown outcome: only a human decision resolves it.
+    S.NEEDS_RECONCILE: frozenset({S.PUBLISHED, S.READY_TO_PUBLISH}),
+    S.PUBLISHED: frozenset(),
     S.REJECTED: frozenset(),
 }
 

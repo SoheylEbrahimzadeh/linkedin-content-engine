@@ -19,6 +19,32 @@ GOOD_POST = (
 )
 
 
+@pytest.fixture(autouse=True)
+def no_external_network(monkeypatch):
+    """Every test runs with outbound connections blocked (localhost is allowed for the
+    dashboard server tests). A LinkedIn call can therefore never happen in tests."""
+    import socket
+
+    real_connect = socket.socket.connect
+
+    def guarded(self, address):
+        host = address[0] if isinstance(address, tuple) else address
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            raise AssertionError(f"network access blocked in tests: {host}")
+        return real_connect(self, address)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)
+    monkeypatch.setattr(socket, "getaddrinfo", _local_only(socket.getaddrinfo))
+
+
+def _local_only(real):
+    def wrapper(host, *a, **k):
+        if host not in ("127.0.0.1", "::1", "localhost", None):
+            raise AssertionError(f"DNS lookup blocked in tests: {host}")
+        return real(host, *a, **k)
+    return wrapper
+
+
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
