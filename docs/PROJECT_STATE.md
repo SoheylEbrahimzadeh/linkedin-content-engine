@@ -26,11 +26,11 @@ learns → improves selection.
 | 3 | Strategic topic selection | ✅ incl. per-job content brief | `lce brand next`, `lce jobs brief` |
 | 4 | Authentic English writing | ✅ (Claude Code skills, owner voice) | `lce-create-post`, `lce-run-jobs` |
 | 5 | Factual/credibility checks | ✅ | QA, evidence gating, duplicate check |
-| 6 | Relevant image | ✅ decision + provenance; no built-in visual generator yet | `lce image decide` |
+| 6 | Relevant image | ✅ decision + provenance; charts generated from recorded, sourced figures | `lce image decide`, `lce image chart` |
 | 7 | Text + image bound to one approval | ✅ | approval `image_hash` |
 | 8 | Human approval | ✅ (terminal, typed phrase) | `lce approve` |
 | 9a | Publish, owner-triggered (local) | ✅ code; needs LinkedIn token | `lce publish`, `lce publish manual` |
-| 9b | Scheduled, device-independent publishing | code on held PR #5 (text only) | Cloudflare Worker |
+| 9b | Scheduled, device-independent publishing | code on held PR #5; image upload on #14 (stacked) | Cloudflare Worker |
 | 10 | Verify / reconcile | ✅ manual (LinkedIn grants no read-back) | `lce publish reconcile` |
 | 11 | Record results | ✅ manual/CSV | `lce analytics record/import` |
 | 12–13 | Learn and improve selection | ✅ (needs data) | `lce analytics insights`, `suggest-mix` |
@@ -67,20 +67,22 @@ PUBLIC stories (owner input) ──► personal-evidence themes
 
 | Block | Status |
 |---|---|
-| `MERGE_BLOCKED_BY_TOOLING` on PR #10 (earlier) | cleared: #10, #11, #12 merged |
+| `MERGE_BLOCKED_BY_TOOLING` on PR #10 (earlier) | cleared: #10–#13 merged |
 
 ## Open PRs
 
-| PR | State |
-|---|---|
-| #5 `phase-4b` | CI green; **HOLD** |
+| PR | State | Why it waits |
+|---|---|---|
+| #5 `phase-4b` | CI green; **HOLD** | owner hold |
+| #14 `cloud-images` | stacked on #5 | needs `cloud/` (Worker source), which exists only in #5 |
 
 ## Next unblocked work
 
-1. Cloud image upload on a branch stacked on `phase-4b` (Worker code lives only there;
-   merges after #5; no deployment).
-2. A built-in, provenance-recorded visual generator for charts/diagrams from the
-   post's own recorded facts (capability 6), if it can be done without new paid services.
+None that materially advances the objective without crossing a gate: the
+remaining capability (scheduled, device-independent publishing) needs PR #5,
+then Cloudflare and LinkedIn credentials. Improvements that remain possible
+without gates (e.g. analytics import from the owner's own LinkedIn export)
+need a sample of the owner's export format (owner input).
 
 ## Housekeeping
 

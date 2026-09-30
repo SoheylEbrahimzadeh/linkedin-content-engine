@@ -28,6 +28,18 @@ and provenance: origin, usage (`owned`, `licensed`, `permitted`,
 third-party images, and generation method (and prompt) for generated or
 scripted images.
 
+## Charts from recorded evidence (`lce image chart`)
+
+`lce image chart <post> [--claim N ...]` draws the post's recorded, sourced
+claims that contain a number as a square 1200×1200 PNG: percentages as bars on
+a 0–100 scale, other figures as number cards, each labelled with the claim's
+verbatim text and the source domain. It records the decision itself (kind
+`chart`, origin `own_creation`, generation method with the matplotlib version,
+relation and alt text), so the image passes the same checks and is bound to
+approval. With no numeric claim it refuses: there would be nothing true to
+show. Needs the optional extra: `pip install 'linkedin-content-engine[visuals]'`.
+The accent colour is configurable (`visuals.accent` in `config/settings.yaml`).
+
 ## Checks (`lce image check`)
 
 Errors block the approval request (and a scheduled job reports "image decision
