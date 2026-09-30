@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-09-30 (PRs #19–#22 merged; LCE-001…008)_
+_Last updated: 2026-10-01 (PRs #19–#27 merged; LCE-001…017)_
 
 ## Objective
 
@@ -114,6 +114,8 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   whole private pipeline from any device via `lce cloud sync` → D1 mirror
   (migration 0003). Read-only.
 - LCE-014: QA warns when a post opens or closes like a recent post (30 days).
+- LCE-016: private-repo patch prepared (see below); not applied.
+- LCE-017: this owner path.
 - LCE-015: sweep fixed stale capability claims (verification shown as "not
   implemented", LinkedIn provider shown as text-only) and stale docstrings.
 - LCE-010: `wrangler.toml` no longer carries a placeholder `database_id`; Wrangler
@@ -139,17 +141,23 @@ See GitHub; merged when green (no holds).
 
 ## Next unblocked work
 
-None without an owner step. In order:
+No engineering work is open without an owner step (LCE-001…017). In order:
 
-1. Owner, from an up-to-date `main` checkout (`git pull`): `npx wrangler login`, then
-   `cd cloud && npx wrangler d1 migrations list lce --remote` and
-   `npx wrangler d1 migrations apply lce --remote`; or set the Builds deploy
-   command to `npm run deploy`.
-2. Owner: Access application + Worker secrets `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`;
-   `config/cloud.yaml` with `api_base` in the private repo; `cloudflared access login`.
-3. `lce cloud doctor` until every line is ✓ except the kill switch.
-4. Owner approval: private repo `ENGINE_REF` bump + `lce skills sync`.
-5. Owner credential + live gate: LinkedIn token, then [LIVE_TEST.md](LIVE_TEST.md).
+1. **Migrations** (0001–0003): `git pull`, `cd cloud && npx wrangler login`,
+   `npx wrangler d1 migrations list lce --remote`, then
+   `npx wrangler d1 migrations apply lce --remote`; or set the Workers Builds
+   deploy command to `npm run deploy`.
+2. **Access**: Access application on the Worker hostname; Worker secrets
+   `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`; a service token with a *Service Auth*
+   policy on the same application.
+3. **GitHub settings** (both repositories): variable `LCE_API_BASE`; secrets
+   `LCE_CF_ACCESS_CLIENT_ID`, `LCE_CF_ACCESS_CLIENT_SECRET`. The engine's
+   `production-smoke` then verifies production after every push.
+4. **Private repo (owner approval, LCE-016)**: `ENGINE_REF` bump, skills sync,
+   owner-stated pillar topics, `cloud-sync` workflow (mirrors the pipeline to
+   `<api_base>/pipeline/` after every push).
+5. **LinkedIn token + first live post** (4D): [LIVE_TEST.md](LIVE_TEST.md).
+6. **PUBLIC stories** for experience-based themes; `cta.allowed` in the voice profile.
 
 ## Housekeeping
 
