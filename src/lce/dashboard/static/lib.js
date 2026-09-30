@@ -126,6 +126,16 @@ export function describeRun(ev) {
     case "research.fetch": return { title: "Feed fetch", detail: `${show(e.added)} added, ${show(e.errors)} errors`, tone: e.errors ? "warn" : "info" };
     case "story.save": return { title: "Story saved", detail: `${show(e.story_id)} (${show(e.status)})`, tone: "info" };
     case "history.import": return { title: "Past post imported", detail: show(e.name), tone: "info" };
+    case "scheduler.start": return { title: "Scheduler pass started", detail: `${show(e.planned)} planned action(s)`, tone: "info" };
+    case "scheduler.finish": return { title: "Scheduler pass finished", detail: `${show(e.results)} job result(s)`, tone: "info" };
+    case "scheduler.locked": return { title: "Scheduler pass skipped (locked)", detail: `held by ${show(e.holder)}`, tone: "warn" };
+    case "scheduler.lock_takeover": return { title: "Stale scheduler lock taken over", detail: `previous ${show(e.previous)}`, tone: "warn" };
+    case "scheduler.config_invalid": return { title: "Scheduler config invalid", detail: show(e.message), tone: "error" };
+    case "job.created": return { title: `Job created: ${show(e.job_id)}`, detail: `slot ${show(e.slot_id)}`, tone: "info" };
+    case "job.transition": return { title: `Job ${show(e.job_id)}: ${show(e.from)} → ${show(e.to)}`, detail: show(e.reason), tone: jobStateMeta(e.to).tone };
+    case "job.step": return { title: `Job step ${show(e.step)} ${show(e.status)}`, detail: e.detail || "", tone: e.status === "failed" ? "error" : "info" };
+    case "job.error": return { title: `Job error: ${show(e.kind)}`, detail: `${e.retryable ? "retryable" : "not retryable"} — ${show(e.message)}`, tone: "error" };
+    case "job.linked": return { title: `Job ${show(e.job_id)} linked to post`, detail: show(e.post_id), tone: "info" };
     default: return { title: show(e.event), detail: "", tone: "muted" };
   }
 }
@@ -166,10 +176,40 @@ export function duplicateEvidenceNote(report) {
     : "No previous posts were available for comparison (compared against 0 posts).";
 }
 
+export const JOB_STATE_META = {
+  SCHEDULED: { label: "Scheduled", tone: "muted" },
+  READY: { label: "Ready", tone: "info" },
+  RUNNING: { label: "Running", tone: "info" },
+  BLOCKED: { label: "Blocked", tone: "warn" },
+  SUCCEEDED: { label: "Succeeded", tone: "ok" },
+  FAILED: { label: "Failed", tone: "error" },
+  SKIPPED: { label: "Skipped", tone: "muted" },
+  NEEDS_RECONCILE: { label: "Needs reconcile", tone: "error" },
+};
+
+export const BLOCK_REASON_LABEL = {
+  awaiting_agent: "waiting for Claude Code (research / draft / humanize)",
+  awaiting_revision: "waiting for a revision (QA or duplicate check failed)",
+  needs_input: "waiting for owner input",
+};
+
+export function jobStateMeta(state, blockedReason) {
+  const m = JOB_STATE_META[state] || { label: show(state), tone: "muted" };
+  if (state === "BLOCKED" && blockedReason) return { ...m, detail: BLOCK_REASON_LABEL[blockedReason] || blockedReason };
+  return m;
+}
+
+/** Counts per job state; missing states are 0, never estimated. */
+export function jobCounts(counts) {
+  const out = {};
+  for (const k of Object.keys(JOB_STATE_META)) out[k] = (counts && counts[k]) || 0;
+  return out;
+}
+
 export const ROUTES = [
   ["dashboard", "Dashboard"], ["posts", "Posts"], ["research", "Research"],
   ["calendar", "Calendar"], ["approval", "Approval"], ["publishing", "Publishing"],
-  ["monitoring", "Monitoring"], ["errors", "Errors / Reconciliation"],
+  ["automation", "Automation"], ["monitoring", "Monitoring"], ["errors", "Errors / Reconciliation"],
   ["analytics", "Analytics"], ["settings", "Settings"],
 ];
 

@@ -38,9 +38,18 @@ page mode and the data mode differ; it never falls back to other data.
 | Static demo build | `src/lce/dashboard/build.py` |
 | UI (vanilla JS/CSS, no build step, no dependencies) | `src/lce/dashboard/static/` |
 
-Sections: Dashboard, Posts (+ detail), Research, Calendar, Approval,
-Publishing, Monitoring, Errors / Reconciliation, Analytics (not available),
-Settings (allowlisted, no credentials).
+Sections: Dashboard, Posts (+ detail), Research, Calendar (with upcoming
+posting slots and their jobs), Approval, Publishing, Automation (jobs, states,
+history, configuration), Monitoring (including scheduler and job events),
+Errors / Reconciliation (failed jobs, jobs needing reconciliation, expired
+leases, stale locks), Analytics (not available), Settings (allowlisted, no
+credentials).
+
+The dashboard shows the last scheduler pass and the next slot; it never claims
+that automation is active, because the engine configures no trigger. Demo mode
+uses a fixed demo clock (`DEMO_NOW` in `server.py`) so its fictional jobs and
+slots line up; real mode uses the system clock. The UI takes "today" from the
+snapshot, never from the browser clock.
 
 ## Honest states
 

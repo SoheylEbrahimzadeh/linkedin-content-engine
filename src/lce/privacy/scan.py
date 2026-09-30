@@ -79,7 +79,7 @@ ANTHROPIC_CONFIG_RE = re.compile(
 )
 DATA_KEYS = {
     "fact_id", "story_id", "publication_status", "allowed_claims", "story_bank", "positioning",
-    "expertise", "avoid_phrases", "candidate_id", "post_id", "entries",
+    "expertise", "avoid_phrases", "candidate_id", "post_id", "entries", "job_id", "slot_id",
 }
 
 

@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/job.schema.json",
+  "title": "Job",
+  "description": "One scheduled job per slot. Lifecycle separate from the post lifecycle.",
+  "type": "object",
+  "required": [
+    "job_id",
+    "kind",
+    "slot",
+    "prepare_from",
+    "state",
+    "attempts",
+    "max_attempts",
+    "revisions",
+    "created_at",
+    "created_by",
+    "updated_at",
+    "steps",
+    "history"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "demo": {
+      "type": "boolean"
+    },
+    "job_id": {
+      "type": "string",
+      "pattern": "^job-\\d{4}-\\d{2}-\\d{2}-(mon|tue|wed|thu|fri|sat|sun)-\\d{4}$"
+    },
+    "kind": {
+      "const": "prepare_post"
+    },
+    "slot": {
+      "type": "object",
+      "required": [
+        "slot_id",
+        "day",
+        "time",
+        "local",
+        "utc",
+        "timezone",
+        "dst_adjusted"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "slot_id": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}-(mon|tue|wed|thu|fri|sat|sun)-\\d{4}$"
+        },
+        "day": {
+          "enum": [
+            "mon",
+            "tue",
+            "wed",
+            "thu",
+            "fri",
+            "sat",
+            "sun"
+          ]
+        },
+        "time": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "local": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2}$",
+          "description": "local wall time with offset"
+        },
+        "utc": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$",
+          "description": "UTC ISO 8601 with +00:00"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "dst_adjusted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "prepare_from": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$",
+      "description": "UTC ISO 8601 with +00:00"
+    },
+    "state": {
+      "enum": [
+        "SCHEDULED",
+        "READY",
+        "RUNNING",
+        "BLOCKED",
+        "SUCCEEDED",
+        "FAILED",
+        "SKIPPED",
+        "NEEDS_RECONCILE"
+      ]
+    },
+    "blocked_reason": {
+      "enum": [
+        "awaiting_agent",
+        "needs_input",
+        "awaiting_revision"
+      ]
+    },
+    "post_id": {
+      "type": "string",
+      "pattern": "^\\d{8}-[a-z0-9-]{1,56}$"
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "revisions": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "next_attempt_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$",
+      "description": "UTC ISO 8601 with +00:00"
+    },
+    "created_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$",
+      "description": "UTC ISO 8601 with +00:00"
+    },
+    "created_by": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$",
+      "description": "UTC ISO 8601 with +00:00"
+    },
+    "lease": {
+      "type": "object",
+      "required": [
+        "holder",
+        "invocation_id",
+        "acquired_at",
+        "expires_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "holder": {
+          "type": "string"
+        },
+        "invocation_id": {
+          "type": "string"
+        },
+        "acquired_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$",
+          "description": "UTC ISO 8601 with +00:00"
+        },
+        "expires_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$",
+          "description": "UTC ISO 8601 with +00:00"
+        }
+      }
+    },
+    "last_error": {
+      "type": "object",
+      "required": [
+        "at",
+        "kind",
+        "message",
+        "retryable"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$",
+          "description": "UTC ISO 8601 with +00:00"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "outcome": {
+      "type": "string"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "at",
+          "name",
+          "status",
+          "invocation_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$",
+            "description": "UTC ISO 8601 with +00:00"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "started",
+              "done",
+              "failed"
+            ]
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "at",
+          "from",
+          "to",
+          "reason",
+          "invocation_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$",
+            "description": "UTC ISO 8601 with +00:00"
+          },
+          "from": {
+            "enum": [
+              "SCHEDULED",
+              "READY",
+              "RUNNING",
+              "BLOCKED",
+              "SUCCEEDED",
+              "FAILED",
+              "SKIPPED",
+              "NEEDS_RECONCILE",
+              null
+            ]
+          },
+          "to": {
+            "enum": [
+              "SCHEDULED",
+              "READY",
+              "RUNNING",
+              "BLOCKED",
+              "SUCCEEDED",
+              "FAILED",
+              "SKIPPED",
+              "NEEDS_RECONCILE"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "invocation_id": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

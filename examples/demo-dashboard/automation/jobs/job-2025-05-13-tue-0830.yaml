@@ -1,0 +1,26 @@
+demo: true
+job_id: job-2025-05-13-tue-0830
+kind: prepare_post
+slot:
+  slot_id: 2025-05-13-tue-0830
+  day: tue
+  time: 08:30
+  local: '2025-05-13T08:30:00-05:00'
+  utc: '2025-05-13T13:30:00+00:00'
+  timezone: America/Chicago
+  dst_adjusted: false
+prepare_from: '2025-05-11T13:30:00+00:00'
+state: SCHEDULED
+attempts: 0
+max_attempts: 3
+revisions: 0
+created_at: '2025-05-04T14:00:00+00:00'
+created_by: 20250504T140000Z-6f0ce7
+updated_at: '2025-05-04T14:00:00+00:00'
+steps: []
+history:
+- at: '2025-05-04T14:00:00+00:00'
+  from: null
+  to: SCHEDULED
+  reason: created
+  invocation_id: 20250504T140000Z-6f0ce7

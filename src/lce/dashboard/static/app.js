@@ -2,7 +2,7 @@
 // All text goes through textContent; no HTML from data is ever interpreted.
 import {
   ROUTES, calendarMonths, checkMode, claimLabel, describeRun, fmtDateTime, issueCounts, parseRoute,
-  duplicateEvidenceNote, publicationLabel, researchGroups, runStatus, shortHash, show, splitApprovals, stateMeta,
+  duplicateEvidenceNote, jobCounts, jobStateMeta, publicationLabel, researchGroups, runStatus, shortHash, show, splitApprovals, stateMeta,
 } from "./lib.js";
 
 const cfg = window.LCE_CONFIG || {};
@@ -25,6 +25,7 @@ function h(tag, attrs, ...children) {
 }
 const badge = (text, tone) => h("span", { class: `badge ${tone || "muted"}` }, text);
 const stateBadge = (s) => { const m = stateMeta(s); return badge(m.label, m.tone); };
+const jobBadge = (s, r) => { const m = jobStateMeta(s, r); return badge(m.label, m.tone); };
 const card = (title, ...body) => h("section", { class: "card" }, title ? h("h3", {}, title) : null, ...body);
 const kv = (rows) => h("dl", { class: "kv" }, rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v instanceof Node ? v : show(v))]));
 const mono = (t) => h("code", { class: "mono" }, t);
@@ -41,7 +42,9 @@ const when = (iso) => fmtDateTime(iso, tz());
 function viewDashboard(s) {
   const m = s.meta, hl = s.health, counts = issueCounts(s.issues);
   const git = m.data.git;
-  const upcoming = s.calendar.filter((e) => e.date >= new Date().toISOString().slice(0, 10));
+  // "Today" comes from the snapshot (server clock; fixed demo clock in demo mode), not the browser.
+  const today = String(s.meta.generated_at || "").slice(0, 10);
+  const upcoming = s.calendar.filter((e) => e.date >= today);
   return [
     h("div", { class: "grid" },
       card("System health", kv([
@@ -63,6 +66,7 @@ function viewDashboard(s) {
         ["Publishing", badge("not implemented", "muted")],
       ])),
     ),
+    automationCard(s.automation),
     card("Where posts are now", h("p", { class: "note" }, "Current state of every post (one post counts once)."),
       h("ol", { class: "pipeline" }, s.state_distribution.map((b) =>
         h("li", { class: `stage ${b.implemented ? (b.count ? "has-posts" : "empty-bucket") : "not_implemented"}` },
@@ -74,6 +78,45 @@ function viewDashboard(s) {
     card("Upcoming calendar", table(["Date", "Topic", "Status", "Approval", "Publication"],
       upcoming.map((e) => h("tr", {}, h("td", {}, e.date), h("td", {}, e.draft_ref ? link(`#/posts/${encodeURIComponent(e.draft_ref)}`, show(e.topic)) : show(e.topic)),
         h("td", {}, e.post_state ? stateBadge(e.post_state) : badge(show(e.status), "muted")), h("td", {}, show(e.approval_status)), h("td", {}, publicationLabel(e.publication_status)))))),
+  ];
+}
+
+function automationCard(a) {
+  const c = jobCounts(a.counts);
+  const next = a.next_slot;
+  return card("Automation", kv([
+    ["Scheduler trigger", badge("none configured by the engine", "muted")],
+    ["How to run", mono("lce automation run-once")],
+    ["Last scheduler pass", a.last_run ? `${when(a.last_run.at)} — ${describeRun(a.last_run).title}` : "never run"],
+    ["Schedule", a.schedule_ok ? badge("valid", "ok") : badge(`invalid: ${show(a.schedule_error)}`, "error")],
+    ["Next slot", next ? h("span", {}, when(next.utc), " ", next.job_state ? jobBadge(next.job_state, next.blocked_reason) : badge("no job yet", "muted")) : "none"],
+    ["Jobs due", String(a.due)],
+    ["Running", String(c.RUNNING)],
+    ["Blocked", String(c.BLOCKED)],
+    ["Failed", c.FAILED ? badge(String(c.FAILED), "error") : "0"],
+    ["Needs reconcile", c.NEEDS_RECONCILE ? badge(String(c.NEEDS_RECONCILE), "error") : "0"],
+  ]), h("p", { class: "note" }, "Automation prepares posts up to human approval. It never approves and never publishes. ", link("#/automation", "Jobs →")));
+}
+
+function viewAutomation(s) {
+  const a = s.automation, c = jobCounts(a.counts);
+  return [
+    h("p", { class: "note" }, "Jobs are created per posting slot by ", mono("lce automation run-once"), ". Deterministic steps (QA, duplicate check, approval artifact) run automatically; research, drafting and humanizing are done by Claude Code (", mono("lce-run-jobs"), "). The engine configures no trigger, never approves and never publishes."),
+    h("div", { class: "grid three" }, Object.entries(c).map(([k, n]) => card(jobStateMeta(k).label, h("p", { class: "big" }, badge(String(n), n ? jobStateMeta(k).tone : "muted"))))),
+    card("Configuration", a.config ? kv(Object.entries(a.config).map(([k, v]) => [k, v])) : h("p", { class: "empty" }, `invalid: ${show(a.config_error)}`),
+      kv([["Lock", a.lock ? `${show(a.lock.invocation_id)} until ${when(a.lock.expires_at)}${a.lock.expired ? " (stale)" : ""}` : "not held"]])),
+    card(`Jobs (${a.jobs.length})`, table(["Slot (local)", "Job", "State", "Post", "Attempts", "Revisions", "Last error"],
+      [...a.jobs].sort((x, y) => (x.slot.utc < y.slot.utc ? -1 : 1)).map((j) => h("tr", {},
+        h("td", {}, j.slot.local, j.slot.dst_adjusted ? h("div", { class: "sub" }, "DST-adjusted") : null),
+        h("td", {}, mono(j.job_id)),
+        h("td", {}, jobBadge(j.state, j.blocked_reason), j.blocked_reason ? h("div", { class: "sub" }, jobStateMeta(j.state, j.blocked_reason).detail) : null,
+          j.lease_expired ? h("div", { class: "sub" }, "lease expired") : null),
+        h("td", {}, j.post_id ? link(`#/posts/${encodeURIComponent(j.post_id)}`, j.post_id) : "—"),
+        h("td", {}, `${j.attempts}/${j.max_attempts}`), h("td", {}, String(j.revisions)),
+        h("td", {}, j.last_error ? `${j.last_error.kind}${j.last_error.retryable ? " (retryable)" : ""}` : "—"))))),
+    ...a.jobs.filter((j) => j.history.length > 1).slice(-5).map((j) => card(`History — ${j.job_id}`,
+      h("ol", { class: "timeline" }, j.history.map((x) => h("li", {}, h("time", {}, when(x.at)), " ", show(x.from), " → ", jobBadge(x.to), h("small", {}, ` — ${x.reason}`)))),
+      j.steps.length ? h("ol", { class: "timeline" }, j.steps.map((st) => h("li", {}, h("time", {}, when(st.at)), " step ", mono(st.name), ` ${st.status}`, st.detail ? h("small", {}, ` — ${st.detail}`) : null))) : null)),
   ];
 }
 
@@ -183,6 +226,12 @@ function viewCalendar(s) {
   const dow = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const slots = s.settings.cadence?.slots || [];
   return [
+    card("Upcoming posting slots", s.automation.upcoming.length ? table(["Slot (local)", "UTC", "Job", "Post", "Post state", "Approval", "Publication"],
+      s.automation.upcoming.map((u) => h("tr", {}, h("td", {}, u.local, u.dst_adjusted ? h("div", { class: "sub" }, "DST-adjusted") : null), h("td", {}, u.utc),
+        h("td", {}, u.job_state ? jobBadge(u.job_state, u.blocked_reason) : badge("no job yet", "muted")),
+        h("td", {}, u.post_id ? link(`#/posts/${encodeURIComponent(u.post_id)}`, u.post_id) : "—"),
+        h("td", {}, u.post_state ? stateBadge(u.post_state) : "—"), h("td", {}, u.post_id ? show(u.approval_state) : "—"),
+        h("td", {}, u.post_id ? publicationLabel(u.publication_status) : "—")))) : empty(s.automation.schedule_error ? `Schedule invalid: ${s.automation.schedule_error}` : "No slots in the horizon.")),
     card("Cadence", slots.length ? h("p", {}, `${s.settings.cadence.posts_per_week} posts/week: `, slots.map((x) => `${x.day} ${x.time}`).join(", "), ` (${show(s.settings.timezone)})`) : empty("Cadence not configured.")),
     ...months.map((mo) => card(mo.label, h("div", { class: "month" },
       dow.map((d) => h("div", { class: "dow" }, d)),
@@ -280,6 +329,8 @@ function viewSettings(s) {
       card("Topics", kv([["Public topics", st.topics_public], ["Pillars", (st.pillars || []).map((p) => p.name)],
         ["Primary language", st.languages?.primary], ["Planned languages", st.languages?.planned]])),
       card("Research", kv([["Method", st.research.method], ["Feeds", st.research.feeds.map((f) => f.name)]])),
+      card("Automation", s.automation.config ? kv(Object.entries(s.automation.config)) : h("p", { class: "empty" }, `invalid: ${show(s.automation.config_error)}`),
+        kv([["Trigger", s.automation.trigger]])),
     ),
   ];
 }
@@ -292,7 +343,7 @@ function render() {
   document.getElementById("nav").classList.remove("open");
   if (!snapshot) return;
   const views = { dashboard: viewDashboard, posts: viewPosts, research: viewResearch, calendar: viewCalendar,
-    approval: viewApproval, publishing: viewPublishing, monitoring: viewMonitoring, errors: viewErrors,
+    approval: viewApproval, publishing: viewPublishing, automation: viewAutomation, monitoring: viewMonitoring, errors: viewErrors,
     analytics: viewAnalytics, settings: viewSettings };
   const content = route.name === "posts" && route.id ? viewPost(snapshot, route.id) : views[route.name](snapshot);
   const title = ROUTES.find(([r]) => r === route.name)[1];

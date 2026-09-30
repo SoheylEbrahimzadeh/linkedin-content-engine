@@ -1,0 +1,10 @@
+# Optional. Copy to automation.yaml to change scheduler defaults.
+# Validated by `lce validate .`. Never put credentials here.
+lead_hours: 48          # a job becomes READY this long before its slot
+horizon_days: 14        # jobs are created for slots this far ahead
+lookback_days: 7        # past slots without content are recorded as missed
+max_attempts: 3         # automatic retries of retryable failures
+retry_delay_minutes: 15 # fixed delay before an automatic retry
+lease_minutes: 30       # lease for a running job or an agent claim
+lock_minutes: 10        # scheduler lock lifetime
+max_revisions: 2        # QA/duplicate failures before a job fails

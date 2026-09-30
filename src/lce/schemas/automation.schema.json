@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/automation.schema.json",
+  "title": "AutomationConfig",
+  "description": "Optional tuning in config/automation.yaml. Never contains credentials.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "demo": {
+      "type": "boolean"
+    },
+    "lead_hours": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 336
+    },
+    "horizon_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60
+    },
+    "lookback_days": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 30
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10
+    },
+    "retry_delay_minutes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1440
+    },
+    "lease_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 240
+    },
+    "lock_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120
+    },
+    "max_revisions": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10
+    }
+  }
+}

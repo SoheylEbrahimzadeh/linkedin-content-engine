@@ -12,11 +12,11 @@ import json
 import os
 import re
 import tempfile
-from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
 
+from lce import clock
 from lce.config.paths import DATA_MARKER, check_location, resolve_data_dir
 from lce.validate import jsonable, validate_doc
 
@@ -54,7 +54,8 @@ class StoreError(RuntimeError):
 
 
 def now_iso() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat()
+    """Current time as UTC ISO 8601 with +00:00 (see lce.clock)."""
+    return clock.iso_utc(clock.now())
 
 
 def _merge(base: dict, over: dict) -> dict:

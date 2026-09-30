@@ -18,6 +18,7 @@ import yaml
 from lce import __version__
 from lce.config.paths import DataDirError
 from lce.rules import RulesetNotReady
+from lce.schedule import ScheduleError
 from lce.store import DataStore, StoreError
 
 
@@ -193,7 +194,7 @@ def cmd_plan_list(args):
 def cmd_select_list(args):
     from lce.planning import rank_candidates
 
-    day = date.fromisoformat(args.date) if args.date else date.today()
+    day = date.fromisoformat(args.date) if args.date else _today_local(_store(args))
     for r in rank_candidates(_store(args), day)[: args.limit]:
         why = f" ({'; '.join(r['reasons'])})" if r["reasons"] else ""
         print(f"- {r['candidate_id']} score={r['score']} pillar={r['pillar']}: {r['title']}{why}")
@@ -203,11 +204,37 @@ def cmd_select_list(args):
 def cmd_select_pick(args):
     from lce.planning import select
 
-    post = select(_store(args), candidate_id=args.candidate, pillar=args.pillar, angle=args.angle,
-                  fmt=args.format, plan_date=date.fromisoformat(args.date), topic=args.topic,
-                  stories=args.story)
+    store = _store(args)
+    if args.job:
+        from lce.jobs import load_job
+
+        slot_day = date.fromisoformat(load_job(store, args.job)["slot"]["slot_id"][:10])
+        if args.date and date.fromisoformat(args.date) != slot_day:
+            raise StoreError(f"--date must match the job's slot date {slot_day}")
+        plan_date = slot_day
+    elif args.date:
+        plan_date = date.fromisoformat(args.date)
+    else:
+        raise StoreError("give --date or --job")
+    post = select(store, candidate_id=args.candidate, pillar=args.pillar, angle=args.angle,
+                  fmt=args.format, plan_date=plan_date, topic=args.topic, stories=args.story)
     print(f"✓ {post['post_id']} → {post['state']}")
+    if args.job:
+        from lce.scheduler import link_post
+
+        link_post(store, args.job, post["post_id"])
+        print(f"  linked to {args.job}")
     return 0
+
+
+def _today_local(store: DataStore) -> date:
+    """Today's date in the configured timezone (UTC when none is configured)."""
+    from zoneinfo import ZoneInfo
+
+    from lce import clock
+
+    tz = store.settings().get("timezone") or "UTC"
+    return clock.now().astimezone(ZoneInfo(tz)).date()
 
 
 # ── writing ───────────────────────────────────────────────────────────
@@ -355,6 +382,93 @@ def cmd_skills_sync(args):
     return 0
 
 
+# ── schedule, scheduler & jobs ────────────────────────────────────────
+def cmd_schedule_show(args):
+    from datetime import timedelta
+
+    from lce import clock
+    from lce.jobs import job_id_for, list_jobs
+    from lce.schedule import load_schedule, slots_between
+
+    store = _store(args)
+    schedule = load_schedule(store.settings())
+    now = clock.now()
+    jobs = {j["job_id"]: j for j in list_jobs(store)}
+    print(f"timezone {schedule.timezone}, {schedule.posts_per_week} posts/week")
+    for slot in slots_between(schedule, now, now + timedelta(days=args.days)):
+        job = jobs.get(job_id_for(slot.slot_id))
+        state = job["state"] if job else "no job yet"
+        extra = f" ({job['blocked_reason']})" if job and job.get("blocked_reason") else ""
+        dst = " [DST-adjusted]" if slot.dst_adjusted else ""
+        print(f"- {slot.local.strftime('%a %Y-%m-%d %H:%M %z')}  (UTC {slot.utc:%H:%M})"
+              f"  {job_id_for(slot.slot_id)}: {state}{extra}{dst}")
+    return 0
+
+
+def cmd_scheduler_run_once(args):
+    from lce.clock import parse_iso
+    from lce.scheduler import run_once
+
+    now = parse_iso(args.now) if args.now else None
+    report = run_once(_store(args), dry_run=args.dry_run, now=now)
+    head = "DRY RUN — nothing is written" if report.dry_run else f"run {report.invocation_id}"
+    print(f"{head} at {report.now}")
+    if report.status != "ok":
+        print(f"✗ {report.status}: {report.message}")
+        return 1
+    if not report.actions:
+        print("  nothing due")
+    for a in report.actions:
+        print(f"  {a.slot_local}  {a.job_id}  → {a.action}" + (f": {a.detail}" if a.detail else ""))
+    for r in report.results:
+        why = f" ({r['blocked_reason']})" if r.get("blocked_reason") else ""
+        print(f"  ✓ {r['job_id']}: {r['action']} → {r['state']}{why}")
+    print("Nothing is approved or published by the scheduler.")
+    return 0
+
+
+def cmd_jobs_list(args):
+    from lce.jobs import list_jobs
+
+    for j in list_jobs(_store(args)):
+        if args.state and j["state"] != args.state:
+            continue
+        extra = f" ({j['blocked_reason']})" if j.get("blocked_reason") else ""
+        post = f" post={j['post_id']}" if j.get("post_id") else ""
+        print(f"- {j['job_id']} [{j['state']}{extra}] slot {j['slot']['local']}{post}")
+    return 0
+
+
+def cmd_jobs_show(args):
+    from lce.jobs import load_job
+
+    print(yaml.safe_dump(load_job(_store(args), args.job), sort_keys=False, allow_unicode=True))
+    return 0
+
+
+def cmd_jobs_agent_tasks(args):
+    from lce.scheduler import pending_agent_tasks
+
+    tasks = pending_agent_tasks(_store(args))
+    for j in tasks:
+        post = j.get("post_id") or "no post yet"
+        print(f"- {j['job_id']} ({j['blocked_reason']}) slot {j['slot']['local']}: {post}")
+    if not tasks:
+        print("no agent work pending")
+    return 0
+
+
+def _job_cmd(func_name: str, *extra):
+    def run(args):
+        from lce import scheduler
+
+        job = getattr(scheduler, func_name)(_store(args), args.job, *[getattr(args, e) for e in extra])
+        reason = f" ({job['blocked_reason']})" if job.get("blocked_reason") else ""
+        print(f"✓ {job['job_id']} → {job['state']}{reason}")
+        return 0
+    return run
+
+
 # ── dashboard ─────────────────────────────────────────────────────────
 def _engine_root() -> Path:
     from lce.config.paths import find_engine_root
@@ -472,7 +586,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pillar", required=True)
     p.add_argument("--angle", required=True)
     p.add_argument("--format", default="text")
-    p.add_argument("--date", required=True)
+    p.add_argument("--date", default=None, help="planned date (or use --job)")
+    p.add_argument("--job", default=None, help="scheduled job this post fulfils")
     p.add_argument("--topic", default=None)
     p.add_argument("--story", action="append", default=[])
 
@@ -514,6 +629,34 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name")
     p.add_argument("--file", required=True)
 
+    g = group("cadence", "posting slots from your private settings")
+    p = gcmd(g, "show", cmd_schedule_show, "upcoming slots and their jobs")
+    p.add_argument("--days", type=int, default=14)
+
+    g = group("automation", "one deterministic scheduler pass (no daemon)")
+    p = gcmd(g, "run-once", cmd_scheduler_run_once, "create due jobs and run deterministic steps")
+    p.add_argument("--dry-run", action="store_true", help="show what would happen; write nothing")
+    p.add_argument("--now", default=None, help="simulated time with offset (dry-run only)")
+
+    g = group("jobs", "scheduled jobs")
+    p = gcmd(g, "list", cmd_jobs_list, "list jobs")
+    p.add_argument("--state", default=None)
+    gcmd(g, "show", cmd_jobs_show, "show one job with history").add_argument("job")
+    gcmd(g, "agent-tasks", cmd_jobs_agent_tasks, "jobs waiting for Claude Code work")
+    p = gcmd(g, "claim", _job_cmd("claim", "holder"), "lease a job for agent work")
+    p.add_argument("job")
+    p.add_argument("--as", dest="holder", default="claude-code")
+    p = gcmd(g, "release", _job_cmd("release", "note"), "end agent work on a job")
+    p.add_argument("job")
+    p.add_argument("--note", default="")
+    gcmd(g, "retry", _job_cmd("retry"), "retry a FAILED job").add_argument("job")
+    p = gcmd(g, "skip", _job_cmd("skip", "reason"), "skip a job")
+    p.add_argument("job")
+    p.add_argument("--reason", required=True)
+    p = gcmd(g, "reconcile", _job_cmd("reconcile", "decision"), "resolve NEEDS_RECONCILE")
+    p.add_argument("job")
+    p.add_argument("--decision", choices=["retry", "skip", "fail"], default=None)
+
     g = group("dashboard", "Web Control Center (read-only)")
     p = gcmd(g, "serve", cmd_dashboard_serve, "serve the dashboard on 127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
@@ -530,7 +673,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (StoreError, DataDirError, RulesetNotReady) as exc:
+    except (StoreError, DataDirError, RulesetNotReady, ScheduleError, ValueError) as exc:
         print(f"✗ {exc}")
         return 1
 
