@@ -117,3 +117,37 @@ def test_cli_exit_code(configured, monkeypatch, capsys):
     assert main(["--data-dir", str(configured.root), "cloud", "doctor"]) == 1
     out = capsys.readouterr().out
     assert "→ access" in out and "fake.access.jwt" not in out
+
+
+def test_service_token_headers_are_sent_and_never_printed(configured, monkeypatch, capsys):
+    from lce.cli import main
+
+    w = Worker()
+    monkeypatch.setattr(cloud, "UrllibCloudTransport", lambda: w)
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", "fake-client-id.access")
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", "fake-client-secret")
+    assert main(["--data-dir", str(configured.root), "cloud", "doctor"]) == 0
+    snap_headers = [h for m, u, h in w.calls if u.endswith("/api/snapshot")][0]
+    assert snap_headers["CF-Access-Client-Id"] == "fake-client-id.access"
+    assert snap_headers["CF-Access-Client-Secret"] == "fake-client-secret"
+    assert "cf-access-token" not in snap_headers
+    assert "fake-client-secret" not in capsys.readouterr().out
+
+
+def test_half_configured_service_token_is_an_action(configured, monkeypatch):
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", "only-the-id")
+    monkeypatch.delenv("LCE_CF_ACCESS_CLIENT_SECRET", raising=False)
+    checks = cloud.doctor(configured, transport=Worker(), today=date(2026, 10, 1))
+    assert checks[-1]["check"] == "access login" and checks[-1]["status"] == "action"
+    assert "both" in checks[-1]["detail"]
+
+
+def test_cli_exit_code_distinguishes_broken_from_open_gates(configured, monkeypatch):
+    from lce.cli import main
+
+    monkeypatch.setenv("LCE_CF_ACCESS_TOKEN", "fake.access.jwt")
+    monkeypatch.setattr(cloud, "UrllibCloudTransport",
+                        lambda: Worker(snapshot=(401, {"error": "wrong audience"})))
+    assert main(["--data-dir", str(configured.root), "cloud", "doctor"]) == 2
+    monkeypatch.setattr(cloud, "UrllibCloudTransport", lambda: Worker())
+    assert main(["--data-dir", str(configured.root), "cloud", "doctor"]) == 0

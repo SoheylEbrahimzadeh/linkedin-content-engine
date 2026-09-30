@@ -789,7 +789,9 @@ def cmd_cloud(args):
         for c in checks:
             print(f"{marks[c['status']]} {c['check']}: {c['detail']}"
                   + (f"\n    {c['action']}" if c["action"] else ""))
-        return 0 if all(c["status"] == cloud.OK for c in checks) else 1
+        # 0 all ok · 1 only owner actions open · 2 something is broken
+        statuses = {c["status"] for c in checks}
+        return 2 if cloud.FAIL in statuses else 1 if cloud.ACTION in statuses else 0
     client = cloud.make_client(store)
     if args.sub == "configure":
         out = cloud.configure(store, client)
