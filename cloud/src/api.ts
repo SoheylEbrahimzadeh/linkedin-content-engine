@@ -125,14 +125,28 @@ async function pushPost(env: Env, now: number, actor: string, rawId: string, b: 
   if (h !== approved_hash) throw new HttpError(409, "text does not match the approved hash");
   const image = await parseImage(b.image);
   const existing = await env.DB.prepare("SELECT * FROM posts WHERE post_id = ?").bind(id).first<PostRow>();
+  const at = isoUtc(now);
   if (existing) {
     const had = await env.DB.prepare("SELECT sha256 FROM post_images WHERE post_id = ?").bind(id).first<{ sha256: string }>();
-    if (existing.approved_hash === h && (had?.sha256 ?? null) === (image?.sha256 ?? null)) {
-      return { post_id: id, state: existing.state, unchanged: true };
+    const same = existing.approved_hash === h && (had?.sha256 ?? null) === (image?.sha256 ?? null);
+    if (existing.state === "WITHDRAWN") {
+      // Re-delegation after a withdrawal (the owner typed DELEGATE again locally).
+      // A new approved version replaces the withdrawn one; nothing was published.
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE posts SET text = ?, language = ?, plan_date = ?, state = 'READY_TO_PUBLISH', content_hash = ?,
+                        approved_hash = ?, approved_at = ?, pushed_at = ?, pushed_by = ?, updated_at = ?
+                        WHERE post_id = ? AND state = 'WITHDRAWN'`)
+          .bind(text, String(language ?? "en"), plan_date ?? null, h, h, approved_at, at, actor, at, id),
+        env.DB.prepare("DELETE FROM post_images WHERE post_id = ?").bind(id),
+        ...(image ? [env.DB.prepare("INSERT INTO post_images (post_id, data, sha256, alt_text, bytes) VALUES (?, ?, ?, ?, ?)")
+          .bind(id, image.data, image.sha256, image.alt, image.data.length)] : []),
+        event(env.DB, now, "post.redelegated", actor, id, { approved_hash: h, same_version: same }),
+      ]);
+      return { post_id: id, state: "READY_TO_PUBLISH", redelegated: true };
     }
+    if (same) return { post_id: id, state: existing.state, unchanged: true };
     throw new HttpError(409, `post already exists with a different approved text or image (${existing.state})`);
   }
-  const at = isoUtc(now);
   await env.DB.batch([
     env.DB.prepare(`INSERT INTO posts (post_id, text, language, plan_date, state, content_hash, approved_hash,
                     approved_at, pushed_at, pushed_by, updated_at) VALUES (?, ?, ?, ?, 'READY_TO_PUBLISH', ?, ?, ?, ?, ?, ?)`)

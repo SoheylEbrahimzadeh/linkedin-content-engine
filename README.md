@@ -92,6 +92,10 @@ writing → checks → image → approval → publishing → results → learnin
 against your private data and says what is ready, what needs your input and
 which credential gates remain. It never reads secret values.
 
+## Day-to-day use
+
+The owner's routine from content preparation to results: [docs/OPERATING.md](docs/OPERATING.md).
+
 ## Project operation
 
 Current phase, open PRs and holds: [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).
