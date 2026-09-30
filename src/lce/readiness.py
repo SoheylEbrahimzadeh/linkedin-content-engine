@@ -100,10 +100,12 @@ def check(store: DataStore, today: date, *, token_present: bool | None,
                      "" if ready else "LinkedIn app + token (owner credential); or post by hand "
                      "and record it with `lce publish manual`"))
     rows.append(_row("9 publishing (scheduled, device-independent)",
-                     OK if cloud_available else GATE,
-                     "cloud publisher available" if cloud_available else
-                     "cloud Worker not on main (PR #5 on hold); then Cloudflare account/token "
-                     "and deployment", "owner: lift the PR #5 hold, then the deploy runbook"))
+                     TODO if cloud_available else GATE,
+                     "config/cloud.yaml present; check the deployment with `lce cloud status`"
+                     if cloud_available else
+                     "Worker and dashboard are built; not deployed (needs a Cloudflare account, "
+                     "Access app and deploy token)",
+                     "" if cloud_available else "owner runbook in docs/CLOUD.md"))
     published = [p for p in posts if p["state"] == PostState.PUBLISHED.value]
     with_metrics = [p for p in published
                     if (store.post_dir(p["post_id"]) / "metrics.yaml").exists()]

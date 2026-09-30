@@ -66,12 +66,13 @@ export async function handleApi(request: Request, env: Env, now: number,
   try {
     const who = await verifyAccess(request, env, now, certs);
     const actor = who.subject;
+    if (request.method !== "GET") requireSameOriginClient(request, url);
     const m = (re: RegExp) => re.exec(url.pathname);
     let r: RegExpExecArray | null;
     if (request.method === "GET" && url.pathname === "/api/snapshot") return json(200, await snapshot(env, now));
     if (request.method === "PUT" && (r = m(/^\/api\/posts\/([^/]+)$/))) return json(200, await pushPost(env, now, actor, r[1], await body(request)));
-    if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/withdraw$/))) return json(200, await withdraw(env, now, actor, r[1]));
-    if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/rearm$/))) return json(200, await rearm(env, now, actor, r[1]));
+    if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/withdraw$/))) return json(200, await withdraw(env, now, actor, r[1], await body(request)));
+    if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/rearm$/))) return json(200, await rearm(env, now, actor, r[1], await body(request)));
     if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/reconcile$/))) return json(200, await reconcile(env, now, actor, r[1], await body(request)));
     if (request.method === "POST" && url.pathname === "/api/consents") return json(201, await consent(env, now, actor, await body(request)));
     if (request.method === "DELETE" && (r = m(/^\/api\/consents\/([^/]+)$/))) return json(200, await revoke(env, now, actor, r[1]));
@@ -83,6 +84,22 @@ export async function handleApi(request: Request, env: Env, now: number,
     if (err instanceof ScheduleError) return json(422, { error: err.message });
     return json(500, { error: "internal error" });
   }
+}
+
+// Mutations must come from the CLI or the dashboard: a custom header forces a CORS
+// preflight (never granted), and a foreign Origin is refused. Together with Access
+// this blocks cross-site requests that would ride on the Access cookie.
+function requireSameOriginClient(request: Request, url: URL): void {
+  if (!["cli", "dashboard"].includes(request.headers.get("x-lce-client") ?? "")) {
+    throw new HttpError(403, "missing x-lce-client header");
+  }
+  const origin = request.headers.get("origin");
+  if (origin && origin !== url.origin) throw new HttpError(403, "cross-origin request refused");
+}
+
+// Actions that can lead to a publication need the owner's typed phrase.
+function requirePhrase(b: Record<string, unknown>, phrase: string): void {
+  if (String(b.confirm ?? "").trim() !== phrase) throw new HttpError(428, `type '${phrase}' to confirm`);
 }
 
 function requirePostId(id: string): string {
@@ -130,6 +147,7 @@ async function pushPost(env: Env, now: number, actor: string, rawId: string, b: 
 // ── consent: explicit, per post and per slot ────────────────────────────
 async function consent(env: Env, now: number, actor: string, b: Record<string, unknown>) {
   const id = requirePostId(String(b.post_id ?? ""));
+  requirePhrase(b, `SCHEDULE ${id}`);
   const post = await getPost(env, id);
   if (post.state !== "READY_TO_PUBLISH") throw new HttpError(409, `post is ${post.state}`);
   if ((await contentHash(post.text)) !== post.approved_hash) throw new HttpError(409, "post text does not match its approved hash");
@@ -176,8 +194,9 @@ async function revoke(env: Env, now: number, actor: string, consentId: string) {
   return { consent_id: consentId, status: "revoked" };
 }
 
-async function withdraw(env: Env, now: number, actor: string, rawId: string) {
+async function withdraw(env: Env, now: number, actor: string, rawId: string, b: Record<string, unknown>) {
   const id = requirePostId(rawId);
+  requirePhrase(b, `WITHDRAW ${id}`);
   const res = await env.DB.batch([
     env.DB.prepare("UPDATE posts SET state = 'WITHDRAWN', updated_at = ? WHERE post_id = ? AND state IN ('READY_TO_PUBLISH', 'PUBLISH_FAILED')")
       .bind(isoUtc(now), id),
@@ -189,8 +208,9 @@ async function withdraw(env: Env, now: number, actor: string, rawId: string) {
   return { post_id: id, state: "WITHDRAWN" };
 }
 
-async function rearm(env: Env, now: number, actor: string, rawId: string) {
+async function rearm(env: Env, now: number, actor: string, rawId: string, b: Record<string, unknown>) {
   const id = requirePostId(rawId);
+  requirePhrase(b, `REARM ${id}`);
   const post = await getPost(env, id);
   if (post.state !== "PUBLISH_FAILED") throw new HttpError(409, "only PUBLISH_FAILED posts can be re-armed");
   await env.DB.batch([
@@ -205,6 +225,7 @@ const RECONCILE_URL = /^https:\/\/www\.linkedin\.com\/(?:feed\/update\/(urn:li:(
 
 async function reconcile(env: Env, now: number, actor: string, rawId: string, b: Record<string, unknown>) {
   const id = requirePostId(rawId);
+  requirePhrase(b, `RECONCILE ${id}`);
   const post = await getPost(env, id);
   if (!["NEEDS_RECONCILE", "PUBLISHING"].includes(post.state)) {
     throw new HttpError(409, `only NEEDS_RECONCILE or interrupted PUBLISHING posts are reconciled (${post.state})`);
@@ -237,7 +258,9 @@ async function reconcile(env: Env, now: number, actor: string, rawId: string, b:
 }
 
 // ── settings (never secrets) ────────────────────────────────────────────
-async function putSettings(env: Env, now: number, actor: string, b: Record<string, unknown>) {
+async function putSettings(env: Env, now: number, actor: string, raw: Record<string, unknown>) {
+  const { confirm, ...b } = raw;
+  if (b.auto_publish === true) requirePhrase({ confirm }, "ENABLE AUTO-PUBLISH");
   const updates: [string, string][] = [];
   for (const [k, v] of Object.entries(b)) {
     if (!(SETTING_KEYS as readonly string[]).includes(k)) throw new HttpError(400, `unknown setting ${k}`);

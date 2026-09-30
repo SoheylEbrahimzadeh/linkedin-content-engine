@@ -97,7 +97,8 @@ class CloudClient:
         self.api_base, self._token, self.transport = api_base.rstrip("/"), token, transport
 
     def call(self, method: str, path: str, payload: dict | None = None) -> dict:
-        headers = {"cf-access-token": self._token(), "content-type": "application/json"}
+        headers = {"cf-access-token": self._token(), "content-type": "application/json",
+                   "x-lce-client": "cli"}
         body = json.dumps(payload).encode() if payload is not None else None
         resp = self.transport.request(method, f"{self.api_base}/api{path}", headers, body)
         if resp.status >= 400:
@@ -192,7 +193,8 @@ def consent(store: DataStore, post_id: str, slot_id: str, client: CloudClient, *
     _confirm(confirm, is_tty, f"SCHEDULE {post_id}",
              f"The cloud will publish {post_id} automatically at slot {slot_id} "
              "(only if the kill switch is on).")
-    result = client.call("POST", "/consents", {"post_id": post_id, "slot_id": slot_id})
+    result = client.call("POST", "/consents", {"post_id": post_id, "slot_id": slot_id,
+                                               "confirm": f"SCHEDULE {post_id}"})
     store.log_event("cloud.consent", post_id=post_id, slot_id=slot_id,
                     consent_id=result.get("consent_id"))
     return result
@@ -223,3 +225,25 @@ def pull(store: DataStore, client: CloudClient) -> list[dict]:
                 set_state(store, post, target, f"mirrored from cloud ({cloud_state})")
                 changes.append({"post_id": post_id, "state": target.value})
     return changes
+
+
+def configure_payload(store: DataStore) -> dict:
+    """Settings the Worker needs, from the private config. Never the kill switch, never a token."""
+    settings = store.settings()
+    body = {k: settings[k] for k in ("timezone", "cadence") if settings.get(k)}
+    li = store.read_doc(store.root / "config" / "linkedin.yaml")
+    for key in ("api_version", "person_urn", "visibility", "token_expires_at"):
+        if li.get(key):
+            body[key] = str(li[key])
+    if li.get("api_version") and li.get("person_urn"):
+        body["provider"] = "linkedin_api"
+    return body
+
+
+def configure(store: DataStore, client: CloudClient) -> dict:
+    body = configure_payload(store)
+    if not body:
+        raise CloudError("nothing to configure: set timezone/cadence (and config/linkedin.yaml)")
+    out = client.call("PUT", "/settings", body)
+    store.log_event("cloud.configured", keys=sorted(body))
+    return out

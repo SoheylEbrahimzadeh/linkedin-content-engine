@@ -180,3 +180,21 @@ def test_push_refuses_changed_or_oversized_images(env, tmp_path):
     with pytest.raises(CloudError, match="approved image"):
         cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)
     assert not (store.post_dir(pid) / "delegation.json").exists()
+
+
+def test_cli_header_and_consent_phrase_are_sent(env):
+    store, pid, fake, client = env
+    cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)
+    cloud.consent(store, pid, "2026-10-07-wed-0030", client, confirm=phrase(f"SCHEDULE {pid}"), **TTY)
+    assert all(c[2]["x-lce-client"] == "cli" for c in fake.calls)
+    assert fake.consents["c1"]["confirm"] == f"SCHEDULE {pid}"
+
+
+def test_configure_sends_settings_but_never_the_kill_switch(env):
+    store, pid, fake, client = env
+    (store.root / "config" / "linkedin.yaml").write_text(
+        "api_version: '202609'\nperson_urn: urn:li:person:TestPerson1\n")
+    body = cloud.configure_payload(store)
+    assert body["provider"] == "linkedin_api" and body["api_version"] == "202609"
+    assert "timezone" in body and "cadence" in body
+    assert "auto_publish" not in body and not any("token" == k for k in body)

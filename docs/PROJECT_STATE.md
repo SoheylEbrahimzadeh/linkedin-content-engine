@@ -30,7 +30,8 @@ learns → improves selection.
 | 7 | Text + image bound to one approval | ✅ | approval `image_hash` |
 | 8 | Human approval | ✅ (terminal, typed phrase) | `lce approve` |
 | 9a | Publish, owner-triggered (local) | ✅ code; needs LinkedIn token | `lce publish`, `lce publish manual` |
-| 9b | Scheduled, device-independent publishing | code on held PR #5; image upload on #14 (stacked) | Cloudflare Worker |
+| 9b | Scheduled, device-independent publishing (text + image) | ✅ code; not deployed | Cloudflare Worker, `lce cloud` |
+| 9c | Remote control from any device | ✅ code (Cloud Control Center); not deployed | Worker `/` behind Access |
 | 10 | Verify / reconcile | ✅ manual (LinkedIn grants no read-back) | `lce publish reconcile` |
 | 11 | Record results | ✅ manual/CSV | `lce analytics record/import` |
 | 12–13 | Learn and improve selection | ✅ (needs data) | `lce analytics insights`, `suggest-mix` |
@@ -38,25 +39,31 @@ learns → improves selection.
 ## Dependency graph (what blocks what)
 
 ```
-PR #5 (HOLD) ──► 9b scheduled publishing ──► 4C remote dashboard (owner: not before #5 merges)
-     │                 └──► cloud image upload (Worker code exists only on phase-4b)
-     └──► deployment ──► Cloudflare account + deploy token (HARD GATE)
-                              └──► live test 4D ──► LinkedIn token (HARD GATE) + live authorization (HARD GATE)
-LinkedIn token (HARD GATE) ──► 9a real publishing (manual posting + `lce publish manual` works without it)
-LinkedIn Community Management access (HARD GATE) ──► 7B analytics API adapter
-PUBLIC stories (owner input) ──► personal-evidence themes
+Cloudflare account + Access app + deploy-only token (CREDENTIAL GATE)
+   └─► deploy Worker + dashboard (runbook steps 1–8; authorization to deploy)
+         └─► LinkedIn token as Worker secret (CREDENTIAL GATE)
+               └─► first live scheduled publication (LIVE GATE, 4D)
+                     └─► real metrics → learning loop gets data
+LinkedIn token in Keychain (CREDENTIAL GATE) ──► owner-triggered local publishing
+   (fallback without any credential: post by hand + `lce publish manual`)
+LinkedIn Community Management access (CREDENTIAL GATE) ──► 7B analytics API adapter
+PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NEEDS_INPUT)
 ```
 
-## Hard human gates
+## Credential gates
 
 | Gate | Unlocks |
 |---|---|
-| **HOLD on PR #5** (owner, 2026-09-30) | merging the cloud runtime; 4C; cloud image upload integration |
-| Cloudflare account, D1, Access app, deploy-only token; authorization to deploy | scheduled device-independent publishing |
+| Cloudflare account, D1, Access app, deploy-only token; authorization to deploy | scheduled publishing + remote dashboard |
 | LinkedIn developer app + `w_member_social` token | real publishing (local or cloud) |
-| Authorization of a live publication | 4D live test |
 | LinkedIn Community Management access (`r_member_postAnalytics`) | 7B analytics API |
-| Private-repo changes needing explicit approval: `ENGINE_REF` bump + skills sync in the private data repo | private CI validates brand/image/metrics files with the current engine |
+| Private-repo change (owner approval): `ENGINE_REF` bump + skills sync in the private data repo | private CI validates brand/image/metrics files with the current engine |
+
+## Live-action gates
+
+| Gate | Unlocks |
+|---|---|
+| Authorization of the first live publication (4D) | end-to-end proof on LinkedIn |
 
 ## Owner input (not gates; the engine runs without them, with less reach)
 
@@ -65,24 +72,17 @@ PUBLIC stories (owner input) ──► personal-evidence themes
 
 ## Tooling blocks
 
-| Block | Status |
-|---|---|
-| `MERGE_BLOCKED_BY_TOOLING` on PR #10 (earlier) | cleared: #10–#13 merged |
+None open.
 
 ## Open PRs
 
-| PR | State | Why it waits |
-|---|---|---|
-| #5 `phase-4b` | CI green; **HOLD** | owner hold |
-| #14 `cloud-images` | stacked on #5 | needs `cloud/` (Worker source), which exists only in #5 |
+See GitHub; merged when green (no holds).
 
 ## Next unblocked work
 
-None that materially advances the objective without crossing a gate: the
-remaining capability (scheduled, device-independent publishing) needs PR #5,
-then Cloudflare and LinkedIn credentials. Improvements that remain possible
-without gates (e.g. analytics import from the owner's own LinkedIn export)
-need a sample of the owner's export format (owner input).
+Nothing left on the objective's critical path without a credential: the cloud
+path (Worker, image upload, dashboard, settings sync) is built and tested, and
+the post-credential path is runbook steps 6–10 in `docs/CLOUD.md`.
 
 ## Housekeeping
 

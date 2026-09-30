@@ -71,7 +71,7 @@ def test_readiness_reports_gates_and_owner_input(store, tmp_path, monkeypatch):
     assert rows["privacy denylist"]["status"] == "todo"
     ready = {r["step"]: r for r in check(store, DAY, token_present=True, linkedin_config_ok=True,
                                          cloud_available=True)}
-    assert ready["9 publishing (scheduled, device-independent)"]["status"] == "ok"
+    assert ready["9 publishing (scheduled, device-independent)"]["status"] == "todo"
 
 
 def test_readiness_cli_never_needs_the_keychain(store, capsys):

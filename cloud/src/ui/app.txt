@@ -1,0 +1,203 @@
+// LCE Cloud Control Center (served as /app.js). Renders the Worker snapshot and
+// sends owner actions to the same-origin API. Rules: all data goes through
+// textContent; the dashboard never approves content, never edits text and never
+// handles tokens; every action that can lead to a publication needs the typed
+// phrase the API checks.
+
+const main = document.getElementById("main");
+const banner = document.getElementById("banner");
+let snap = null;
+
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? "" : String(v));
+  }
+  for (const c of kids.flat(Infinity)) {
+    if (c === null || c === undefined || c === false) continue;
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return el;
+}
+const badge = (text, tone) => h("span", { class: "badge " + (tone || "muted") }, text);
+const section = (title, ...body) => h("section", {}, h("h2", {}, title), ...body);
+const table = (heads, rows) => rows.length
+  ? h("table", {}, h("thead", {}, h("tr", {}, heads.map((x) => h("th", {}, x)))), h("tbody", {}, rows))
+  : h("p", { class: "muted" }, "None.");
+const short = (x) => (x ? String(x).slice(0, 12) : "—");
+const STATE_TONE = { READY_TO_PUBLISH: "ok", PUBLISHED: "ok", PUBLISHING: "warn", PUBLISH_FAILED: "err",
+  NEEDS_RECONCILE: "err", WITHDRAWN: "muted", active: "ok", consumed: "muted", expired: "warn",
+  revoked: "muted", invalid: "err", SCHEDULED: "ok", RUNNING: "warn", SUCCEEDED: "ok", FAILED: "err",
+  SKIPPED: "muted" };
+const stateBadge = (s) => badge(s, STATE_TONE[s] || "muted");
+
+function toast(text) {
+  const old = document.getElementById("toast");
+  if (old) old.remove();
+  const t = h("div", { id: "toast", role: "status" }, text);
+  document.body.append(t);
+  setTimeout(() => t.remove(), 6000);
+}
+
+async function api(method, path, body) {
+  const res = await fetch("/api" + path, {
+    method, credentials: "same-origin", cache: "no-store",
+    headers: { "content-type": "application/json", "x-lce-client": "dashboard" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) { data = {}; }
+  if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+  return data;
+}
+
+// Typed confirmation, the same phrase the API requires. Returns null if cancelled.
+function ask(phrase, explain) {
+  const typed = window.prompt(explain + "\n\nType '" + phrase + "' to confirm:");
+  if (typed === null) return null;
+  if (typed.trim() !== phrase) { toast("Phrase did not match; nothing changed."); return null; }
+  return phrase;
+}
+
+async function act(fn) {
+  try {
+    const out = await fn();
+    if (out !== null) { toast("Done."); await load(); }
+  } catch (err) {
+    toast("Refused: " + err.message);
+  }
+}
+
+// ── actions ─────────────────────────────────────────────────────────
+function schedule(postId, slot) {
+  return act(async () => {
+    const confirm = ask("SCHEDULE " + postId, "The cloud will publish " + postId + " automatically at " +
+      slot.local + " (only while auto-publish is on).");
+    return confirm && api("POST", "/consents", { post_id: postId, slot_id: slot.slot_id, confirm });
+  });
+}
+const revoke = (id) => act(async () => (window.confirm("Revoke this scheduled publication?") ? api("DELETE", "/consents/" + encodeURIComponent(id)) : null));
+function postAction(postId, action, explain, extra) {
+  return act(async () => {
+    const confirm = ask(action.toUpperCase() + " " + postId, explain);
+    return confirm && api("POST", "/posts/" + encodeURIComponent(postId) + "/" + action, Object.assign({ confirm }, extra || {}));
+  });
+}
+function reconcile(postId) {
+  const url = window.prompt("If the post IS on LinkedIn, paste its URL. Leave empty if it is NOT on LinkedIn.");
+  if (url === null) return;
+  const extra = url.trim() ? { decision: "published", url: url.trim() } : { decision: "not_published" };
+  return postAction(postId, "reconcile", url.trim() ? "Record " + postId + " as published at " + url.trim() + "."
+    : "Record that " + postId + " is NOT on LinkedIn (it becomes ready again).", extra);
+}
+function killSwitch(on) {
+  return act(async () => {
+    if (!on) return window.confirm("Turn auto-publish off? Nothing will be published until it is on again.")
+      ? api("PUT", "/settings", { auto_publish: false }) : null;
+    const confirm = ask("ENABLE AUTO-PUBLISH", "Scheduled, consented posts will be published automatically.");
+    return confirm && api("PUT", "/settings", { auto_publish: true, confirm });
+  });
+}
+
+// ── views ───────────────────────────────────────────────────────────
+function statusView(s) {
+  const st = s.settings;
+  const days = st.token_expires_at ? Math.floor((Date.parse(st.token_expires_at) - Date.parse(s.now)) / 86400000) : null;
+  const gates = [
+    ["provider linkedin_api", st.provider === "linkedin_api"],
+    ["LinkedIn token secret present", st.token_present],
+    ["token not expired", days === null ? null : days >= 0],
+    ["api_version and person_urn set", Boolean(st.api_version && st.person_urn)],
+    ["schedule configured", !s.schedule_error && Boolean(st.cadence)],
+  ];
+  return h("div", { class: "grid" },
+    section("Auto-publish",
+      h("p", { class: "big" }, st.auto_publish ? badge("ON", "ok") : badge("OFF (kill switch)", "warn")),
+      st.auto_publish
+        ? h("button", { class: "danger", onclick: () => killSwitch(false) }, "Turn off")
+        : h("button", { class: "primary", onclick: () => killSwitch(true) }, "Enable…"),
+      h("ul", {}, gates.map(([label, ok]) => h("li", {}, badge(ok === null ? "unknown" : ok ? "ok" : "missing",
+        ok === null ? "muted" : ok ? "ok" : "err"), " ", label)))),
+    section("Next scheduled publication", s.next_scheduled_publication
+      ? h("div", {}, h("p", { class: "big" }, s.next_scheduled_publication.post_id),
+        h("p", {}, "slot " + s.next_scheduled_publication.slot_id), h("p", { class: "muted" }, "UTC " + s.next_scheduled_publication.slot_utc))
+      : h("p", { class: "muted" }, "Nothing scheduled.")),
+    section("LinkedIn token",
+      h("p", { class: "big" }, st.token_present ? badge("present", "ok") : badge("absent", "err")),
+      h("p", { class: "muted" }, days === null ? "Expiry not recorded." : days < 0 ? "Expired." : "Expires in " + days + " days."),
+      h("p", { class: "note" }, "The token is an encrypted Worker secret; it is never shown or entered here.")));
+}
+
+function slotsView(s) {
+  const active = new Map(s.consents.filter((c) => c.status === "active").map((c) => [c.slot_id, c]));
+  const ready = s.posts.filter((p) => p.state === "READY_TO_PUBLISH" && !s.consents.some((c) => c.status === "active" && c.post_id === p.post_id));
+  const rows = s.upcoming_slots.map((slot) => {
+    const c = active.get(slot.slot_id);
+    let cell;
+    if (c) cell = h("span", {}, c.post_id + " ", h("button", { onclick: () => revoke(c.consent_id) }, "Revoke"));
+    else if (ready.length) {
+      const sel = h("select", {}, ready.map((p) => h("option", { value: p.post_id }, p.post_id)));
+      cell = h("span", {}, sel, " ", h("button", { onclick: () => schedule(sel.value, slot) }, "Schedule…"));
+    } else cell = h("span", { class: "muted" }, "no ready post");
+    return h("tr", {}, h("td", {}, slot.local), h("td", { class: "muted" }, slot.utc), h("td", {}, cell));
+  });
+  return section("Upcoming slots (next 14 days)", s.schedule_error ? h("p", { class: "err" }, "Schedule invalid: " + s.schedule_error)
+    : table(["Local", "UTC", "Scheduled post"], rows),
+  h("p", { class: "note" }, "Only posts you approved locally and pushed (lce cloud push) appear here. The dashboard cannot approve or edit content."));
+}
+
+function postsView(s) {
+  const rows = s.posts.map((p) => {
+    const actions = [];
+    if (p.state === "READY_TO_PUBLISH" || p.state === "PUBLISH_FAILED") {
+      actions.push(h("button", { class: "danger", onclick: () => postAction(p.post_id, "withdraw", "Withdraw " + p.post_id + " from the cloud; it will not be published.") }, "Withdraw…"));
+    }
+    if (p.state === "PUBLISH_FAILED") actions.push(h("button", { onclick: () => postAction(p.post_id, "rearm", "Make " + p.post_id + " schedulable again after a failed attempt.") }, "Rearm…"));
+    if (p.state === "NEEDS_RECONCILE" || p.state === "PUBLISHING") actions.push(h("button", { onclick: () => reconcile(p.post_id) }, "Reconcile…"));
+    const text = h("details", {}, h("summary", {}, "text"), h("pre", { class: "post-text" }, p.text || ""));
+    return h("tr", {}, h("td", {}, p.post_id, text), h("td", {}, stateBadge(p.state)),
+      h("td", {}, h("code", {}, short(p.approved_hash))),
+      h("td", {}, p.image ? "yes (" + Math.round(p.image.bytes / 1024) + " KB)" : "—"), h("td", {}, actions));
+  });
+  return section("Posts in the cloud", table(["Post", "State", "Approved hash", "Image", "Actions"], rows));
+}
+
+function publicationsView(s) {
+  return section("Publications", table(["Post", "State", "LinkedIn", "Image URN", "Verified by"],
+    s.publications.map((p) => h("tr", {}, h("td", {}, p.post_id), h("td", {}, stateBadge(p.state)),
+      h("td", {}, p.url ? h("a", { href: p.url, rel: "noopener noreferrer", target: "_blank" }, "open") : "—"),
+      h("td", {}, h("code", {}, p.image_urn || "—")), h("td", {}, p.verified_by || "—")))));
+}
+
+function historyView(s) {
+  const jobs = table(["Slot", "State", "Post", "Reason"], s.jobs.slice(0, 30).map((j) =>
+    h("tr", {}, h("td", {}, j.slot_id), h("td", {}, stateBadge(j.state)), h("td", {}, j.post_id || "—"), h("td", {}, j.reason || ""))));
+  const events = table(["When (UTC)", "Event", "By", "Post"], s.events.slice(0, 50).map((e) =>
+    h("tr", {}, h("td", {}, e.at), h("td", {}, e.event), h("td", {}, e.actor), h("td", {}, e.post_id || ""))));
+  return [section("Jobs", jobs), section("Audit log", events)];
+}
+
+function render() {
+  main.replaceChildren(statusView(snap), slotsView(snap), postsView(snap), publicationsView(snap), ...historyView(snap));
+}
+
+async function load() {
+  try {
+    snap = await api("GET", "/snapshot");
+    banner.textContent = "CLOUD · " + snap.now.slice(0, 16).replace("T", " ") + " UTC";
+    banner.className = "badge ok";
+    render();
+  } catch (err) {
+    snap = null;
+    banner.textContent = "NO DATA";
+    banner.className = "badge err";
+    main.replaceChildren(section("Could not load", h("p", {}, String(err.message || err)),
+      h("p", { class: "note" }, "Access must be configured and you must be signed in. The dashboard never shows substitute data.")));
+  }
+}
+
+document.getElementById("refresh").addEventListener("click", load);
+load();
