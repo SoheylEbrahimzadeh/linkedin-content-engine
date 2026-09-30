@@ -783,6 +783,13 @@ def cmd_cloud(args):
         print(json.dumps(cloud.configure_payload(store), indent=2, ensure_ascii=False))
         print("(dry run: nothing sent; auto_publish is never set here)")
         return 0
+    if args.sub == "doctor":
+        marks = {cloud.OK: "✓", cloud.ACTION: "→", cloud.FAIL: "✗"}
+        checks = cloud.doctor(store)
+        for c in checks:
+            print(f"{marks[c['status']]} {c['check']}: {c['detail']}"
+                  + (f"\n    {c['action']}" if c["action"] else ""))
+        return 0 if all(c["status"] == cloud.OK for c in checks) else 1
     client = cloud.make_client(store)
     if args.sub == "configure":
         out = cloud.configure(store, client)
@@ -1089,6 +1096,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="slot id, e.g. 2026-10-07-wed-0030 (default: the post's scheduled job slot)")
     gcmd(g, "revoke", cmd_cloud, "revoke a consent").add_argument("consent")
     gcmd(g, "status", cmd_cloud, "kill switch, token presence, next publication")
+    gcmd(g, "doctor", cmd_cloud, "read-only production preflight: which owner gate is still open")
     gcmd(g, "pull", cmd_cloud, "mirror cloud outcomes into local posts")
     p = gcmd(g, "configure", cmd_cloud, "send timezone, cadence and LinkedIn settings (no secrets)")
     p.add_argument("--dry-run", action="store_true")

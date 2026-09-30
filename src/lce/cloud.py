@@ -19,6 +19,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Protocol
 
 from lce.clock import iso_utc, now
@@ -334,3 +335,85 @@ def slot_for_post(store: DataStore, post_id: str) -> str:
     if len(slots) != 1:
         raise CloudError("give --slot: the post is not linked to exactly one scheduled job")
     return slots[0]
+
+
+# ── doctor: production preflight, one line per owner gate ─────────────
+OK, ACTION, FAIL = "ok", "action", "fail"
+
+
+def _check(name: str, status: str, detail: str, action: str = "") -> dict:
+    return {"check": name, "status": status, "detail": detail, "action": action}
+
+
+def doctor(store: DataStore, transport: CloudTransport | None = None,
+           token: Callable[[], str] | None = None, today: date | None = None) -> list[dict]:
+    """Read-only checks of the deployed Worker, in dependency order. Stops at the
+    first gate that hides everything behind it. Never sends a mutation."""
+    out: list[dict] = []
+    try:
+        cfg = load_cloud_config(store)
+    except CloudError as exc:
+        return [_check("config", ACTION, str(exc),
+                       "add config/cloud.yaml with api_base (templates/private-data)")]
+    base = cfg["api_base"].rstrip("/")
+    out.append(_check("config", OK, base))
+    transport = transport or UrllibCloudTransport()
+    try:
+        health = transport.request("GET", f"{base}/api/health", {}, None)
+    except CloudError as exc:
+        return out + [_check("worker", FAIL, str(exc), "check api_base and the Workers Builds deploy")]
+    if health.status != 200 or health.body.get("ok") is not True:
+        return out + [_check("worker", FAIL, f"/api/health answered HTTP {health.status}",
+                             "check api_base and the Workers Builds deploy")]
+    out.append(_check("worker", OK, "/api/health 200"))
+    try:
+        jwt = (token or (lambda: access_token_from_cloudflared(base)))()
+    except CloudError as exc:
+        return out + [_check("access login", ACTION, str(exc), f"cloudflared access login {base}")]
+    snap = transport.request("GET", f"{base}/api/snapshot",
+                             {"cf-access-token": jwt, "x-lce-client": "cli"}, None)
+    err = str(snap.body.get("error", ""))
+    if snap.status == 503 and "Access" in err:
+        return out + [_check("access", ACTION, err, "set Worker secrets ACCESS_TEAM_DOMAIN and "
+                             "ACCESS_AUD (docs/CLOUD.md, current production state)")]
+    if snap.status in (401, 403):
+        return out + [_check("access", FAIL, f"HTTP {snap.status} {err}".strip(),
+                             "the Access token does not match ACCESS_AUD / team; check both secrets")]
+    if snap.status == 503 and "schema" in err:
+        return out + [_check("access", OK, "authenticated"),
+                      _check("database", ACTION, err,
+                             "cd cloud && npx wrangler d1 migrations apply lce --remote")]
+    if snap.status != 200:
+        return out + [_check("snapshot", FAIL, f"HTTP {snap.status} {err}".strip())]
+    out += [_check("access", OK, "authenticated"), _check("database", OK, "schema present")]
+    s = snap.body.get("settings", {})
+    missing = [k for k in ("timezone", "cadence", "api_version", "person_urn") if not s.get(k)]
+    out.append(_check("settings", ACTION if missing else OK,
+                      "missing: " + ", ".join(missing) if missing
+                      else "timezone, cadence, LinkedIn config set",
+                      "lce cloud configure" if missing else ""))
+    enabled = s.get("provider") == "linkedin_api"
+    out.append(_check("provider", OK if enabled else ACTION, f"provider {s.get('provider')}",
+                      "" if enabled else "fill config/linkedin.yaml (api_version, person_urn), "
+                                         "then lce cloud configure"))
+    if not s.get("token_present"):
+        out.append(_check("linkedin token", ACTION, "no LINKEDIN_TOKEN secret",
+                          "npx wrangler secret put LINKEDIN_TOKEN (owner credential)"))
+    else:
+        exp = s.get("token_expires_at")
+        days = None
+        if exp:
+            days = (datetime.fromisoformat(exp.replace("Z", "+00:00")).date() - (today or now().date())).days
+        if days is not None and days < 0:
+            out.append(_check("linkedin token", ACTION, f"expired {-days} day(s) ago",
+                              "create a new token and replace the secret"))
+        else:
+            out.append(_check("linkedin token", OK if days is None or days > 7 else ACTION,
+                              "present" + (f", {days} day(s) left" if days is not None else
+                                           ", expiry unknown (lce cloud configure sends it)"),
+                              "" if days is None or days > 7 else "renew the token soon"))
+    if snap.body.get("schedule_error"):
+        out.append(_check("schedule", FAIL, snap.body["schedule_error"], "lce cloud configure"))
+    out.append(_check("kill switch", OK, "auto-publish ON" if s.get("auto_publish") else
+                      "auto-publish OFF (nothing publishes until you enable it with its phrase)"))
+    return out
