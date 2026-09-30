@@ -11,11 +11,11 @@ _Last updated: 2026-09-30_
 
 | | |
 |---|---|
-| Current phase | **4B** — cloud runtime (Cloudflare Worker + D1 + Cron + Access), not deployed |
-| Status | Implemented, privacy-cleaned, deploy workflow hardened, owner runbook written; CI green; PR open |
-| Current gate | **Owner hold**: PR #5 must not be merged until the owner says so |
-| Next phase | **4C** — remote dashboard on the Worker, behind Access (code + tests, no deployment) |
-| Blocked by | 4C depends on 4B being on `main` (owner instruction: do not start 4C before PR #5 is merged) |
+| Current phase | **5** — Personal Brand Engine (implemented on `phase-5-brand`) |
+| Parallel track | **4B** — cloud runtime, CI green, **held by the owner** (PR #5) |
+| Current gate | Owner hold on PR #5 (blocks 4C and deployment only) |
+| Next phase | **6** — image stage (independent of PR #5) |
+| After that | 7 analytics & learning loop; 4C once PR #5 is merged; 4D at the credential/live gates |
 
 ## Phases
 
@@ -28,10 +28,14 @@ _Last updated: 2026-09-30_
 | 3 human-triggered publishing (official API) | merged; not tested live | #4 |
 | 4A cloud architecture | done (design) | — |
 | 4B cloud runtime | CI green, **held** | #5 |
-| Operating contract (`CLAUDE.md`, contract, this file) | merged | #6 |
-| 4C remote dashboard (behind Access) | not started | — |
-| 4D controlled live publishing test | not started; needs gates below | — |
-| 5 more languages, approval channels, analytics | not started | — |
+| Operating contract | merged | #6, #7 |
+| Privacy: derived denylist + history scan | merged | #8 |
+| 5 Personal Brand Engine | in review | see below |
+| 4C remote dashboard (behind Access) | waits for PR #5 | — |
+| 4D controlled live publishing test | credential + live gates | — |
+| 6 image stage | next | — |
+| 7 analytics & learning loop | not started | — |
+| 8 more languages, approval channels | not started | — |
 
 ## Open PRs and holds
 
@@ -49,6 +53,7 @@ _Last updated: 2026-09-30_
 ## Open follow-ups (routine)
 
 - After PR #5 merges: record 4B as merged here, then start 4C.
+- Owner input for the brand: the interview's brand questions (`lce interview next`); personal-evidence themes need PUBLIC stories in the story bank.
 
 - The gh-pages demo is built from an older commit and is stale; rebuild after 4B/4C land.
 - An exact-SHA view of a rewritten `phase-4b` commit may remain cached on GitHub

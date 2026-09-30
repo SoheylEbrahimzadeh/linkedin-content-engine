@@ -15,9 +15,9 @@ import yaml
 from lce.store import DataStore, StoreError, now_iso
 
 TARGETS = {"profile": ("profile_path", "profile"), "voice": ("voice_path", "voice"),
-           "settings": ("settings_path", "settings")}
-GROUP_ORDER = ["positioning", "audience", "expertise", "pillars", "voice", "topics", "formats",
-               "frequency", "languages"]
+           "settings": ("settings_path", "settings"), "brand": ("brand_path", "brand")}
+GROUP_ORDER = ["positioning", "audience", "expertise", "pillars", "brand", "voice", "topics",
+               "formats", "frequency", "languages"]
 
 
 @dataclass(frozen=True)

@@ -126,6 +126,10 @@ class DataStore:
         return self.root / "profile" / "voice.yaml"
 
     @property
+    def brand_path(self) -> Path:
+        return self.root / "profile" / "brand.yaml"
+
+    @property
     def plan_path(self) -> Path:
         return self.root / "plan" / "calendar.yaml"
 
@@ -175,6 +179,9 @@ class DataStore:
 
     def voice(self) -> dict:
         return self.read_doc(self.voice_path)
+
+    def brand(self) -> dict:
+        return self.read_doc(self.brand_path)
 
     def plan(self) -> dict:
         return self.read_doc(self.plan_path, {"entries": []})

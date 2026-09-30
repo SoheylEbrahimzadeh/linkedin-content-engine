@@ -1,0 +1,25 @@
+demo: true
+objective: Be the go-to practitioner for calm, practical automation in small service teams.
+narrative:
+  throughline: Automation should remove toil for people, not add hype.
+  chapters:
+    - id: service-desk-years
+      title: Running a small service desk
+      period: fictional
+      summary: Hands-on operations work that taught the value of simple rules.
+      stories: [demo-ticket-routing]
+target:
+  markets: [Nordics]
+  roles: [Automation lead]
+  industries: [Professional services]
+themes:
+  - {id: field-lessons, name: Lessons from real work, pillars: [automation, lessons], evidence: personal}
+  - {id: practical-how, name: Practical how-to, pillars: [automation, operations], evidence: either}
+  - {id: observations, name: Industry observations, evidence: external}
+mix:
+  pillars: {automation: 0.4, operations: 0.35, lessons: 0.25}
+  window_days: 28
+  min_personal_share: 0.3
+credibility:
+  rules:
+    - Only first-person results that are backed by a PUBLIC story.

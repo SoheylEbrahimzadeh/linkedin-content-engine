@@ -11,15 +11,22 @@ Phase 1 ends at the approval boundary. **You never run `lce approve`,
 ## Inputs to read first
 
 - `lce status` (must say "ready for drafting"; otherwise run the interview)
-- `profile/profile.yaml`, `profile/voice.yaml`
+- `profile/profile.yaml`, `profile/voice.yaml`, `profile/brand.yaml`
+  (objective, throughline, narrative chapters, themes, content mix,
+  credibility rules; target markets are direction, never the post subject)
+- `lce brand next`: the recommended pillar, theme and evidence mode
 - `story_bank/stories/*.yaml` — only `PUBLIC` stories may be used, and only
   their `allowed_claims`
 - the candidate: `research/candidates/<id>.yaml`
 
 ## Steps
 
-1. **Select**: `lce select list`, pick a candidate that fits a pillar, then
-   `lce select pick <candidate> --pillar <id> --angle "<angle>" --format text --date YYYY-MM-DD [--story <story_id>]`
+1. **Select**: start from `lce brand next`; `lce select list` ranks candidates
+   (brand-target pillars rank higher, avoid-list topics are penalized). Then
+   `lce select pick <candidate> --pillar <id> --theme <theme> [--chapter <id>] [--evidence personal|external] --angle "<angle>" --format text --date YYYY-MM-DD [--story <story_id>]`.
+   If the post lands in `NEEDS_INPUT` for personal evidence, do not write it
+   from imagination: ask the owner for a story (story bank) or re-select with
+   external evidence.
 2. **Draft**: write the post to a temp file, `lce draft save <post_id> --file <file>`.
 3. **Humanize**: rewrite in the owner's voice (tone, formality, sentence
    length, avoid list, emoji/hashtag policy). Check with
@@ -41,3 +48,6 @@ Phase 1 ends at the approval boundary. **You never run `lce approve`,
   recorded source claim — QA enforces this.
 - No engagement bait, no hype without a concrete argument, no Markdown.
 - Plain, specific, useful. One idea per post.
+- Every post must be consistent with the brand throughline and serve the
+  objective; follow the credibility rules in `brand.yaml`. Write for an
+  international professional audience (no local jargon without explanation).

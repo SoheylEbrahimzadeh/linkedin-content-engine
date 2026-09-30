@@ -17,6 +17,8 @@ claims:
 - text: 58% of small teams run no review after minor incidents
   source_url: https://example.org/ops-survey-2025
 stories_used: []
+brand:
+  evidence: external
 state: AWAITING_APPROVAL
 history:
 - at: '2025-05-04T15:45:00+00:00'

@@ -17,6 +17,7 @@ LAYOUT: dict[str, str] = {
     "config/settings.yaml": "settings",
     "profile/profile.yaml": "profile",
     "profile/voice.yaml": "voice",
+    "profile/brand.yaml": "brand",
     "story_bank/stories/*.yaml": "story",
     "research/candidates/*.yaml": "research_candidate",
     "plan/calendar.yaml": "plan",

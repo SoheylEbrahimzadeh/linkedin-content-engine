@@ -10,6 +10,13 @@ author has verified and approved.
 > terminal. See [docs/ROADMAP.md](docs/ROADMAP.md), [docs/AUTOMATION.md](docs/AUTOMATION.md)
 > and [docs/PUBLISHING.md](docs/PUBLISHING.md).
 
+## Personal brand
+
+Posts serve a long-term professional identity: a private brand strategy
+(objective, narrative, themes, content mix, credibility rules) decides what
+comes next, and personal claims need real, approved stories. See
+[docs/BRAND.md](docs/BRAND.md).
+
 ## Principles
 
 - **Public code ≠ private data.** This repository holds code, templates and a
