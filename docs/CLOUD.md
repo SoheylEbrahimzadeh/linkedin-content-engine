@@ -134,6 +134,25 @@ request is wall time, not CPU. Expected cost: €0/month.
 - Use one deploy path. Keep `CLOUD_DEPLOY_ENABLED` unset while Workers Builds
   deploys production.
 
+### Verifying production from GitHub (no local machine)
+
+`.github/workflows/production-smoke.yml` runs after every push to `main`, daily
+and on demand. With the repository **variable** `LCE_API_BASE`
+(`https://<worker>.<subdomain>.workers.dev`, not a secret) it waits for the
+Worker, then proves it is fail-closed: `/`, `/api/snapshot`, `/api/pipeline`
+and two mutations must never answer 2xx without credentials. With an **Access
+service token** (Zero Trust → Access → Service Auth → create token; add a
+policy with action *Service Auth* for it on the Worker's Access application)
+stored as the repository secrets `LCE_CF_ACCESS_CLIENT_ID` and
+`LCE_CF_ACCESS_CLIENT_SECRET`, it also runs the read-only `lce cloud doctor`
+(schema, settings, provider, LinkedIn token presence and expiry). Exit codes:
+0 all ok, 1 owner steps still open (the job passes with a notice), 2 broken
+(the job fails).
+
+The CLI uses the same two environment variables when they are set, so any
+non-interactive client (CI, the private repository's workflows) authenticates
+without `cloudflared`; otherwise it uses `cloudflared access token`.
+
 ### Manual workflow
 
 `.github/workflows/cloud-deploy.yml` runs only manually and only when the

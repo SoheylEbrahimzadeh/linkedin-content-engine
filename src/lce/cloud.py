@@ -81,6 +81,27 @@ def access_token_from_cloudflared(api_base: str, runner=subprocess.run) -> str:
     return token
 
 
+def default_access(api_base: str) -> str | dict[str, str]:
+    """Credentials for Cloudflare Access, never stored by the engine.
+
+    A service token (LCE_CF_ACCESS_CLIENT_ID / LCE_CF_ACCESS_CLIENT_SECRET, e.g.
+    GitHub Actions secrets) is sent as the two Access headers; Access validates
+    it at the edge and forwards a signed JWT to the Worker. Otherwise the
+    owner's cloudflared login token is used.
+    """
+    cid = os.environ.get("LCE_CF_ACCESS_CLIENT_ID", "").strip()
+    secret = os.environ.get("LCE_CF_ACCESS_CLIENT_SECRET", "").strip()
+    if cid and secret:
+        return {"CF-Access-Client-Id": cid, "CF-Access-Client-Secret": secret}
+    if cid or secret:
+        raise CloudError("set both LCE_CF_ACCESS_CLIENT_ID and LCE_CF_ACCESS_CLIENT_SECRET, or neither")
+    return access_token_from_cloudflared(api_base)
+
+
+def access_headers(credential: str | dict[str, str]) -> dict[str, str]:
+    return dict(credential) if isinstance(credential, dict) else {"cf-access-token": credential}
+
+
 def load_cloud_config(store: DataStore) -> dict:
     from lce.validate import validate_doc
 
@@ -94,11 +115,12 @@ def load_cloud_config(store: DataStore) -> dict:
 
 
 class CloudClient:
-    def __init__(self, api_base: str, token: Callable[[], str], transport: CloudTransport):
+    def __init__(self, api_base: str, token: Callable[[], str | dict[str, str]],
+                 transport: CloudTransport):
         self.api_base, self._token, self.transport = api_base.rstrip("/"), token, transport
 
     def call(self, method: str, path: str, payload: dict | None = None) -> dict:
-        headers = {"cf-access-token": self._token(), "content-type": "application/json",
+        headers = {**access_headers(self._token()), "content-type": "application/json",
                    "x-lce-client": "cli"}
         body = json.dumps(payload).encode() if payload is not None else None
         resp = self.transport.request(method, f"{self.api_base}/api{path}", headers, body)
@@ -109,9 +131,9 @@ class CloudClient:
 
 
 def make_client(store: DataStore, transport: CloudTransport | None = None,
-                token: Callable[[], str] | None = None) -> CloudClient:
+                token: Callable[[], str | dict[str, str]] | None = None) -> CloudClient:
     cfg = load_cloud_config(store)
-    return CloudClient(cfg["api_base"], token or (lambda: access_token_from_cloudflared(cfg["api_base"])),
+    return CloudClient(cfg["api_base"], token or (lambda: default_access(cfg["api_base"])),
                        transport or UrllibCloudTransport())
 
 
@@ -346,7 +368,8 @@ def _check(name: str, status: str, detail: str, action: str = "") -> dict:
 
 
 def doctor(store: DataStore, transport: CloudTransport | None = None,
-           token: Callable[[], str] | None = None, today: date | None = None) -> list[dict]:
+           token: Callable[[], str | dict[str, str]] | None = None,
+           today: date | None = None) -> list[dict]:
     """Read-only checks of the deployed Worker, in dependency order. Stops at the
     first gate that hides everything behind it. Never sends a mutation."""
     out: list[dict] = []
@@ -367,11 +390,12 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
                              "check api_base and the Workers Builds deploy")]
     out.append(_check("worker", OK, "/api/health 200"))
     try:
-        jwt = (token or (lambda: access_token_from_cloudflared(base)))()
+        credential = (token or (lambda: default_access(base)))()
     except CloudError as exc:
-        return out + [_check("access login", ACTION, str(exc), f"cloudflared access login {base}")]
+        return out + [_check("access login", ACTION, str(exc),
+                             f"cloudflared access login {base} (or set an Access service token)")]
     snap = transport.request("GET", f"{base}/api/snapshot",
-                             {"cf-access-token": jwt, "x-lce-client": "cli"}, None)
+                             {**access_headers(credential), "x-lce-client": "cli"}, None)
     err = str(snap.body.get("error", ""))
     if snap.status == 503 and "Access" in err:
         return out + [_check("access", ACTION, err, "set Worker secrets ACCESS_TEAM_DOMAIN and "
