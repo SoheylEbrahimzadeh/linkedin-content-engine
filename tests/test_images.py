@@ -6,7 +6,7 @@ import zlib
 import pytest
 from conftest import GOOD_POST, selected_post
 
-from lce import approval, images, publishing
+from lce import approval, images
 from lce.dupcheck import run_dupcheck
 from lce.posts import save_draft, save_humanized
 from lce.qa import run_qa
@@ -120,22 +120,6 @@ def test_image_change_discards_approval(store, tmp_path):
     with pytest.raises(StoreError, match="image changed after approval"):
         approval.mark_ready(store, pid)
     assert store.load_post(pid)["state"] == "HUMANIZED"
-
-
-def test_publisher_refuses_posts_with_an_image(store, tmp_path):
-    pid = checked_post(store)
-    decide_diagram(store, pid, tmp_path)
-    approval.prepare(store, pid)
-    h = store.load_post(pid)["content_hash"]
-    approval.approve(store, pid, h[:12], confirm=lambda _: f"APPROVE {pid}", is_tty=TTY)
-    approval.mark_ready(store, pid)
-    s = store.settings()
-    s["publisher"] = {"provider": "linkedin_api"}
-    store.write_doc(store.settings_path, "settings", s)
-    (store.root / "config" / "linkedin.yaml").write_text(
-        "api_version: '202609'\nperson_urn: urn:li:person:TestPerson1\n")
-    with pytest.raises(StoreError, match="image upload is not implemented"):
-        publishing.prepare(store, pid, publisher=None)
 
 
 def test_cli_decide_and_check(store, tmp_path, capsys):

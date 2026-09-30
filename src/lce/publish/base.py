@@ -33,6 +33,15 @@ class Issue:
 
 
 @dataclass(frozen=True)
+class ImageAttachment:
+    """The approved image: bytes as approved (hash-checked), alt text for accessibility."""
+    data: bytes
+    alt_text: str
+    sha256: str
+    file_name: str
+
+
+@dataclass(frozen=True)
 class PostPayload:
     post_id: str
     idempotency_key: str
@@ -41,6 +50,7 @@ class PostPayload:
     language: str
     scheduled_at_utc: str | None = None
     media_urls: tuple[str, ...] = ()
+    image: ImageAttachment | None = None
 
 
 class Outcome(StrEnum):

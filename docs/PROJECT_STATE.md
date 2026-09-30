@@ -11,10 +11,10 @@ _Last updated: 2026-09-30_
 
 | | |
 |---|---|
-| Current phase | **7A** — analytics & learning loop (stacked on 6A) |
+| Current phase | **6B (local)** — image upload in the local publisher (stacked on 7A) |
 | Parallel track | **4B** — cloud runtime, CI green, **held by the owner** (PR #5) |
 | Current gate | Owner hold on PR #5 (blocks 4C and deployment only) |
-| Next phase | 6B image upload and 4C once PR #5 is merged; 7B at the LinkedIn access gate |
+| Next phase | 4C and 6B (cloud part) once PR #5 is merged; 7B at the LinkedIn access gate |
 | After that | 7 analytics & learning loop; 4C once PR #5 is merged; 4D at the credential/live gates |
 
 ## Phases
@@ -32,10 +32,11 @@ _Last updated: 2026-09-30_
 | Privacy: derived denylist + history scan | merged | #8 |
 | 5 Personal Brand Engine | merged | #9 |
 | 6A image stage | CI green; merge blocked by tool permission | #10 |
-| 7A analytics & learning loop | in review | — |
+| 7A analytics & learning loop | in review (stacked on #10) | #11 |
+| 6B image upload, local publisher | in review (stacked on #11) | — |
 | 4C remote dashboard (behind Access) | waits for PR #5 | — |
 | 4D controlled live publishing test | credential + live gates | — |
-| 6B image upload in publishers | after PR #5 | — |
+| 6B image upload, cloud Worker | after PR #5 | — |
 | 7B analytics API adapter | credential gate (LinkedIn Community Management access) | — |
 | 8 more languages, approval channels | not started | — |
 
@@ -57,7 +58,7 @@ _Last updated: 2026-09-30_
 - Tooling: this session's permission checks blocked merging PR #10 and bumping `ENGINE_REF` in the private repo; both need the owner (merge button / explicit approval).
 
 - After PR #5 merges: record 4B as merged here, then start 4C.
-- `phase-4b` must refuse `lce cloud push` for posts whose image decision is not `none` (the Worker is text-only until 6B); added when main (6A) is merged into `phase-4b`.
+- Done on `phase-4b` (72b8576): `lce cloud push` refuses posts whose image decision is not `none` (the Worker is text-only until the cloud part of 6B).
 - Owner input for the brand: the interview's brand questions (`lce interview next`); personal-evidence themes need PUBLIC stories in the story bank.
 
 - The gh-pages demo is built from an older commit and is stale; rebuild after 4B/4C land.

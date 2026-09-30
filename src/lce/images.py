@@ -37,6 +37,33 @@ MIN_RELATION = 20
 NO_IMAGE = "none"
 
 
+MAX_PIXELS = 36_152_320  # LinkedIn Images API: fewer than this many pixels
+
+
+def dimensions(data: bytes, ext: str) -> tuple[int, int] | None:
+    """(width, height) from the file header, or None if it cannot be read."""
+    import struct
+
+    try:
+        if ext == ".png" and data[12:16] == b"IHDR":
+            return struct.unpack(">II", data[16:24])
+        if ext == ".gif":
+            return struct.unpack("<HH", data[6:10])
+        if ext in (".jpg", ".jpeg"):
+            i = 2
+            while i + 9 < len(data):
+                if data[i] != 0xFF:
+                    return None
+                marker, length = data[i + 1], struct.unpack(">H", data[i + 2:i + 4])[0]
+                if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                    h, w = struct.unpack(">HH", data[i + 5:i + 9])
+                    return w, h
+                i += 2 + length
+    except struct.error:
+        return None
+    return None
+
+
 def path(store: DataStore, post_id: str) -> Path:
     return store.post_dir(post_id) / "image.yaml"
 
@@ -102,8 +129,16 @@ def check(store: DataStore, post_id: str) -> tuple[list[str], list[str]]:
         return errors + ["the image file is missing"], warnings
     if file_sha256(f) != doc.get("sha256"):
         errors.append("the image file changed after the decision; decide again")
-    if not f.read_bytes().startswith(MAGIC[f.suffix.lower()]):
+    data = f.read_bytes()
+    if not data.startswith(MAGIC[f.suffix.lower()]):
         errors.append("the file content does not match its extension")
+    else:
+        size = dimensions(data, f.suffix.lower())
+        if size is None:
+            errors.append("cannot read the image dimensions")
+        elif size[0] * size[1] >= MAX_PIXELS:
+            errors.append(f"{size[0]}x{size[1]} is too large for LinkedIn "
+                          f"(< {MAX_PIXELS:,} pixels)")
     relation = doc.get("relation", "").strip()
     if not relation:
         errors.append("state how the image relates to the post (no decorative images)")

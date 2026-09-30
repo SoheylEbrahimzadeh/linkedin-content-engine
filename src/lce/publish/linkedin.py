@@ -1,4 +1,4 @@
-"""Official LinkedIn Posts API adapter (member posts, text only).
+"""Official LinkedIn Posts API adapter (member posts: text, optionally one image).
 
 Facts this adapter relies on (docs/PUBLISHING.md lists the sources):
 - POST https://api.linkedin.com/rest/posts with `Linkedin-Version: YYYYMM` and
@@ -9,6 +9,13 @@ Facts this adapter relies on (docs/PUBLISHING.md lists the sources):
   adapter cannot look up whether a post exists (`can_find_existing = False`).
 - The API offers no idempotency key. An ambiguous outcome is reported as
   AMBIGUOUS and never retried here.
+- Images (Images API): POST /rest/images?action=initializeUpload with the
+  person as owner returns `uploadUrl` and `urn:li:image:…`; the file is PUT to
+  `uploadUrl` with the OAuth token (201); the post references the image in
+  `content.media` with `altText`. JPG/PNG/GIF under 36,152,320 pixels.
+  A failed image step creates no post, so it is a plain rejection (retryable).
+  The token is only ever sent to api.linkedin.com and to LinkedIn's
+  `https://www.linkedin.com/dms-uploads/` upload URLs.
 
 HTTP goes through an injectable transport; tests use a fake one.
 """
@@ -38,6 +45,10 @@ from lce.publish.credentials import CredentialError, TokenStore
 from lce.publish.little import to_little
 
 POSTS_URL = "https://api.linkedin.com/rest/posts"
+IMAGES_INIT_URL = "https://api.linkedin.com/rest/images?action=initializeUpload"
+UPLOAD_PREFIX = "https://www.linkedin.com/dms-uploads/"
+IMAGE_URN_RE = re.compile(r"^urn:li:image:[A-Za-z0-9_-]+$")
+MAX_ALT_TEXT = 4086
 USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 PERSON_URN_RE = re.compile(r"^urn:li:person:[A-Za-z0-9_-]+$")
 VERSION_RE = re.compile(r"^\d{6}$")
@@ -70,7 +81,7 @@ class UrllibTransport:
     """Real HTTPS transport (stdlib). Only used by `lce publish` / `lce linkedin whoami`."""
 
     def request(self, method, url, headers, body, timeout):
-        if not url.startswith("https://api.linkedin.com/"):
+        if not (url.startswith("https://api.linkedin.com/") or url.startswith(UPLOAD_PREFIX)):
             raise TransportError("refusing a non-LinkedIn URL", sent=False)
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
@@ -146,10 +157,18 @@ class LinkedInPublisher:
         if post.scheduled_at_utc:
             issues.append(Issue("unsupported.schedule", "LinkedIn's API cannot schedule posts"))
         if post.media_urls:
-            issues.append(Issue("unsupported.media", "media is not supported in Phase 3"))
+            issues.append(Issue("unsupported.media", "media URLs are not supported"))
+        if post.image is not None:
+            if not post.image.data:
+                issues.append(Issue("image.empty", "the image file is empty"))
+            if not post.image.alt_text.strip():
+                issues.append(Issue("image.alt_text", "alt text is required"))
+            if len(post.image.alt_text) > MAX_ALT_TEXT:
+                issues.append(Issue("image.alt_text", f"alt text is over {MAX_ALT_TEXT} characters"))
         return issues
 
-    def build_request(self, post: PostPayload) -> tuple[str, dict[str, str], dict]:
+    def build_request(self, post: PostPayload, image_urn: str | None = None
+                      ) -> tuple[str, dict[str, str], dict]:
         headers = {"Linkedin-Version": self.config.api_version,
                    "X-Restli-Protocol-Version": "2.0.0",
                    "Content-Type": "application/json"}
@@ -162,6 +181,9 @@ class LinkedInPublisher:
             "lifecycleState": "PUBLISHED",
             "isReshareDisabledByAuthor": False,
         }
+        if post.image is not None:
+            body["content"] = {"media": {"id": image_urn or "<urn:li:image from upload>",
+                                         "altText": post.image.alt_text.strip()}}
         return POSTS_URL, headers, body
 
     # ── sending ─────────────────────────────────────────────────────
@@ -177,7 +199,13 @@ class LinkedInPublisher:
             return PublishResult(Outcome.REJECTED, detail={
                 "reason": "credentials", "sent": False, "retryable": False,
                 "message": str(exc)})
-        url, headers, body = self.build_request(post)
+        image_urn = None
+        if post.image is not None:
+            uploaded = self._upload_image(post.image, token.reveal())
+            if isinstance(uploaded, PublishResult):
+                return uploaded
+            image_urn = uploaded
+        url, headers, body = self.build_request(post, image_urn)
         headers = {**headers, "Authorization": f"Bearer {token.reveal()}"}
         payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
         try:
@@ -189,7 +217,44 @@ class LinkedInPublisher:
                     "reason": "transport", "sent": True, "message": str(exc)})
             return PublishResult(Outcome.REJECTED, detail={
                 "reason": "transport", "sent": False, "retryable": True, "message": str(exc)})
-        return self._map(resp)
+        result = self._map(resp)
+        if image_urn:
+            result = PublishResult(result.outcome, remote_id=result.remote_id, url=result.url,
+                                   detail={**(result.detail or {}), "image_urn": image_urn})
+        return result
+
+    def _upload_image(self, image, token: str) -> str | PublishResult:
+        """Initialize + upload. Returns the image URN, or a rejection (no post was created)."""
+        def failed(reason: str, **extra) -> PublishResult:
+            return PublishResult(Outcome.REJECTED, detail={
+                "reason": reason, "sent": False, "retryable": True, **extra})
+
+        headers = {"Linkedin-Version": self.config.api_version,
+                   "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json",
+                   "Authorization": f"Bearer {token}"}
+        init = json.dumps({"initializeUploadRequest": {"owner": self.config.person_urn}}).encode()
+        try:
+            resp = self.transport.request("POST", IMAGES_INIT_URL, headers, init,
+                                          self.config.timeout_seconds)
+        except TransportError as exc:
+            return failed("image_init_transport", message=str(exc))
+        if resp.status != 200:
+            return failed("image_init_failed", http_status=resp.status, message=_error_text(resp))
+        try:
+            value = json.loads(resp.body.decode("utf-8"))["value"]
+            upload_url, urn = str(value["uploadUrl"]), str(value["image"])
+        except (ValueError, KeyError, TypeError):
+            return failed("image_init_unreadable")
+        if not upload_url.startswith(UPLOAD_PREFIX) or not IMAGE_URN_RE.match(urn):
+            return failed("image_init_untrusted", message="unexpected upload URL or image URN")
+        try:
+            up = self.transport.request("PUT", upload_url, {"Authorization": f"Bearer {token}"},
+                                        image.data, self.config.timeout_seconds)
+        except TransportError as exc:
+            return failed("image_upload_transport", message=str(exc))
+        if up.status not in (200, 201):
+            return failed("image_upload_failed", http_status=up.status, message=_error_text(up))
+        return urn
 
     def _map(self, resp: HttpResponse) -> PublishResult:
         status = resp.status

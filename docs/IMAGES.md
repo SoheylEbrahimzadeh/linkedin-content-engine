@@ -52,8 +52,28 @@ changed after approval. Changing the decision of a post awaiting approval,
 approved or ready reopens it (checks and approval are discarded); after
 publishing starts it cannot change.
 
-## Publishing
+## Publishing (Phase 6B, local publisher)
 
-Image upload to LinkedIn is **Phase 6B**. Until then the publisher refuses a
-post whose decision is not `none`, rather than publishing it without its
-image. Approvals from before the image stage are text-only.
+`lce publish <post>` uploads the approved image through LinkedIn's official
+Images API, then creates the post referencing it:
+
+1. `POST /rest/images?action=initializeUpload` with the person as owner →
+   `uploadUrl` and `urn:li:image:…`;
+2. `PUT <uploadUrl>` with the image bytes and the OAuth token (201);
+3. `POST /rest/posts` with `content.media = {id: <image urn>, altText}`.
+
+The token is only sent to `api.linkedin.com` and to LinkedIn's
+`https://www.linkedin.com/dms-uploads/` upload URLs; any other upload URL is
+refused before anything is sent. A failure in steps 1–2 creates no post and is
+a plain, retryable `PUBLISH_FAILED`; step 3 keeps the existing rules
+(ambiguous → `NEEDS_RECONCILE`, never retried). The bytes sent are re-hashed
+against the approved image hash. `publication.json` records the image URN and
+hash. `lce publish <post> --dry-run` lists the three steps and sends nothing.
+LinkedIn accepts JPG, PNG and GIF under 36,152,320 pixels; `lce image check`
+reads the dimensions from the file header.
+
+The cloud Worker (PR #5) is still text-only: `lce cloud push` refuses posts
+with an image until the Worker gains the same upload (6B, cloud part).
+Approvals from before the image stage are text-only.
+
+Sources: LinkedIn Images API and Posts API documentation (Microsoft Learn).
