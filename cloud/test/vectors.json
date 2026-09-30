@@ -438,5 +438,28 @@
    "lifecycleState": "PUBLISHED",
    "isReshareDisabledByAuthor": false
   }
+ },
+ "request_image": {
+  "text": "Emoji 🚀 and symbols (a) [b] {c} <d> @e #f _g *h ~i |j \\k",
+  "urn": "urn:li:image:C4E10AQVector1",
+  "alt": "  Diagram: three queues (fictional)  ",
+  "body": {
+   "author": "urn:li:person:Vector1",
+   "commentary": "Emoji 🚀 and symbols \\(a\\) \\[b\\] \\{c\\} \\<d\\> \\@e #f \\_g \\*h \\~i \\|j \\\\k",
+   "visibility": "PUBLIC",
+   "distribution": {
+    "feedDistribution": "MAIN_FEED",
+    "targetEntities": [],
+    "thirdPartyDistributionChannels": []
+   },
+   "lifecycleState": "PUBLISHED",
+   "isReshareDisabledByAuthor": false,
+   "content": {
+    "media": {
+     "id": "urn:li:image:C4E10AQVector1",
+     "altText": "Diagram: three queues (fictional)"
+    }
+   }
+  }
  }
 }

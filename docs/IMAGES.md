@@ -72,8 +72,8 @@ hash. `lce publish <post> --dry-run` lists the three steps and sends nothing.
 LinkedIn accepts JPG, PNG and GIF under 36,152,320 pixels; `lce image check`
 reads the dimensions from the file header.
 
-The cloud Worker (PR #5) is still text-only: `lce cloud push` refuses posts
-with an image until the Worker gains the same upload (6B, cloud part).
+The cloud Worker uploads images the same way (see CLOUD.md; images up to
+1.5 MB are accepted for cloud delegation).
 Approvals from before the image stage are text-only.
 
 Sources: LinkedIn Images API and Posts API documentation (Microsoft Learn).
