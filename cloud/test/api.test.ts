@@ -179,3 +179,21 @@ describe("mutation safety (CSRF, typed confirmation)", () => {
     expect(await rows(e, "SELECT * FROM consents")).toHaveLength(0);
   });
 });
+
+
+describe("withdraw and re-delegate", () => {
+  it("a withdrawn post can be delegated again (same or new approved version)", async () => {
+    const h = await contentHash(TEXT);
+    const push = (text: string, hash: string) => call("PUT", "/posts/20261006-demo-post",
+      { text, approved_hash: hash, approved_at: "2026-09-30T10:00:00+00:00", language: "en" });
+    expect((await push(TEXT, h)).status).toBe(200);
+    expect((await call("POST", "/posts/20261006-demo-post/withdraw")).body).toMatchObject({ state: "WITHDRAWN" });
+    expect((await push(TEXT, h)).body).toMatchObject({ state: "READY_TO_PUBLISH", redelegated: true });
+    await call("POST", "/posts/20261006-demo-post/withdraw");
+    const v2 = TEXT + "Revised and approved again.\n";
+    expect((await push(v2, await contentHash(v2))).body).toMatchObject({ redelegated: true });
+    const [row] = await rows<{ approved_hash: string; state: string }>(e, "SELECT approved_hash, state FROM posts");
+    expect([row.state, row.approved_hash]).toEqual(["READY_TO_PUBLISH", await contentHash(v2)]);
+    expect((await push(TEXT, h)).status).toBe(409);            // a live post is never replaced
+  });
+});

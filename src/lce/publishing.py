@@ -197,7 +197,7 @@ def publish(store: DataStore, post_id: str, publisher: LinkedInPublisher, *,
         "idempotency_key": prep.payload.idempotency_key, "attempts": []}
     attempt = {"attempt": len(record["attempts"]) + 1, "intent_at": iso_utc(now()),
                "outcome": "pending"}
-    record.update({"approved_hash": prep.payload.content_hash,
+    record.update({"runtime": "local", "approved_hash": prep.payload.content_hash,
                    "commentary_hash": _sha(prep.commentary),
                    "api_version": publisher.config.api_version,
                    "author": publisher.config.person_urn, "state": "publishing"})

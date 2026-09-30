@@ -29,6 +29,13 @@
       ],
       "description": "manual = the owner posted the approved text themselves and recorded it with `lce publish manual`."
     },
+    "runtime": {
+      "enum": [
+        "local",
+        "cloud"
+      ],
+      "description": "Which publisher made the attempt (cloud records are mirrored by `lce cloud pull`)."
+    },
     "idempotency_key": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
@@ -67,10 +74,19 @@
     "image": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["urn", "sha256"],
+      "required": [
+        "urn",
+        "sha256"
+      ],
       "properties": {
-        "urn": {"type": "string", "pattern": "^urn:li:image:[A-Za-z0-9_-]+$"},
-        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        "urn": {
+          "type": "string",
+          "pattern": "^urn:li:image:[A-Za-z0-9_-]+$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
       }
     },
     "published_at": {

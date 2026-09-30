@@ -793,7 +793,8 @@ def cmd_cloud(args):
         out = cloud.push(store, args.post, client)
         print(f"✓ {args.post} delegated to the cloud ({out.get('state')}); local publish is now refused")
     elif args.sub == "consent":
-        out = cloud.consent(store, args.post, args.slot, client)
+        slot = args.slot or cloud.slot_for_post(store, args.post)
+        out = cloud.consent(store, args.post, slot, client)
         print(f"✓ consent {out['consent_id']}: {args.post} at {out['slot']['local']} "
               "(only if auto_publish is on)")
     elif args.sub == "revoke":
@@ -1084,7 +1085,8 @@ def build_parser() -> argparse.ArgumentParser:
     gcmd(g, "push", cmd_cloud, "delegate an approved post to the cloud (interactive)").add_argument("post")
     p = gcmd(g, "consent", cmd_cloud, "schedule a delegated post for one slot (interactive)")
     p.add_argument("post")
-    p.add_argument("--slot", required=True, help="slot id, e.g. 2026-10-07-wed-0030")
+    p.add_argument("--slot", default=None,
+                   help="slot id, e.g. 2026-10-07-wed-0030 (default: the post's scheduled job slot)")
     gcmd(g, "revoke", cmd_cloud, "revoke a consent").add_argument("consent")
     gcmd(g, "status", cmd_cloud, "kill switch, token presence, next publication")
     gcmd(g, "pull", cmd_cloud, "mirror cloud outcomes into local posts")

@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-09-30_
+_Last updated: 2026-09-30 (outcome audit)_
 
 ## Objective
 
@@ -17,24 +17,25 @@ and image to one human approval → publishes to LinkedIn on schedule without
 depending on the owner's devices → verifies/reconciles → records results →
 learns → improves selection.
 
-## Capability map
+## Outcome audit (2026-09-30)
 
-| # | Capability | State | Where |
-|---|---|---|---|
-| 1 | Private identity & positioning | ✅ engine; owner data present | profile.yaml, brand.yaml (private) |
-| 2 | Research | ✅ | `lce-research`, `lce research` |
-| 3 | Strategic topic selection | ✅ incl. per-job content brief | `lce brand next`, `lce jobs brief` |
-| 4 | Authentic English writing | ✅ (Claude Code skills, owner voice) | `lce-create-post`, `lce-run-jobs` |
-| 5 | Factual/credibility checks | ✅ | QA, evidence gating, duplicate check |
-| 6 | Relevant image | ✅ decision + provenance; charts generated from recorded, sourced figures | `lce image decide`, `lce image chart` |
-| 7 | Text + image bound to one approval | ✅ | approval `image_hash` |
-| 8 | Human approval | ✅ (terminal, typed phrase) | `lce approve` |
-| 9a | Publish, owner-triggered (local) | ✅ code; needs LinkedIn token | `lce publish`, `lce publish manual` |
-| 9b | Scheduled, device-independent publishing (text + image) | ✅ code; not deployed | Cloudflare Worker, `lce cloud` |
-| 9c | Remote control from any device | ✅ code (Cloud Control Center); not deployed | Worker `/` behind Access |
-| 10 | Verify / reconcile | ✅ manual (LinkedIn grants no read-back) | `lce publish reconcile` |
-| 11 | Record results | ✅ manual/CSV | `lce analytics record/import` |
-| 12–13 | Learn and improve selection | ✅ (needs data) | `lce analytics insights`, `suggest-mix` |
+| Stage | Status | Evidence / what remains |
+|---|---|---|
+| Personal brand | VERIFIED | profile + brand.yaml in the private repo; `lce brand status/next`; `lce readiness` on real data |
+| Research | VERIFIED | `lce-research` skill, `lce research add/claim/fetch`; RSS feeds optional (none configured) |
+| Topic selection | VERIFIED | brand-aware ranking, `lce jobs brief` per slot, avoid list, saturation |
+| English content + humanization | COMPLETED | Claude Code skills with the owner's voice profile; English ruleset |
+| QA / credibility | VERIFIED | deterministic QA, evidence gating (personal → PUBLIC story or `NEEDS_INPUT`), duplicate check |
+| Relevant image | VERIFIED | image decision + provenance, `lce image chart` from recorded figures, checks |
+| Human approval (text + image) | VERIFIED | terminal-only, typed phrase, text hash + image hash |
+| Cloud scheduling | COMPLETED, not deployed | Worker cron, consents, kill switch, Cloud Control Center — **credential-gated** |
+| LinkedIn publishing | COMPLETED, not live | local + cloud, image upload, fake-transport tests — **credential-gated**, first live post **live-action-gated** |
+| Publication verification | VERIFIED | API 201 + URN; `NEEDS_RECONCILE` + human reconcile (LinkedIn grants no read-back); `lce cloud pull` mirrors the cloud record |
+| Analytics | VERIFIED | manual/CSV metrics, cloud publications matched by URL; official API adapter **credential-gated** (7B) |
+| Learning | VERIFIED | insights, theme tie-break, bounded mix suggestion (needs real metrics to say anything) |
+| Personal-experience content | NEEDS_USER_INPUT | 0 PUBLIC stories; experience themes stay `NEEDS_INPUT` |
+
+Operating procedure: [OPERATING.md](OPERATING.md).
 
 ## Dependency graph (what blocks what)
 

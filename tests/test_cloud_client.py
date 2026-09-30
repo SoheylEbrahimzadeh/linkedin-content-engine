@@ -198,3 +198,79 @@ def test_configure_sends_settings_but_never_the_kill_switch(env):
     assert body["provider"] == "linkedin_api" and body["api_version"] == "202609"
     assert "timezone" in body and "cadence" in body
     assert "auto_publish" not in body and not any("token" == k for k in body)
+
+
+def _cloud_pub(pid, state, **extra):
+    return {"post_id": pid, "idempotency_key": "a" * 64, "approved_hash": "b" * 64,
+            "commentary_hash": "c" * 64, "state": state, "api_version": "202609",
+            "author": "urn:li:person:TestPerson1", "verified_by": None, "image_urn": None,
+            "resolution": None, "attempts": [{"attempt": 1, "intent_at": "2026-10-07T06:31:00+00:00",
+                                              "outcome": "pending", "runtime": "cloud"}], **extra}
+
+
+def test_pull_mirrors_the_cloud_publication_for_verification_and_analytics(env):
+    from lce import analytics
+
+    store, pid, fake, client = env
+    cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)
+    url = "https://www.linkedin.com/feed/update/urn:li:share:9100/"
+    fake.posts[pid]["state"] = "PUBLISHED"
+    pub = _cloud_pub(pid, "published", remote_id="urn:li:share:9100", url=url,
+                     published_at="2026-10-07T06:31:02+00:00", verified_by="api_response")
+    pub["attempts"][0]["outcome"] = "published"
+    fake.publications[pid] = pub
+    cloud.pull(store, client)
+    rec = json.loads((store.post_dir(pid) / "publication.json").read_text())
+    assert rec["runtime"] == "cloud" and rec["url"] == url and rec["verified_by"] == "api_response"
+    assert "runtime" not in rec["attempts"][0]                    # only schema fields are kept
+    assert store.load_post(pid)["state"] == "PUBLISHED"
+    assert analytics._post_for_url(store)[url.rstrip("/")] == pid     # CSV import can match it
+    analytics.record(store, pid, {"impressions": 10})
+    assert analytics.performance(store)[0]["features"]["weekday"] == "wed"
+
+
+def test_pull_follows_rearm_and_not_published_back_to_ready(env):
+    store, pid, fake, client = env
+    cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)
+    fake.posts[pid]["state"] = "NEEDS_RECONCILE"
+    fake.publications[pid] = _cloud_pub(pid, "needs_reconcile")
+    cloud.pull(store, client)
+    assert store.load_post(pid)["state"] == "NEEDS_RECONCILE"
+    fake.posts[pid]["state"] = "READY_TO_PUBLISH"                 # owner: not on LinkedIn
+    fake.publications[pid] = _cloud_pub(pid, "not_published_confirmed",
+                                        resolution=json.dumps({"at": "2026-10-07T07:00:00+00:00",
+                                                               "decision": "not_published",
+                                                               "by": "owner@example.com"}))
+    changes = cloud.pull(store, client)
+    assert changes == [{"post_id": pid, "state": "READY_TO_PUBLISH"}]
+    assert json.loads((store.post_dir(pid) / "publication.json").read_text())["resolution"][
+        "decision"] == "not_published"
+
+
+def test_withdrawal_ends_the_delegation_and_allows_redelegation(env):
+    store, pid, fake, client = env
+    cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)
+    fake.posts[pid]["state"] = "PUBLISH_FAILED"
+    fake.publications[pid] = _cloud_pub(pid, "publish_failed")
+    cloud.pull(store, client)
+    fake.posts[pid]["state"] = "WITHDRAWN"
+    changes = cloud.pull(store, client)
+    assert changes[0]["delegation"] == "ended" and cloud.load_delegation(store, pid) is None
+    cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)   # re-delegate
+    assert cloud.load_delegation(store, pid) is not None
+
+
+def test_pull_refuses_to_mirror_a_different_approved_hash(env):
+    store, pid, fake, client = env
+    cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)
+    fake.posts[pid]["approved_hash"] = "f" * 64
+    fake.posts[pid]["state"] = "PUBLISHED"
+    changes = cloud.pull(store, client)
+    assert "differs" in changes[0]["problem"]
+    assert store.load_post(pid)["state"] == "READY_TO_PUBLISH"
+
+
+def test_consent_slot_defaults_to_the_linked_job(env):
+    store, pid, fake, client = env
+    with pytest.raises(CloudError, match="give --slot"):
+        cloud.slot_for_post(store, pid)
