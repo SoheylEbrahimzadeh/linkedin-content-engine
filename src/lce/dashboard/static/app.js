@@ -181,6 +181,17 @@ function viewPost(s, id) {
       p.sources.length ? h("ul", {}, p.sources.map((x) => h("li", {}, show(x.publisher || x.title), " — ", extLink(x.url)))) : empty("No sources."),
       p.claims.length ? h("ul", { class: "claims" }, p.claims.map((c) => h("li", {}, `“${c.text}”`, " ", h("small", {}, extLink(c.source_url))))) : empty("No recorded claims."),
       kv([["Stories used", p.stories_used], ["Candidate", p.candidate_id]])),
+    card("Brand & image",
+      kv([["Theme", p.brand && p.brand.theme], ["Chapter", p.brand && p.brand.chapter],
+        ["Evidence", p.brand && p.brand.evidence]]),
+      p.image ? kv([
+        ["Image", p.image.kind === "none" ? badge("no image", "muted") : badge(p.image.kind, "info")],
+        ["Rationale", p.image.rationale], ["Relation", p.image.relation], ["Alt text", p.image.alt_text],
+        ["Origin / usage", p.image.provenance ? `${p.image.provenance.origin} / ${p.image.provenance.usage}` : null],
+        ["License", p.image.provenance && p.image.provenance.license],
+        ["SHA-256", p.image.sha256 ? mono(shortHash(p.image.sha256)) : null],
+        ["Check", p.image.errors.length ? badge(`${p.image.errors.length} error(s)`, "error") : badge("complete", "ok")],
+      ]) : empty("No image decision yet (required before approval; 'none' is allowed).")),
     h("div", { class: "grid" },
       card(`QA — ${show(p.qa && p.qa.status)}`, findings(p.qa_report)),
       card(`Duplicate check — ${show(p.duplicate && p.duplicate.status)}`,
@@ -364,8 +375,29 @@ function viewErrors(s) {
   ];
 }
 
-function viewAnalytics() {
-  return [card("Analytics", empty("Not available. Real analytics require published posts, and publishing is not implemented yet. Nothing is estimated or simulated."))];
+function viewAnalytics(s) {
+  const a = s.analytics;
+  const pct = (x) => (x === null || x === undefined ? "—" : `${(x * 100).toFixed(1)}%`);
+  const note = h("p", { class: "note" }, "Metrics come only from sources you can access: ", mono("lce analytics record"), ", ", mono("lce analytics import <csv>"),
+    ". Nothing is estimated or scraped. Groups need at least ", String(a.min_sample), " posts before they count.");
+  if (!a.overall.posts) return [card("Analytics", empty("No metrics recorded yet.")), note];
+  const groups = Object.entries(a.groups).map(([feat, gs]) => card(feat, table(["Value", "Posts", "Median impressions", "Median rate"],
+    gs.map((g) => h("tr", {}, h("td", {}, g.value), h("td", {}, String(g.posts)), h("td", {}, show(g.median_impressions)),
+      h("td", {}, g.enough_data ? pct(g.median_rate) : badge("too few posts", "muted")))))));
+  return [
+    h("div", { class: "grid three" },
+      card("Posts with metrics", h("p", { class: "big" }, badge(String(a.overall.posts), "info"))),
+      card("Median impressions", h("p", { class: "big" }, badge(show(a.overall.median_impressions), "info"))),
+      card("Median engagement rate", h("p", { class: "big" }, badge(pct(a.overall.median_rate), "info")))),
+    a.saturated_topics.length ? card("Saturated topics", h("ul", {}, a.saturated_topics.map((t) => h("li", {}, `${t.topic} — ${t.posts.length} posts in 60 days`)))) : null,
+    card("Suggested pillar mix", a.suggestion.suggested ? kv(Object.entries(a.suggestion.suggested).map(([p, v]) => [p, `${a.suggestion.current[p].toFixed(2)} → ${v.toFixed(2)}`]))
+      : empty(a.suggestion.reason), h("p", { class: "sub" }, "A suggestion only; you apply it with lce interview set brand_mix.")),
+    card("Posts", table(["Post", "Published", "Impressions", "Engagement", "Rate"],
+      a.posts.map((p) => h("tr", {}, h("td", {}, link(`#/posts/${encodeURIComponent(p.post_id)}`, p.post_id)), h("td", {}, show(p.published_at)),
+        h("td", {}, show(p.impressions)), h("td", {}, String(p.engagement)), h("td", {}, pct(p.rate)))))),
+    ...groups,
+    note,
+  ];
 }
 
 function viewSettings(s) {

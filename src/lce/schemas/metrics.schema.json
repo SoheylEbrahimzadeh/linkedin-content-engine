@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/metrics.schema.json",
+  "title": "Post metrics",
+  "description": "posts/<id>/metrics.yaml: engagement snapshots of a published post, from sources the owner can legitimately access (manual entry, their own export, or an API they were granted). Nothing is estimated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["snapshots"],
+  "$defs": {"count": {"type": "integer", "minimum": 0}},
+  "properties": {
+    "demo": {"type": "boolean"},
+    "snapshots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["at", "source"],
+        "anyOf": [{"required": ["impressions"]}, {"required": ["reactions"]},
+                  {"required": ["comments"]}, {"required": ["reposts"]}],
+        "properties": {
+          "at": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$"},
+          "source": {"enum": ["manual", "csv", "api"]},
+          "impressions": {"$ref": "#/$defs/count"},
+          "members_reached": {"$ref": "#/$defs/count"},
+          "reactions": {"$ref": "#/$defs/count"},
+          "comments": {"$ref": "#/$defs/count"},
+          "reposts": {"$ref": "#/$defs/count"},
+          "clicks": {"$ref": "#/$defs/count"},
+          "followers_gained": {"$ref": "#/$defs/count"},
+          "note": {"type": "string"}
+        }
+      }
+    }
+  }
+}

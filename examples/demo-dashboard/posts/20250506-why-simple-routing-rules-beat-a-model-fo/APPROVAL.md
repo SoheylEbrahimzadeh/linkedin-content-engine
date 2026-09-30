@@ -32,6 +32,10 @@ Start with the boring rules. They cover more than you expect, and they are easy 
 
 - none
 
+## Image
+
+- no image — a short argument; an image would be decoration
+
 ## Stories used
 
 - demo-ticket-routing

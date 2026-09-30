@@ -34,7 +34,7 @@ PIPELINE = [
     ("approval", "Approval", "available"),
     ("publishing", "Publishing", "manual"),  # human-triggered `lce publish` only
     ("verification", "Verification", "not_implemented"),  # no read-back permission
-    ("analytics", "Analytics", "not_implemented"),
+    ("analytics", "Analytics", "manual"),  # owner-supplied metrics (`lce analytics`)
 ]
 STAGE_OF_STATE = {
     "RESEARCHED": "research", "SELECTED": "planning", "NEEDS_INPUT": "planning",
@@ -142,6 +142,18 @@ def read_runs(store: DataStore) -> tuple[list[dict], list[dict]]:
     return events, bad
 
 
+def _image_view(store: DataStore, pid: str) -> dict | None:
+    from lce import images
+
+    doc = images.load(store, pid)
+    if doc is None:
+        return None
+    errors, warnings = images.check(store, pid)
+    return {"kind": doc["kind"], "rationale": doc.get("rationale"), "relation": doc.get("relation"),
+            "alt_text": doc.get("alt_text"), "file": doc.get("file"), "sha256": doc.get("sha256"),
+            "provenance": doc.get("provenance"), "errors": errors, "warnings": warnings}
+
+
 def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[dict],
                pillar_names: dict) -> dict:
     meta = store.load_post(pid)
@@ -186,6 +198,9 @@ def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[d
         "sources": meta.get("sources", []),
         "claims": meta.get("claims", []),
         "stories_used": meta.get("stories_used", []),
+        "brand": meta.get("brand"),
+        "image": _image_view(store, pid),
+        "has_metrics": (folder / "metrics.yaml").exists(),
         "candidate_id": meta.get("candidate_id"),
         "history": meta.get("history", []),
         "text": text,
@@ -255,6 +270,8 @@ def latest_run(posts: list[dict]) -> dict | None:
                    "status": pub_status or "not_reached", "at": pub[-1].get("at") if pub else None})
     stages += [{"id": sid, "label": label, "status": "not_implemented", "at": None}
                for sid, label, st in PIPELINE if st == "not_implemented"]
+    stages.append({"id": "analytics", "label": "Analytics",
+                   "status": "done" if post.get("has_metrics") else "not_reached", "at": None})
     return {
         "post_id": post["post_id"],
         "topic": post.get("topic"),
@@ -520,6 +537,14 @@ def redact(obj: object) -> object:
     return obj
 
 
+def analytics_view(store: DataStore) -> dict:
+    from lce import analytics
+    from lce.clock import now
+
+    ins = analytics.insights(store, now().date())
+    return {**ins, "suggestion": analytics.suggest_mix(store)}
+
+
 def brand_view(store: DataStore, posts: list[dict], mode: str) -> dict:
     """Brand strategy status. Demo data is dated, so the demo uses its latest plan date."""
     from datetime import date
@@ -606,9 +631,7 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
         "publishing": publishing_view(store, posts, mode),
         "automation": automation,
         "brand": brand_view(store, posts, mode),
-        "analytics": {"available": False,
-                      "reason": "Analytics are not implemented. LinkedIn does not grant this app "
-                                "read access to post statistics."},
+        "analytics": analytics_view(store),
     }
     return redact(snapshot)
 

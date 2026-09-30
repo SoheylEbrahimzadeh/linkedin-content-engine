@@ -255,6 +255,99 @@ def cmd_brand_next(args):
     return 0
 
 
+def cmd_image_decide(args):
+    from lce.images import decide
+
+    prov = None
+    if args.kind != "none":
+        prov = {"origin": args.origin, "usage": args.usage}
+        for key in ("source_url", "credit", "license"):
+            if getattr(args, key):
+                prov[key] = getattr(args, key)
+        if args.method:
+            prov["generation"] = {"method": args.method, **({"prompt": args.prompt}
+                                                           if args.prompt else {})}
+    doc = decide(_store(args), args.post, kind=args.kind, rationale=args.rationale,
+                 source_file=args.file, relation=args.relation or "", alt_text=args.alt or "",
+                 provenance=prov, decided_by=args.by)
+    print(f"✓ image decision for {args.post}: {doc['kind']}"
+          + (f" ({doc['file']}, sha256 {doc['sha256'][:12]}…)" if doc["kind"] != "none" else ""))
+    return cmd_image_check(args)
+
+
+def cmd_image_check(args):
+    from lce.images import check
+
+    errors, warnings = check(_store(args), args.post)
+    for e in errors:
+        print(f"  ✗ {e}")
+    for w in warnings:
+        print(f"  ! {w}")
+    print("✓ image decision is complete" if not errors else f"{len(errors)} error(s)")
+    return 1 if errors else 0
+
+
+def cmd_analytics_record(args):
+    from lce.analytics import METRICS, record
+
+    values = {k: getattr(args, k) for k in METRICS}
+    snap = record(_store(args), args.post, values, at=args.at, note=args.note or "")
+    print(f"✓ metrics recorded for {args.post} at {snap['at']}")
+    return 0
+
+
+def cmd_analytics_import(args):
+    from lce.analytics import import_csv
+
+    out = import_csv(_store(args), args.file)
+    print(f"✓ {out['recorded']} row(s) recorded")
+    if out["unmatched_rows"]:
+        print(f"! rows without a matching published post: {out['unmatched_rows']}")
+    return 0
+
+
+def cmd_analytics_insights(args):
+    from lce.analytics import insights
+
+    store = _store(args)
+    ins = insights(store, _today_local(store), args.min_sample)
+    if args.json:
+        print(json.dumps(ins, indent=2, ensure_ascii=False))
+        return 0
+    o = ins["overall"]
+    if not o["posts"]:
+        print("no metrics yet — record them with `lce analytics record` or `lce analytics import`")
+        return 0
+    rate = f"{o['median_rate']:.2%}" if o["median_rate"] is not None else "—"
+    print(f"{o['posts']} post(s) with metrics; median impressions {o['median_impressions']}, "
+          f"median engagement rate {rate}")
+    for feat, groups in ins["groups"].items():
+        shown = [g for g in groups if g["enough_data"]]
+        if shown:
+            print(f"  {feat}: " + ", ".join(
+                f"{g['value']} ({g['posts']}): {g['median_rate']:.2%}" for g in shown
+                if g["median_rate"] is not None))
+    for s in ins["saturated_topics"]:
+        print(f"  ! saturated topic: {s['topic']} ({len(s['posts'])} posts in 60 days)")
+    if not any(g["enough_data"] for gs in ins["groups"].values() for g in gs):
+        print(f"  (no group has ≥{ins['min_sample']} posts yet; keep publishing)")
+    return 0
+
+
+def cmd_analytics_suggest_mix(args):
+    from lce.analytics import suggest_mix
+
+    out = suggest_mix(_store(args), args.min_sample)
+    if out["suggested"] is None:
+        print(f"no suggestion: {out['reason']}")
+        return 0
+    print("suggested pillar mix (apply yourself with `lce interview set brand_mix`):")
+    for p, v in out["suggested"].items():
+        print(f"  {p}: {out['current'][p]:.2f} → {v:.2f}")
+    print(f"  ({out['reason']})")
+    return 0
+
+
 def cmd_select_pick(args):
     from lce.planning import select
 
@@ -536,6 +629,14 @@ def cmd_publish(args):
                                    not_published=args.not_published)
         print(f"✓ {args.post} → {out['post']['state']} (recorded as the owner's decision)")
         return 0
+    if args.target == "manual":
+        if not args.post or not args.published_url:
+            raise StoreError("usage: lce publish manual <post> --published-url URL "
+                             "[--published-at ISO]")
+        out = publishing.record_manual(store, args.post, url=args.published_url,
+                                       published_at=args.published_at)
+        print(f"✓ {args.post} → {out['post']['state']} (manual publication recorded)")
+        return 0
     if args.post or args.published_url or args.not_published:
         raise StoreError("usage: lce publish <post> [--dry-run]")
     publisher = publishing.make_publisher(store)
@@ -777,6 +878,45 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--count", type=int, default=3)
     p.add_argument("--json", action="store_true")
 
+    g = group("image", "image decision before approval (none is allowed)")
+    p = gcmd(g, "decide", cmd_image_decide, "record the image decision for a post")
+    p.add_argument("post")
+    p.add_argument("--kind", required=True, choices=["none", "source_image", "diagram",
+                                                     "architecture", "screenshot", "chart",
+                                                     "generated_concept"])
+    p.add_argument("--rationale", required=True, help="why this image (or none) serves the post")
+    p.add_argument("--file", default=None, help="PNG/JPG/GIF; copied into the post folder")
+    p.add_argument("--relation", default=None, help="what it shows and how it supports the post")
+    p.add_argument("--alt", default=None, help="alt text")
+    p.add_argument("--origin", choices=["own_creation", "owner_screenshot", "owner_photo",
+                                        "source_publication", "licensed_stock", "generated"])
+    p.add_argument("--usage", choices=["owned", "licensed", "permitted", "public_domain",
+                                       "needs_review"])
+    p.add_argument("--source-url", dest="source_url", default=None)
+    p.add_argument("--credit", default=None)
+    p.add_argument("--license", default=None)
+    p.add_argument("--method", default=None, help="generation tool/code for generated images")
+    p.add_argument("--prompt", default=None)
+    p.add_argument("--by", default="agent", help="who decided (agent or owner)")
+    p = gcmd(g, "check", cmd_image_check, "verify the image decision")
+    p.add_argument("post")
+
+    g = group("analytics", "metrics of published posts and what they teach")
+    p = gcmd(g, "record", cmd_analytics_record, "record metrics you can see for a published post")
+    p.add_argument("post")
+    for m in ("impressions", "members-reached", "reactions", "comments", "reposts", "clicks",
+              "followers-gained"):
+        p.add_argument(f"--{m}", dest=m.replace("-", "_"), type=int, default=None)
+    p.add_argument("--at", default=None, help="when you read the numbers (ISO; default now)")
+    p.add_argument("--note", default=None)
+    p = gcmd(g, "import", cmd_analytics_import, "import metrics from a CSV you exported or typed")
+    p.add_argument("file")
+    p = gcmd(g, "insights", cmd_analytics_insights, "what performs, saturation")
+    p.add_argument("--min-sample", type=int, default=3)
+    p.add_argument("--json", action="store_true")
+    p = gcmd(g, "suggest-mix", cmd_analytics_suggest_mix, "suggested pillar mix (not applied)")
+    p.add_argument("--min-sample", type=int, default=3)
+
     g = group("draft", "first drafts")
     p = gcmd(g, "save", cmd_draft_save, "store a draft ('-' = stdin)")
     p.add_argument("post")
@@ -844,11 +984,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--decision", choices=["retry", "skip", "fail"], default=None)
 
     p = cmd("publish", cmd_publish, "publish an approved post to LinkedIn (interactive only)")
-    p.add_argument("target", help="post id, or 'reconcile'")
+    p.add_argument("target", help="post id, 'reconcile' or 'manual'")
     p.add_argument("post", nargs="?", default=None, help="post id (with 'reconcile')")
     p.add_argument("--dry-run", action="store_true", help="show the request; send nothing")
     p.add_argument("--published-url", default=None)
     p.add_argument("--not-published", action="store_true")
+    p.add_argument("--published-at", default=None, help="with 'manual': when you posted it (ISO)")
 
     g = group("linkedin", "LinkedIn account settings (no secrets are ever printed)")
     gcmd(g, "status", cmd_linkedin_status, "config, token presence and expiry")

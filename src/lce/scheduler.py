@@ -193,6 +193,7 @@ def _classify(exc: Exception) -> tuple[str, bool]:
 
 def execute_job(store: DataStore, job: dict, inv: str, cfg: dict) -> dict:
     """Run the deterministic steps for one READY job. Never approves or publishes."""
+    from lce import images
     from lce.approval import prepare
     from lce.dupcheck import run_dupcheck
     from lce.qa import run_qa
@@ -233,6 +234,13 @@ def execute_job(store: DataStore, job: dict, inv: str, cfg: dict) -> dict:
                 return _revision(store, job, "duplicate_failed", inv, cfg)
             state = P.DUPLICATE_CHECKED
         if state == P.DUPLICATE_CHECKED:
+            if images.load(store, pid) is None:
+                return transition(store, job, J.BLOCKED, "image decision needed", inv,
+                                  blocked_reason="awaiting_agent")
+            img_errors, _ = images.check(store, pid)
+            if img_errors:
+                return transition(store, job, J.BLOCKED, "image: " + "; ".join(img_errors), inv,
+                                  blocked_reason="needs_input")
             record_step(store, job, "approval_artifact", "started", inv)
             prepare(store, pid)
             record_step(store, job, "approval_artifact", "done", inv, "AWAITING_APPROVAL")

@@ -24,8 +24,10 @@
     },
     "provider": {
       "enum": [
-        "linkedin_api"
-      ]
+        "linkedin_api",
+        "manual"
+      ],
+      "description": "manual = the owner posted the approved text themselves and recorded it with `lce publish manual`."
     },
     "idempotency_key": {
       "type": "string",
@@ -61,6 +63,15 @@
     "url": {
       "type": "string",
       "pattern": "^https://www\\.linkedin\\.com/"
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["urn", "sha256"],
+      "properties": {
+        "urn": {"type": "string", "pattern": "^urn:li:image:[A-Za-z0-9_-]+$"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
     },
     "published_at": {
       "type": "string",

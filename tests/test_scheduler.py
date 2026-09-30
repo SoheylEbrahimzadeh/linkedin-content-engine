@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from conftest import DEMO, GOOD_POST, selected_post
 
-from lce import jobs, scheduler
+from lce import images, jobs, scheduler
 from lce.clock import FixedClock, parse_iso, use_clock
 from lce.posts import save_draft, save_humanized
 from lce.store import DataStore, StoreError
@@ -34,10 +34,12 @@ def events(store, name=None):
     return [e for e in out if name is None or e["event"] == name]
 
 
-def humanized_post_for(store, job_id=TUE, text=GOOD_POST):
+def humanized_post_for(store, job_id=TUE, text=GOOD_POST, image=True):
     pid = selected_post(store)
     save_draft(store, pid, text)
     save_humanized(store, pid, text)
+    if image:
+        images.decide(store, pid, kind="none", rationale="text-only post")
     scheduler.link_post(store, job_id, pid)
     return pid
 
@@ -364,3 +366,16 @@ def test_events_explain_every_job(env):
         ("SCHEDULED", "READY"), ("READY", "RUNNING"), ("RUNNING", "BLOCKED")]
     assert events(store, "scheduler.finish")
     assert not jobs.lock_path(store).exists()
+
+
+def test_missing_image_decision_blocks_before_approval(env):
+    store, _ = env
+    scheduler.run_once(store)
+    pid = humanized_post_for(store, image=False)
+    scheduler.run_once(store)
+    job = jobs.load_job(store, TUE)
+    assert job["state"] == "BLOCKED" and job["blocked_reason"] == "awaiting_agent"
+    assert store.load_post(pid)["state"] == "DUPLICATE_CHECKED"
+    images.decide(store, pid, kind="none", rationale="text-only post")
+    scheduler.run_once(store)
+    assert store.load_post(pid)["state"] == "AWAITING_APPROVAL"

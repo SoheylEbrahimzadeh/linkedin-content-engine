@@ -148,12 +148,15 @@ def recommend(store: DataStore, today: date, count: int = 3) -> list[dict]:
     personal_low = (st["min_personal_share"] is not None
                     and st["personal_share"] < st["min_personal_share"])
     candidates = store.candidates()
+    from lce.analytics import theme_rates
+
+    rates = theme_rates(store)
     out = []
     for row in order[:count]:
         fitting = [t for t in themes.values() if not t.get("pillars") or row["id"] in t["pillars"]]
         # Themes mapped to this pillar first; pillar-agnostic themes are the fallback.
         fitting.sort(key=lambda t: (row["id"] not in (t.get("pillars") or []),
-                                    theme_use[t["id"]]["posts"], t["id"]))
+                                    theme_use[t["id"]]["posts"], -rates.get(t["id"], 0.0), t["id"]))
         chosen = fitting[0] if fitting else None
         stories = public_stories_for(store, pillar=row["id"],
                                      theme_id=chosen["id"] if chosen else None)
@@ -172,6 +175,8 @@ def recommend(store: DataStore, today: date, count: int = 3) -> list[dict]:
             reasons.append("pillar has no target share; least recent use")
         if personal_low and evidence == "personal":
             reasons.append("personal-evidence share below minimum")
+        if chosen and chosen["id"] in rates:
+            reasons.append(f"theme median engagement rate {rates[chosen['id']]:.2%}")
         out.append({
             "pillar": row["id"],
             "theme": chosen["id"] if chosen else None,
