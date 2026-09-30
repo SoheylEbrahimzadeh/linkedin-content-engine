@@ -140,3 +140,12 @@ approval_artifact, agent_work), `job.error` (kind, retryable), `job.linked`.
 They answer: why and when a job was created, by which pass, which post it
 drives, which step ran, what happened and why it stopped. No post text and no
 secrets are logged.
+
+## Content briefs
+
+`lce jobs brief [job] [--json]` gives the writing agent, per pending job, the
+task (create post, revise, image decision), and for new posts the brand
+strategy: pillar, theme, evidence mode, ranked candidates, usable PUBLIC
+stories, saturated topics to avoid, and the objective, throughline and
+credibility rules. Several open slots get successive recommendations so they
+do not chase the same pillar. The `lce-run-jobs` skill follows the brief.

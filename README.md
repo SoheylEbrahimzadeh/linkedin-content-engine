@@ -84,6 +84,13 @@ Some concepts were studied in the MIT-licensed
 [linkedin-skills](https://github.com/sergebulaev/linkedin-skills) project. This
 is an independent implementation; see [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md).
 
+## Is my setup ready?
+
+`lce readiness` walks the whole chain (identity → research → strategy →
+writing → checks → image → approval → publishing → results → learning)
+against your private data and says what is ready, what needs your input and
+which credential gates remain. It never reads secret values.
+
 ## Project operation
 
 Current phase, open PRs and holds: [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).

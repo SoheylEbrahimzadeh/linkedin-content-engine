@@ -1,67 +1,89 @@
 # Project state
 
-Single source of truth for where the project is. The agent updates this file
-whenever a phase, PR, hold or gate changes (see
+Single source of truth for where the parent project is. The agent updates this
+file whenever work, PRs, holds or gates change (see
 [AGENT_EXECUTION_CONTRACT.md](AGENT_EXECUTION_CONTRACT.md)). Phase scope is in
-[ROADMAP.md](ROADMAP.md).
+[ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
+owner's real setup.
 
 _Last updated: 2026-09-30_
 
-## Current position
+## Objective
 
-| | |
+A personal brand and professional reputation engine that, for the owner's
+private identity: researches → selects topics strategically → writes authentic
+English content → verifies credibility → selects a relevant image → binds text
+and image to one human approval → publishes to LinkedIn on schedule without
+depending on the owner's devices → verifies/reconciles → records results →
+learns → improves selection.
+
+## Capability map
+
+| # | Capability | State | Where |
+|---|---|---|---|
+| 1 | Private identity & positioning | ✅ engine; owner data present | profile.yaml, brand.yaml (private) |
+| 2 | Research | ✅ | `lce-research`, `lce research` |
+| 3 | Strategic topic selection | ✅ incl. per-job content brief | `lce brand next`, `lce jobs brief` |
+| 4 | Authentic English writing | ✅ (Claude Code skills, owner voice) | `lce-create-post`, `lce-run-jobs` |
+| 5 | Factual/credibility checks | ✅ | QA, evidence gating, duplicate check |
+| 6 | Relevant image | ✅ decision + provenance; no built-in visual generator yet | `lce image decide` |
+| 7 | Text + image bound to one approval | ✅ | approval `image_hash` |
+| 8 | Human approval | ✅ (terminal, typed phrase) | `lce approve` |
+| 9a | Publish, owner-triggered (local) | ✅ code; needs LinkedIn token | `lce publish`, `lce publish manual` |
+| 9b | Scheduled, device-independent publishing | code on held PR #5 (text only) | Cloudflare Worker |
+| 10 | Verify / reconcile | ✅ manual (LinkedIn grants no read-back) | `lce publish reconcile` |
+| 11 | Record results | ✅ manual/CSV | `lce analytics record/import` |
+| 12–13 | Learn and improve selection | ✅ (needs data) | `lce analytics insights`, `suggest-mix` |
+
+## Dependency graph (what blocks what)
+
+```
+PR #5 (HOLD) ──► 9b scheduled publishing ──► 4C remote dashboard (owner: not before #5 merges)
+     │                 └──► cloud image upload (Worker code exists only on phase-4b)
+     └──► deployment ──► Cloudflare account + deploy token (HARD GATE)
+                              └──► live test 4D ──► LinkedIn token (HARD GATE) + live authorization (HARD GATE)
+LinkedIn token (HARD GATE) ──► 9a real publishing (manual posting + `lce publish manual` works without it)
+LinkedIn Community Management access (HARD GATE) ──► 7B analytics API adapter
+PUBLIC stories (owner input) ──► personal-evidence themes
+```
+
+## Hard human gates
+
+| Gate | Unlocks |
 |---|---|
-| Current phase | **6B (local)** — image upload in the local publisher (stacked on 7A) |
-| Parallel track | **4B** — cloud runtime, CI green, **held by the owner** (PR #5) |
-| Current gate | Owner hold on PR #5 (blocks 4C and deployment only) |
-| Next phase | 4C and 6B (cloud part) once PR #5 is merged; 7B at the LinkedIn access gate |
-| After that | 7 analytics & learning loop; 4C once PR #5 is merged; 4D at the credential/live gates |
+| **HOLD on PR #5** (owner, 2026-09-30) | merging the cloud runtime; 4C; cloud image upload integration |
+| Cloudflare account, D1, Access app, deploy-only token; authorization to deploy | scheduled device-independent publishing |
+| LinkedIn developer app + `w_member_social` token | real publishing (local or cloud) |
+| Authorization of a live publication | 4D live test |
+| LinkedIn Community Management access (`r_member_postAnalytics`) | 7B analytics API |
+| Private-repo changes needing explicit approval: `ENGINE_REF` bump + skills sync in the private data repo | private CI validates brand/image/metrics files with the current engine |
 
-## Phases
+## Owner input (not gates; the engine runs without them, with less reach)
 
-| Phase | State | PR |
-|---|---|---|
-| 0 scaffold | done | — |
-| 1 local pipeline to human approval | merged | #1 |
-| 1.5 read-only Web Control Center | merged | #2 |
-| 2 automation & scheduling | merged | #3 |
-| 3 human-triggered publishing (official API) | merged; not tested live | #4 |
-| 4A cloud architecture | done (design) | — |
-| 4B cloud runtime | CI green, **held** | #5 |
-| Operating contract | merged | #6, #7 |
-| Privacy: derived denylist + history scan | merged | #8 |
-| 5 Personal Brand Engine | merged | #9 |
-| 6A image stage | CI green; merge blocked by tool permission | #10 |
-| 7A analytics & learning loop | in review (stacked on #10) | #11 |
-| 6B image upload, local publisher | in review (stacked on #11) | — |
-| 4C remote dashboard (behind Access) | waits for PR #5 | — |
-| 4D controlled live publishing test | credential + live gates | — |
-| 6B image upload, cloud Worker | after PR #5 | — |
-| 7B analytics API adapter | credential gate (LinkedIn Community Management access) | — |
-| 8 more languages, approval channels | not started | — |
+- PUBLIC stories in the story bank (personal-evidence themes are unusable without them).
+- Optional brand fields: throughline, career chapters, target roles, pillar mix.
 
-## Open PRs and holds
+## Tooling blocks
 
-| Item | Hold | Set by / when |
-|---|---|---|
-| PR #5 `phase-4b` | Do not merge until the owner says so | owner, 2026-09-30 |
-
-## Known human gates ahead
-
-| Needed for | Gate |
+| Block | Status |
 |---|---|
-| Deploying the Worker (4B/4C) | Cloudflare account, D1 database, Access application and a deploy-only API token created by the owner (credential gate); authorization to deploy (production gate). Step-by-step: the owner runbook in `docs/CLOUD.md` (on `phase-4b`) |
-| 4D live test | LinkedIn developer app and access token supplied by the owner as a Worker secret (credential gate); explicit authorization of a live publication (production gate) |
+| `MERGE_BLOCKED_BY_TOOLING` on PR #10 (earlier) | cleared: #10, #11, #12 merged |
 
-## Open follow-ups (routine)
+## Open PRs
 
-- Tooling: this session's permission checks blocked merging PR #10 and bumping `ENGINE_REF` in the private repo; both need the owner (merge button / explicit approval).
+| PR | State |
+|---|---|
+| #5 `phase-4b` | CI green; **HOLD** |
 
-- After PR #5 merges: record 4B as merged here, then start 4C.
-- Done on `phase-4b` (72b8576): `lce cloud push` refuses posts whose image decision is not `none` (the Worker is text-only until the cloud part of 6B).
-- Owner input for the brand: the interview's brand questions (`lce interview next`); personal-evidence themes need PUBLIC stories in the story bank.
+## Next unblocked work
 
-- The gh-pages demo is built from an older commit and is stale; rebuild after 4B/4C land.
-- An exact-SHA view of a rewritten `phase-4b` commit may remain cached on GitHub
-  until GitHub garbage-collects it; purging it needs the owner to contact GitHub
-  Support (external action, owner's choice).
+1. Cloud image upload on a branch stacked on `phase-4b` (Worker code lives only there;
+   merges after #5; no deployment).
+2. A built-in, provenance-recorded visual generator for charts/diagrams from the
+   post's own recorded facts (capability 6), if it can be done without new paid services.
+
+## Housekeeping
+
+- The gh-pages demo is stale; rebuilding it publishes public content (owner's call).
+- An exact-SHA view of a rewritten `phase-4b` commit may stay cached on GitHub until
+  garbage collection; purging needs GitHub Support (owner's choice).
