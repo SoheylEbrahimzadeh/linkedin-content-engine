@@ -76,6 +76,7 @@ def selected_post(store: DataStore, stories=("demo-ticket-routing",)) -> str:
 def awaiting_post(store: DataStore, text: str = GOOD_POST) -> str:
     from lce.approval import prepare
     from lce.dupcheck import run_dupcheck
+    from lce.images import decide
     from lce.posts import save_draft, save_humanized
     from lce.qa import run_qa
 
@@ -84,5 +85,6 @@ def awaiting_post(store: DataStore, text: str = GOOD_POST) -> str:
     save_humanized(store, pid, text)
     assert run_qa(store, pid, denylist=[])["status"] == "passed"
     assert run_dupcheck(store, pid)["status"] == "passed"
+    decide(store, pid, kind="none", rationale="text-only post")
     prepare(store, pid)
     return pid

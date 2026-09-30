@@ -59,4 +59,5 @@ approval:
   approved_hash: 843c1c71369ccc94674d8e8c295c9bb3afa7855c7aa8d5a303c687beda8de175
   approved_at: '2025-05-04T15:45:00+00:00'
   approved_by: demo-fixture
-  artifact_hash: dd685d5fea607133360ac85f65f766b0084cb21c71d640f1bf2455de8a369384
+  artifact_hash: a5c4c64c0c3c59d096f2f04a373a751085cebf836c2e51eec939d95be8154123
+  image_hash: none

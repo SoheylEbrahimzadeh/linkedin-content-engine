@@ -216,6 +216,11 @@
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },
+        "image_hash": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{64}|none)$",
+          "description": "SHA-256 of the approved image file, or 'none' for an explicit no-image decision."
+        },
         "reason": {
           "type": "string"
         }

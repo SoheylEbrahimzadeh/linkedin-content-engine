@@ -34,6 +34,10 @@ Source: https://example.org/ops-survey-2025
 
 - Example Ops Survey 2025: post-incident reviews — https://example.org/ops-survey-2025
 
+## Image
+
+- no image — the survey figure carries the post; a chart would only repeat it
+
 ## Stories used
 
 - none

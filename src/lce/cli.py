@@ -255,6 +255,38 @@ def cmd_brand_next(args):
     return 0
 
 
+def cmd_image_decide(args):
+    from lce.images import decide
+
+    prov = None
+    if args.kind != "none":
+        prov = {"origin": args.origin, "usage": args.usage}
+        for key in ("source_url", "credit", "license"):
+            if getattr(args, key):
+                prov[key] = getattr(args, key)
+        if args.method:
+            prov["generation"] = {"method": args.method, **({"prompt": args.prompt}
+                                                           if args.prompt else {})}
+    doc = decide(_store(args), args.post, kind=args.kind, rationale=args.rationale,
+                 source_file=args.file, relation=args.relation or "", alt_text=args.alt or "",
+                 provenance=prov, decided_by=args.by)
+    print(f"✓ image decision for {args.post}: {doc['kind']}"
+          + (f" ({doc['file']}, sha256 {doc['sha256'][:12]}…)" if doc["kind"] != "none" else ""))
+    return cmd_image_check(args)
+
+
+def cmd_image_check(args):
+    from lce.images import check
+
+    errors, warnings = check(_store(args), args.post)
+    for e in errors:
+        print(f"  ✗ {e}")
+    for w in warnings:
+        print(f"  ! {w}")
+    print("✓ image decision is complete" if not errors else f"{len(errors)} error(s)")
+    return 1 if errors else 0
+
+
 def cmd_select_pick(args):
     from lce.planning import select
 
@@ -744,6 +776,29 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--date", default=None)
     p.add_argument("--count", type=int, default=3)
     p.add_argument("--json", action="store_true")
+
+    g = group("image", "image decision before approval (none is allowed)")
+    p = gcmd(g, "decide", cmd_image_decide, "record the image decision for a post")
+    p.add_argument("post")
+    p.add_argument("--kind", required=True, choices=["none", "source_image", "diagram",
+                                                     "architecture", "screenshot", "chart",
+                                                     "generated_concept"])
+    p.add_argument("--rationale", required=True, help="why this image (or none) serves the post")
+    p.add_argument("--file", default=None, help="PNG/JPG/GIF; copied into the post folder")
+    p.add_argument("--relation", default=None, help="what it shows and how it supports the post")
+    p.add_argument("--alt", default=None, help="alt text")
+    p.add_argument("--origin", choices=["own_creation", "owner_screenshot", "owner_photo",
+                                        "source_publication", "licensed_stock", "generated"])
+    p.add_argument("--usage", choices=["owned", "licensed", "permitted", "public_domain",
+                                       "needs_review"])
+    p.add_argument("--source-url", dest="source_url", default=None)
+    p.add_argument("--credit", default=None)
+    p.add_argument("--license", default=None)
+    p.add_argument("--method", default=None, help="generation tool/code for generated images")
+    p.add_argument("--prompt", default=None)
+    p.add_argument("--by", default="agent", help="who decided (agent or owner)")
+    p = gcmd(g, "check", cmd_image_check, "verify the image decision")
+    p.add_argument("post")
 
     g = group("draft", "first drafts")
     p = gcmd(g, "save", cmd_draft_save, "store a draft ('-' = stdin)")
