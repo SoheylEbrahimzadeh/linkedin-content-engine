@@ -8,6 +8,7 @@ name = "lce-cloud"
 main = "src/index.ts"
 compatibility_date = "2026-08-22"
 workers_dev = true
+send_metrics = false          # no Wrangler usage telemetry
 
 [triggers]
 # One cron trigger (Free plan allows 5). Cron runs in UTC; the Worker computes
