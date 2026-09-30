@@ -15,7 +15,7 @@ const b64 = (b: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uin
   .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 async function token(claims: Record<string, unknown> = {}, key = keys.privateKey, kid = "k1") {
   const h = b64(new TextEncoder().encode(JSON.stringify({ alg: "RS256", kid })));
-  const p = b64(new TextEncoder().encode(JSON.stringify({ aud: ["test-aud"], iss: `https://${TEAM}`,
+  const p = b64(new TextEncoder().encode(JSON.stringify({ aud: ["ab".repeat(32)], iss: `https://${TEAM}`,
     exp: Math.floor(NOW / 1000) + 600, email: "owner@example.com", ...claims })));
   const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(`${h}.${p}`));
   return `${h}.${p}.${b64(sig)}`;
@@ -63,6 +63,21 @@ describe("authentication (Cloudflare Access)", () => {
     } finally {
       await e.DB.prepare("ALTER TABLE settings_unmigrated RENAME TO settings").run();
     }
+  });
+  it("fails closed on a malformed Access configuration and never fetches keys from it", async () => {
+    let fetched = false;
+    const spy = async () => { fetched = true; return { keys: [jwk] }; };
+    for (const bad of [{ ACCESS_TEAM_DOMAIN: "evil.example" }, { ACCESS_TEAM_DOMAIN: "x.cloudflareaccess.com/evil" },
+      { ACCESS_AUD: "not-a-64-hex-tag" }]) {
+      const res = await handleApi(new Request("https://lce.example/api/snapshot",
+        { headers: { "cf-access-jwt-assertion": await token() } }), testEnv(bad), NOW, spy);
+      expect(res.status).toBe(503);
+    }
+    expect(fetched).toBe(false);
+  });
+  it("accepts Access values with surrounding whitespace (secrets pasted with a newline)", async () => {
+    const env = testEnv({ ACCESS_TEAM_DOMAIN: ` ${TEAM}\n`, ACCESS_AUD: `${e.ACCESS_AUD!.toUpperCase()}\n` });
+    expect((await call("GET", "/snapshot", undefined, undefined, env)).status).toBe(200);
   });
   it("fails closed without Access configuration", async () => {
     const r = await call("GET", "/snapshot", undefined, undefined, testEnv({ ACCESS_AUD: "" }));

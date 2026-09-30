@@ -108,17 +108,23 @@ request is wall time, not CPU. Expected cost: €0/month.
   `linkedin-content-engine` (binding `DB` → D1 `lce`). `wrangler.toml` uses the
   same name. Workers Builds would override it anyway (`WRANGLER_CI_OVERRIDE_NAME`),
   but the manual workflow below would otherwise create a second Worker.
-- Workers Builds runs `wrangler deploy` only. It does **not** apply D1
-  migrations. If they have not been applied, the cron reports
+- Workers Builds runs `npx wrangler deploy` by default, which applies **no**
+  D1 migrations. If they have not been applied, the cron reports
   `{"cron":"schema_missing"}` in the Worker logs and the API answers 503
-  "database schema missing". Fix it once with
-  `npx wrangler d1 migrations apply lce --remote` (owner, authenticated
-  Wrangler), or make that command part of the Builds deploy command.
-- `wrangler deploy` replaces dashboard variables with `[vars]` from
-  `wrangler.toml`, where `ACCESS_TEAM_DOMAIN`/`ACCESS_AUD` are empty. On this
-  path each deploy therefore leaves the API and dashboard **fail-closed (503)**,
-  even if Access is configured in the dashboard. How the Access identifiers are
-  supplied on the Builds path is an open owner decision (see PROJECT_STATE.md).
+  "database schema missing". Two ways to fix it (owner):
+  - once, with authenticated Wrangler: `cd cloud && npx wrangler d1 migrations apply lce --remote`;
+  - or permanently: set the Builds **Deploy command** to `npm run deploy`
+    (`cloud/package.json`: applies pending migrations, then deploys). If the
+    Builds token lacks D1 permission, that build fails visibly and nothing is
+    deployed; fall back to the one-off command.
+- Cloudflare Access identifiers are **Worker secrets**, not `[vars]`:
+  `wrangler deploy` replaces plain variables on every Builds deploy but never
+  touches secrets. Set them once (owner):
+  `npx wrangler secret put ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`)
+  and `npx wrangler secret put ACCESS_AUD` (64-hex Application Audience tag),
+  or add them as *Secret* variables in the Worker's dashboard settings. Missing
+  or malformed values keep the API and dashboard fail-closed (503); the Worker
+  never fetches signing keys from a host that is not `*.cloudflareaccess.com`.
 - Use one deploy path. Keep `CLOUD_DEPLOY_ENABLED` unset while Workers Builds
   deploys production.
 
@@ -130,7 +136,7 @@ checks and fills non-secret identifiers from repository variables (a missing
 or malformed value stops the job), applies D1 migrations and deploys.
 Wrangler telemetry is off (`send_metrics = false`).
 
-The bundle is about 37 KiB (11 KiB gzip), well inside the Free plan limit.
+The bundle is about 60 KiB (18 KiB gzip), well inside the Free plan limit.
 
 ### Owner runbook
 
@@ -152,7 +158,9 @@ Menu names can change; follow the current Cloudflare dashboard.
 5. **Cloudflare Access** (Zero Trust, Free for up to 50 users): create a
    self-hosted application for the Worker's `workers.dev` hostname, with a
    policy that allows only your own identity. Copy its *Application Audience
-   (AUD) tag* into `ACCESS_AUD`. Until this exists the API answers 503 to
+   (AUD) tag* into `ACCESS_AUD`; the workflow stores both as Worker secrets.
+   On the Workers Builds path set the secrets yourself (see "Current production
+   state"). Until they exist the API answers 503 to
    everything (fail-closed); after deploying, confirm that an unauthenticated
    request to `/api/snapshot` is refused.
 6. **Deploy:** Actions → cloud-deploy → Run workflow.

@@ -38,7 +38,7 @@ publication record → metrics → learning inputs.
 | Relevant image | VERIFIED | image decision + provenance + checks; swapped image never sent |
 | Human approval (text + image) | VERIFIED | terminal-only, typed phrase, text + image hash; wrong hash/phrase, edit after approval, tampered artifact, swapped image all refused (tests) |
 | Local publishing (Python) | VERIFIED (fake transport) · BLOCKED live | intent before request, one request, URN recorded, re-publish refused (e2e); live needs the LinkedIn token |
-| Cloud scheduling (Worker) | VERIFIED (Miniflare) · NOT_VERIFIED in production | 84 vitest incl. atomic claim, kill switch, hash gate, `schema_missing`; production D1 migrations and Access unverified (OWNER_ACTION) |
+| Cloud scheduling (Worker) | VERIFIED (Miniflare) · NOT_VERIFIED in production | 86 vitest incl. atomic claim, kill switch, hash gate, `schema_missing`; production D1 migrations and Access unverified (OWNER_ACTION) |
 | Cloud Control Center | VERIFIED (Miniflare) · NOT_VERIFIED in production | fail-closed 503 observed by the owner; Access path needs the owner decision below |
 | Publication verification | VERIFIED | API 201 + URN; ambiguous → `NEEDS_RECONCILE`, human reconcile (LinkedIn grants no read-back) |
 | Analytics | VERIFIED (manual/CSV) · BLOCKED official API (7B) | e2e: recorded metrics → rate + features |
@@ -57,7 +57,7 @@ Operating procedure: [OPERATING.md](OPERATING.md).
 ```
 Worker deployed by Workers Builds on every push to main (owner-reported)
    ├─► D1 migrations applied to `lce` (OWNER ACTION, unverified)
-   └─► Access app + how ACCESS_* survive Builds deploys (OWNER DECISION)
+   └─► Access app + ACCESS_* Worker secrets (OWNER ACTION; survive Builds deploys)
          └─► dashboard + API usable (runbook steps 7–8)
          └─► LinkedIn token as Worker secret (CREDENTIAL GATE)
                └─► first live scheduled publication (LIVE GATE, 4D)
@@ -73,7 +73,7 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 | Gate | Unlocks |
 |---|---|
 | D1 migrations on the production `lce` (`wrangler d1 migrations apply lce --remote`) | cron and API work (until then `schema_missing` / 503) |
-| Access app + a decision on how `ACCESS_TEAM_DOMAIN`/`ACCESS_AUD` reach the Builds deploy | remote dashboard + API (fail-closed until then) |
+| Access app + the two Worker secrets `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` (CLOUD.md) | remote dashboard + API (fail-closed until then) |
 | LinkedIn developer app + `w_member_social` token | real publishing (local or cloud) |
 | LinkedIn Community Management access (`r_member_postAnalytics`) | 7B analytics API |
 | Private-repo change (owner approval): `ENGINE_REF` bump + skills sync in the private data repo | private CI validates brand/image/metrics files with the current engine |
