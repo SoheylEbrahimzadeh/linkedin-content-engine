@@ -183,7 +183,8 @@ Menu names can change; follow the current Cloudflare dashboard.
 10. **First live publication (live gate, 4D):** only with the owner's explicit
     authorization: `lce cloud push <post>`, schedule it in a slot (dashboard or
     `lce cloud consent`), turn auto-publish on with its phrase, and afterwards
-    `lce cloud pull` and `lce analytics record`.
+    `lce cloud pull` and `lce analytics record`. Step by step, with abort
+    paths: [LIVE_TEST.md](LIVE_TEST.md).
 
 After the credentials exist, steps 6–10 are the whole remaining path.
 
