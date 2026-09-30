@@ -385,15 +385,26 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
         health = transport.request("GET", f"{base}/api/health", {}, None)
     except CloudError as exc:
         return out + [_check("worker", FAIL, str(exc), "check api_base and the Workers Builds deploy")]
-    if health.status != 200 or health.body.get("ok") is not True:
+    edge = health.status in (302, 401, 403)   # Access protects the whole hostname at the edge
+    if not edge and (health.status != 200 or health.body.get("ok") is not True):
         return out + [_check("worker", FAIL, f"/api/health answered HTTP {health.status}",
                              "check api_base and the Workers Builds deploy")]
-    out.append(_check("worker", OK, "/api/health 200"))
     try:
         credential = (token or (lambda: default_access(base)))()
     except CloudError as exc:
+        out.append(_check("worker", OK, f"/api/health behind Cloudflare Access ({health.status})"
+                          if edge else "/api/health 200"))
         return out + [_check("access login", ACTION, str(exc),
                              f"cloudflared access login {base} (or set an Access service token)")]
+    if edge:
+        health = transport.request("GET", f"{base}/api/health", access_headers(credential), None)
+        if health.status != 200 or health.body.get("ok") is not True:
+            return out + [_check("worker", FAIL, f"/api/health with credentials: HTTP {health.status}",
+                                 "Access did not let the credential through: check the service "
+                                 "token's Service Auth policy on the Worker's Access application")]
+        out.append(_check("worker", OK, "/api/health 200 through Cloudflare Access"))
+    else:
+        out.append(_check("worker", OK, "/api/health 200"))
     snap = transport.request("GET", f"{base}/api/snapshot",
                              {**access_headers(credential), "x-lce-client": "cli"}, None)
     err = str(snap.body.get("error", ""))
