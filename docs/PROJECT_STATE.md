@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-09-30 (PR #19 merged; end-to-end dry run)_
+_Last updated: 2026-09-30 (PRs #19–#22 merged; LCE-001…008)_
 
 ## Objective
 
@@ -97,6 +97,14 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 - LCE-003: an unmigrated D1 no longer makes every cron run throw; it reports
   `schema_missing`, and the API answers 503 with the fix instead of 500.
 - LCE-004: docs and `lce readiness` no longer claim "not deployed".
+- LCE-005 (PR #21): Access identifiers are Worker secrets (deploys never touch
+  them); the Worker fails closed unless the team domain is `*.cloudflareaccess.com`
+  and the AUD is 64 hex.
+- LCE-006 (PR #21): `cd cloud && npm run deploy` applies D1 migrations, then
+  deploys; usable as the Workers Builds deploy command.
+- LCE-007 (PR #22): `lce cloud doctor`, read-only preflight that names the first
+  open production gate and its exact command.
+- LCE-008 (PR #22): [LIVE_TEST.md](LIVE_TEST.md), the 4D runbook.
 
 ## Reference re-audit (2026-09-30)
 
@@ -117,9 +125,15 @@ See GitHub; merged when green (no holds).
 
 ## Next unblocked work
 
-Nothing left on the objective's critical path without a credential: the cloud
-path (Worker, image upload, dashboard, settings sync) is built and tested, and
-the post-credential path is runbook steps 6–10 in `docs/CLOUD.md`.
+None without an owner step. In order:
+
+1. Owner: apply D1 migrations (`cd cloud && npx wrangler d1 migrations apply lce --remote`,
+   or set the Builds deploy command to `npm run deploy`).
+2. Owner: Access application + Worker secrets `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`;
+   `config/cloud.yaml` with `api_base` in the private repo; `cloudflared access login`.
+3. `lce cloud doctor` until every line is ✓ except the kill switch.
+4. Owner approval: private repo `ENGINE_REF` bump + `lce skills sync`.
+5. Owner credential + live gate: LinkedIn token, then [LIVE_TEST.md](LIVE_TEST.md).
 
 ## Housekeeping
 
