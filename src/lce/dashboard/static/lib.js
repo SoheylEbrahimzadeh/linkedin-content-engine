@@ -220,7 +220,7 @@ export function jobCounts(counts) {
 }
 
 export const ROUTES = [
-  ["dashboard", "Dashboard"], ["posts", "Posts"], ["research", "Research"],
+  ["dashboard", "Dashboard"], ["brand", "Brand"], ["posts", "Posts"], ["research", "Research"],
   ["calendar", "Calendar"], ["approval", "Approval"], ["publishing", "Publishing"],
   ["automation", "Automation"], ["monitoring", "Monitoring"], ["errors", "Errors / Reconciliation"],
   ["analytics", "Analytics"], ["settings", "Settings"],

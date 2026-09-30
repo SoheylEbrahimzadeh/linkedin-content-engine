@@ -68,7 +68,8 @@ def _allowed_numbers(post: dict, stories: dict[str, dict]) -> set[str]:
 
 
 def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict,
-               stories: dict[str, dict], denylist: list[str]) -> list[Finding]:
+               stories: dict[str, dict], denylist: list[str],
+               brand: dict | None = None) -> list[Finding]:
     f: list[Finding] = []
     add = lambda code, sev, msg: f.append(Finding(code, sev, msg))  # noqa: E731
     body = text.strip()
@@ -194,6 +195,17 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
         add("claim.personal_without_story", ERROR,
             "first-person achievement without a PUBLIC story in the story bank")
 
+    # ── personal brand ────────────────────────────────────────────────
+    placement = post.get("brand") or {}
+    if placement.get("evidence") == "personal" and not public_used:
+        add("brand.personal_evidence_missing", ERROR,
+            "the post is planned on personal evidence but uses no PUBLIC story")
+    for market in ((brand or {}).get("target") or {}).get("markets", []):
+        if _phrase_re(market).search(body):
+            add("brand.market_as_subject", WARNING,
+                "mentions a target market; target markets are direction, not post subjects")
+            break
+
     # ── privacy ───────────────────────────────────────────────────────
     for term in denylist:
         if _phrase_re(term).search(body):
@@ -228,6 +240,7 @@ def run_qa(store: DataStore, post_id: str, denylist: list[str] | None = None) ->
             text, rules=rules, voice=store.voice(), profile=store.profile(), post=post,
             stories=store.stories(),
             denylist=load_denylist() if denylist is None else denylist,
+            brand=store.brand(),
         )
     except RulesetNotReady as exc:
         findings = [Finding("language.not_ready", ERROR, str(exc))]

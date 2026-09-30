@@ -11,7 +11,9 @@ credentials) with project-specific rules:
 - phone:           international phone numbers
 - secret-shape:    common credential prefixes (defence in depth for gitleaks)
 - anthropic-api:   any use of the Anthropic API SDK or API-key configuration
-- denylist:        terms from a local, never-committed denylist file
+- denylist:        terms from local, never-committed denylist files (manual and
+                   generated from the private data directory; --history also
+                   searches every commit)
 
 Findings never print the matched value, only the file, line and rule.
 Suppress a single line with the comment `lce-privacy: allow` (reviewed in PRs).
@@ -112,9 +114,7 @@ def candidate_files(root: Path) -> list[str]:
     return sorted({p for p in out.stdout.decode().split("\0") if p})
 
 
-def load_denylist(path: str | None = None) -> list[str]:
-    p = Path(path or os.environ.get("LCE_DENYLIST_PATH") or "~/.lce-private/denylist.txt")
-    p = p.expanduser()
+def _read_terms(p: Path) -> list[str]:
     if not p.is_file():
         return []
     terms = []
@@ -123,6 +123,49 @@ def load_denylist(path: str | None = None) -> list[str]:
         if term and not term.startswith("#") and len(term) >= 3:
             terms.append(term)
     return terms
+
+
+def load_denylist(path: str | None = None, include_generated: bool = False) -> list[str]:
+    """The owner's manual denylist; with include_generated, also the terms derived
+    from the private data directory (`lce privacy-denylist`). Post QA uses the
+    manual list only: the owner's own posts contain their derived terms."""
+    p = Path(path or os.environ.get("LCE_DENYLIST_PATH") or "~/.lce-private/denylist.txt")
+    terms = _read_terms(p.expanduser())
+    if include_generated:
+        from lce.privacy.fingerprint import generated_path
+
+        terms += [t for t in _read_terms(generated_path()) if t not in terms]
+    return terms
+
+
+def scan_history(root: Path, denylist: list[str]) -> list[tuple[str, str, int]]:
+    """Denylist hits in every commit reachable from any ref, and in commit messages.
+
+    Returns (commit, path or "<message>", number of matching lines); never terms."""
+    if not denylist:
+        return []
+    git = ["git", "-C", str(root)]
+    revs = subprocess.run([*git, "rev-list", "--all"], capture_output=True, text=True,
+                          check=True).stdout.split()
+    args = []
+    for t in denylist:
+        args += ["-e", t]
+    hits: dict[tuple[str, str], int] = {}
+    for i in range(0, len(revs), 100):
+        out = subprocess.run([*git, "grep", "-I", "-i", "-w", "-F", "-c", *args, *revs[i:i + 100]],
+                             capture_output=True, text=True).stdout
+        for line in out.splitlines():
+            rev, rest = line.split(":", 1)
+            path, count = rest.rsplit(":", 1)
+            hits[(rev[:12], path)] = int(count)
+    deny_res = [re.compile(rf"(?<!\w){re.escape(t)}(?!\w)", re.IGNORECASE) for t in denylist]
+    for rev in revs:
+        msg = subprocess.run([*git, "log", "-1", "--format=%B", rev], capture_output=True,
+                             text=True).stdout
+        n = sum(1 for line in msg.splitlines() if any(rx.search(line) for rx in deny_res))
+        if n:
+            hits[(rev[:12], "<message>")] = n
+    return sorted((r, p, n) for (r, p), n in hits.items())
 
 
 def _is_text(rel: str) -> bool:
@@ -221,10 +264,12 @@ def scan(root: Path, files: list[str] | None = None, denylist: list[str] | None 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="lce privacy-scan", description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".", help="path inside the repository to scan")
+    ap.add_argument("--history", action="store_true",
+                    help="also search every commit and commit message for denylist terms")
     args = ap.parse_args(argv)
 
     root = repo_root(Path(args.root))
-    denylist = load_denylist()
+    denylist = load_denylist(include_generated=True)
     self_rel = None
     try:
         self_rel = str(Path(__file__).resolve().relative_to(root))
@@ -232,13 +277,26 @@ def main(argv: list[str] | None = None) -> int:
         pass
     findings = scan(root, denylist=denylist, self_path=self_rel)
     note = f"{len(denylist)} denylist term(s) loaded" if denylist else "no local denylist found"
+    status = 0
     if findings:
         print(f"✗ privacy scan: {len(findings)} finding(s) ({note})")
         for f in findings:
             print(f.render())
-        return 1
-    print(f"✓ privacy scan clean ({note})")
-    return 0
+        status = 1
+    else:
+        print(f"✓ privacy scan clean ({note})")
+    if args.history:
+        hits = scan_history(root, denylist)
+        for rev, path, n in hits:
+            print(f"  [denylist-history] {rev} {path} — {n} line(s)")
+        if hits:
+            print(f"✗ history scan: private terms in {len({h[0] for h in hits})} commit(s)")
+            status = 1
+        elif denylist:
+            print("✓ history scan clean")
+        else:
+            print("! history scan skipped: no denylist (run `lce privacy-denylist`)")
+    return status
 
 
 if __name__ == "__main__":

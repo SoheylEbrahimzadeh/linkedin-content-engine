@@ -520,6 +520,25 @@ def redact(obj: object) -> object:
     return obj
 
 
+def brand_view(store: DataStore, posts: list[dict], mode: str) -> dict:
+    """Brand strategy status. Demo data is dated, so the demo uses its latest plan date."""
+    from datetime import date
+    from zoneinfo import ZoneInfo
+
+    from lce import brand
+    from lce.clock import now
+
+    if mode == "demo" and posts:
+        today = max(date.fromisoformat(p["plan_date"]) for p in posts if p.get("plan_date"))
+    else:
+        today = now().astimezone(ZoneInfo(store.settings().get("timezone") or "UTC")).date()
+    doc = store.brand()
+    return {**brand.status(store, today), "as_of": today.isoformat(),
+            "objective": doc.get("objective"),
+            "throughline": (doc.get("narrative") or {}).get("throughline"),
+            "next": brand.recommend(store, today)}
+
+
 def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None) -> dict:
     """Collect everything the dashboard shows. `mode` is 'real' or 'demo'."""
     if mode not in {"real", "demo"}:
@@ -586,6 +605,7 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
         "settings": safe_settings(store),
         "publishing": publishing_view(store, posts, mode),
         "automation": automation,
+        "brand": brand_view(store, posts, mode),
         "analytics": {"available": False,
                       "reason": "Analytics are not implemented. LinkedIn does not grant this app "
                                 "read access to post statistics."},

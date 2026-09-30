@@ -27,7 +27,7 @@ def test_real_mode_without_any_run_shows_no_jobs_and_no_trigger(store):
     assert a["jobs"] == [] and a["counts"] == {} and a["last_run"] is None
     assert a["trigger"].startswith("none configured")
     assert a["schedule_ok"] and a["next_slot"]["job_state"] is None
-    assert a["next_slot"]["slot_id"] == "2025-05-06-tue-0830"
+    assert a["next_slot"]["slot_id"] == "2025-05-06-tue-0915"
 
 
 def test_real_mode_reflects_job_state(store):
@@ -42,7 +42,7 @@ def test_real_mode_reflects_job_state(store):
 
 def test_failed_and_reconcile_jobs_become_issues(store, monkeypatch):
     scheduler.run_once(store)
-    job = jobs.load_job(store, "job-2025-05-06-tue-0830")
+    job = jobs.load_job(store, "job-2025-05-06-tue-0915")
     jobs.transition(store, job, jobs.J.READY, "x", "t")
     jobs.acquire_lease(job, "scheduler", "t", 30)
     jobs.transition(store, job, jobs.J.RUNNING, "x", "t")
@@ -51,7 +51,7 @@ def test_failed_and_reconcile_jobs_become_issues(store, monkeypatch):
     assert any(i["kind"] == "NEEDS_RECONCILE" and "lease expired" in i["message"] for i in issues)
     with use_clock(FixedClock("2025-05-04T13:00:00-05:00")):
         scheduler.run_once(store)  # reconcile → READY → next pass
-        job = jobs.load_job(store, "job-2025-05-06-tue-0830")
+        job = jobs.load_job(store, "job-2025-05-06-tue-0915")
         jobs.transition(store, job, jobs.J.RUNNING, "x", "t")
         jobs.transition(store, job, jobs.J.FAILED, "boom", "t")
         kinds = {i["kind"] for i in build_snapshot(store, mode="real")["issues"]}
@@ -87,8 +87,8 @@ def test_demo_uses_fixed_demo_clock_and_fictional_jobs():
     assert snap["meta"]["mode"] == "demo"
     assert snap["automation"]["now"] == FixedClock(DEMO_NOW).now().isoformat()
     states = {j["job_id"]: j["state"] for j in snap["automation"]["jobs"]}
-    assert states["job-2025-05-06-tue-0830"] == "SUCCEEDED"
-    assert states["job-2025-05-07-wed-0830"] == "BLOCKED"
+    assert states["job-2025-05-06-tue-0915"] == "SUCCEEDED"
+    assert states["job-2025-05-07-wed-0915"] == "BLOCKED"
     assert snap["issues"] == []
 
 

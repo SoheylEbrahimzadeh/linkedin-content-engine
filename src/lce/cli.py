@@ -62,7 +62,15 @@ def cmd_validate(args):
 def cmd_privacy_scan(args):
     from lce.privacy.scan import main as scan_main
 
-    return scan_main(["--root", args.root])
+    return scan_main(["--root", args.root, *(["--history"] if args.history else [])])
+
+
+def cmd_privacy_denylist(args):
+    from lce.privacy.fingerprint import write_generated
+
+    path, count = write_generated(_store(args))
+    print(f"✓ {count} term(s) derived from the private data directory → {path} (local only)")
+    return 0
 
 
 def cmd_check_data_dir(args):
@@ -201,6 +209,52 @@ def cmd_select_list(args):
     return 0
 
 
+def cmd_brand_status(args):
+    from lce.brand import status
+
+    store = _store(args)
+    st = status(store, date.fromisoformat(args.date) if args.date else _today_local(store))
+    if args.json:
+        print(json.dumps(st, indent=2, ensure_ascii=False))
+        return 0
+    if not st["configured"]:
+        print("! no profile/brand.yaml yet — run `lce interview next` (group: brand)")
+    print(f"window: {st['window_days']} days, {st['posts_in_window']} post(s); "
+          f"personal-evidence share {st['personal_share']:.2f}"
+          + (f" (min {st['min_personal_share']:.2f})" if st["min_personal_share"] is not None else ""))
+    for r in st["pillars"]:
+        target = f"{r['target']:.2f}" if r["target"] is not None else "—"
+        print(f"  pillar {r['id']:<32} {r['posts']:>3} post(s)  actual {r['actual']:.2f}  "
+              f"target {target}  stories {r['evidence_stories']}")
+    for t in st["themes"]:
+        flag = "  ← needs personal input" if t["needs_personal_input"] else ""
+        print(f"  theme  {t['id']:<32} {t['posts']:>3} post(s)  evidence {t['evidence']}{flag}")
+    for p in st["problems"]:
+        print(f"  ✗ {p}")
+    return 1 if st["problems"] else 0
+
+
+def cmd_brand_next(args):
+    from lce.brand import recommend
+
+    store = _store(args)
+    recs = recommend(store, date.fromisoformat(args.date) if args.date else _today_local(store),
+                     args.count)
+    if args.json:
+        print(json.dumps(recs, indent=2, ensure_ascii=False))
+        return 0
+    for i, r in enumerate(recs, 1):
+        head = f"{i}. pillar {r['pillar']} · theme {r['theme'] or '—'} · evidence {r['evidence']}"
+        print(head + ("  (NEEDS PERSONAL INPUT: no PUBLIC story)" if r["needs_personal_input"] else ""))
+        for reason in r["reasons"]:
+            print(f"   - {reason}")
+        if r["stories"]:
+            print(f"   stories: {', '.join(r['stories'])}")
+        if r["candidates"]:
+            print(f"   candidates: {', '.join(r['candidates'])}")
+    return 0
+
+
 def cmd_select_pick(args):
     from lce.planning import select
 
@@ -217,7 +271,8 @@ def cmd_select_pick(args):
     else:
         raise StoreError("give --date or --job")
     post = select(store, candidate_id=args.candidate, pillar=args.pillar, angle=args.angle,
-                  fmt=args.format, plan_date=plan_date, topic=args.topic, stories=args.story)
+                  fmt=args.format, plan_date=plan_date, topic=args.topic, stories=args.story,
+                  theme=args.theme, evidence=args.evidence, chapter=args.chapter)
     print(f"✓ {post['post_id']} → {post['state']}")
     if args.job:
         from lce.scheduler import link_post
@@ -258,7 +313,7 @@ def cmd_humanize_check(args):
                                                      or store.post_text(args.post, "draft.md") or "")
     findings = run_checks(text, rules=ready_ruleset(post["language"]), voice=store.voice(),
                           profile=store.profile(), post=post, stories=store.stories(),
-                          denylist=load_denylist())
+                          denylist=load_denylist(), brand=store.brand())
     _print_findings(findings)
     errors = sum(1 for f in findings if f.severity == ERROR)
     print(f"{errors} error(s), {len(findings) - errors} warning(s) — preview only, state unchanged")
@@ -646,8 +701,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     cmd("init-data", cmd_init_data, "create a private data directory skeleton").add_argument("path")
     cmd("validate", cmd_validate, "validate a data directory").add_argument("path")
-    cmd("privacy-scan", cmd_privacy_scan, "scan this repository for private data").add_argument(
-        "--root", default=".")
+    p = cmd("privacy-scan", cmd_privacy_scan, "scan this repository for private data")
+    p.add_argument("--root", default=".")
+    p.add_argument("--history", action="store_true", help="also search all commits")
+    cmd("privacy-denylist", cmd_privacy_denylist,
+        "derive a local denylist from the private data directory")
     cmd("check-data-dir", cmd_check_data_dir, "verify the data directory").add_argument(
         "path", nargs="?", default=None)
     cmd("status", cmd_status, "readiness and post overview")
@@ -705,6 +763,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--job", default=None, help="scheduled job this post fulfils")
     p.add_argument("--topic", default=None)
     p.add_argument("--story", action="append", default=[])
+    p.add_argument("--theme", default=None, help="brand theme id (profile/brand.yaml)")
+    p.add_argument("--chapter", default=None, help="narrative chapter id")
+    p.add_argument("--evidence", choices=["personal", "external"], default=None,
+                   help="personal needs a PUBLIC story; default follows the theme")
+
+    g = group("brand", "personal brand strategy")
+    p = gcmd(g, "status", cmd_brand_status, "pillar balance, themes, evidence, problems")
+    p.add_argument("--date", default=None)
+    p.add_argument("--json", action="store_true")
+    p = gcmd(g, "next", cmd_brand_next, "recommended next content moves")
+    p.add_argument("--date", default=None)
+    p.add_argument("--count", type=int, default=3)
+    p.add_argument("--json", action="store_true")
 
     g = group("draft", "first drafts")
     p = gcmd(g, "save", cmd_draft_save, "store a draft ('-' = stdin)")

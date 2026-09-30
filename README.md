@@ -11,6 +11,13 @@ author has verified and approved.
 > and [docs/PUBLISHING.md](docs/PUBLISHING.md). A device-independent cloud
 > publisher (Cloudflare Worker, not yet deployed) is described in [docs/CLOUD.md](docs/CLOUD.md).
 
+## Personal brand
+
+Posts serve a long-term professional identity: a private brand strategy
+(objective, narrative, themes, content mix, credibility rules) decides what
+comes next, and personal claims need real, approved stories. See
+[docs/BRAND.md](docs/BRAND.md).
+
 ## Principles
 
 - **Public code ≠ private data.** This repository holds code, templates and a

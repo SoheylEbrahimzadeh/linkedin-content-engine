@@ -127,6 +127,6 @@ def test_resolve_and_parse_slot_id():
 
     local, adjusted = resolve_local(date(2026, 7, 1), 8, 0, ZoneInfo("UTC"))
     assert not adjusted and local.hour == 8
-    assert parse_slot_id("2026-10-01-thu-0830") == (date(2026, 10, 1), "thu", 8, 30)
+    assert parse_slot_id("2026-10-01-thu-0915") == (date(2026, 10, 1), "thu", 9, 15)
     with pytest.raises(ScheduleError):
-        parse_slot_id("2026-10-01-xxx-0830")
+        parse_slot_id("2026-10-01-xxx-0915")

@@ -45,6 +45,27 @@ credential shapes, any use of the Anthropic API, and terms from a local
 denylist (`~/.lce-private/denylist.txt`, one term per line, never committed).
 It reports file, line and rule only, never the matched value.
 
+### Denylist derived from the private data
+
+A hand-written denylist only catches what the owner remembered to add.
+`lce privacy-denylist` (with `--data-dir`/`LCE_DATA_DIR`) derives terms from
+the private data directory and writes them to
+`~/.lce-private/denylist.generated.txt` (mode 600, outside every repository):
+cadence slot tokens (`<day>-<HHMM>`, as in slot and job ids), profile identity
+and headline fields, the LinkedIn profile path, story ids, titles and
+sensitive terms, post ids and the opening line of every draft, post and
+imported published post. It prints only the number of terms.
+
+The repository scanner uses both lists; post QA uses only the manual list,
+because the owner's own posts naturally contain their derived terms.
+Regenerate after changing private data (e.g. after the interview or a new post).
+
+`lce privacy-scan --history` additionally searches every commit reachable from
+any ref, and every commit message, and reports commit, path and line count.
+It is an audit tool rather than a hook: rewritten or pre-existing history can
+keep hits that need an owner decision (for example synthetic fixtures in old
+commits that happen to share a generic slot token).
+
 ## Secrets
 
 No secrets exist in Phase 0. Later phases add exactly the credential they need,
