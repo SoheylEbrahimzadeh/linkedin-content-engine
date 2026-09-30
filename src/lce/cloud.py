@@ -414,14 +414,16 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
                              {**access_headers(credential), "x-lce-client": "cli"}, None)
     perr = str(pipe.body.get("error", ""))
     if pipe.status == 503 and "schema" in perr:
-        out.append(_check("database", ACTION, "migrations 0001–0002 applied; 0003 (pipeline_snapshot) missing",
+        out.append(_check("database", ACTION,
+                          "migrations 0001–0002 applied; 0003 (pipeline_snapshot) missing",
                           "cd cloud && npx wrangler d1 migrations apply lce --remote"))
     elif pipe.status in (200, 404):
+        synced = pipe.status == 200
+        received = pipe.body.get("meta", {}).get("mirror", {}).get("received_at")
         out.append(_check("database", OK, "schema present (migrations 0001–0003)"))
-        out.append(_check("pipeline mirror", OK if pipe.status == 200 else ACTION,
-                          f"synced {pipe.body.get('meta', {}).get('mirror', {}).get('received_at')}"
-                          if pipe.status == 200 else "no snapshot yet",
-                          "" if pipe.status == 200 else "lce cloud sync (or the private cloud-sync workflow)"))
+        out.append(_check("pipeline mirror", OK if synced else ACTION,
+                          f"synced {received}" if synced else "no snapshot yet",
+                          "" if synced else "lce cloud sync (or the private cloud-sync workflow)"))
     else:
         out.append(_check("database", FAIL, f"/api/pipeline HTTP {pipe.status} {perr}".strip()))
     s = snap.body.get("settings", {})
