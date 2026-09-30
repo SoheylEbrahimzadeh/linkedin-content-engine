@@ -77,6 +77,12 @@ Some concepts were studied in the MIT-licensed
 [linkedin-skills](https://github.com/sergebulaev/linkedin-skills) project. This
 is an independent implementation; see [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md).
 
+## Project operation
+
+Current phase, open PRs and holds: [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).
+How the coding agent runs the project and where it must stop for the owner:
+[docs/AGENT_EXECUTION_CONTRACT.md](docs/AGENT_EXECUTION_CONTRACT.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
