@@ -3,7 +3,8 @@
 A job prepares the post for exactly one schedule slot. Its lifecycle is separate
 from the post lifecycle; the job only records which post it drives
 (`post_id`). A job's goal is to bring that post to AWAITING_APPROVAL before the
-slot. Approval is human-only and publication is not implemented.
+slot. Approval is human-only; jobs never publish (publishing is `lce publish` or a
+consented cloud slot, both after approval).
 
 Files (private data directory):
 - automation/jobs/<job_id>.yaml   one file per job (created exclusively)

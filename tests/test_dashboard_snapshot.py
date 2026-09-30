@@ -53,7 +53,7 @@ def test_publication_is_never_claimed(real_store):
     assert snap["analytics"]["overall"]["posts"] == 0      # nothing estimated
     stages = {s["id"]: s["status"] for s in snap["pipeline"]}
     assert stages["publishing"] == stages["analytics"] == "manual"
-    assert stages["verification"] == "not_implemented"
+    assert stages["verification"] == "available"
     assert "published" not in {s["status"] for s in snap["pipeline"]}
 
 
@@ -211,7 +211,7 @@ def test_latest_run_follows_most_recent_activity(real_store):
     assert st["qa"] == "failed"
     assert st["duplicate"] == st["approval"] == "not_reached"
     assert st["publishing"] == st["analytics"] == "not_reached"
-    assert st["verification"] == "not_implemented"
+    assert st["verification"] == "not_reached"
 
 
 def _touch(store, pid):

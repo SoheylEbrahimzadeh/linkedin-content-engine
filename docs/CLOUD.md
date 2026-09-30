@@ -134,6 +134,20 @@ request is wall time, not CPU. Expected cost: €0/month.
 - Use one deploy path. Keep `CLOUD_DEPLOY_ENABLED` unset while Workers Builds
   deploys production.
 
+### Full pipeline on any device (LCE-013)
+
+The Cloud Control Center (`/`) shows what the Worker owns: delegated posts,
+consents, publications, kill switch, audit log. The **Web Control Center** at
+`<api_base>/pipeline/` shows the whole private pipeline (research, calendar,
+drafts, QA, duplicate checks, approval queue, brand, analytics) from any
+browser. It is the same app as `lce dashboard serve`, reading a read-only
+mirror in D1 (`pipeline_snapshot`, migration 0003) behind the same Access
+check. `lce cloud sync` builds the dashboard snapshot from the private data
+(allowlisted settings, secrets redacted, story counts only, no local paths, no
+repository remote) and uploads it; the private repository can run the same
+command from GitHub Actions with an Access service token after every push.
+Approving stays terminal-only: the mirror cannot approve, schedule or publish.
+
 ### Verifying production from GitHub (no local machine)
 
 `.github/workflows/production-smoke.yml` runs after every push to `main`, daily

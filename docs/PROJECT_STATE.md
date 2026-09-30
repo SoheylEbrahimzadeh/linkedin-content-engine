@@ -38,7 +38,7 @@ publication record → metrics → learning inputs.
 | Relevant image | VERIFIED | image decision + provenance + checks; swapped image never sent |
 | Human approval (text + image) | VERIFIED | terminal-only, typed phrase, text + image hash; wrong hash/phrase, edit after approval, tampered artifact, swapped image all refused (tests) |
 | Local publishing (Python) | VERIFIED (fake transport) · BLOCKED live | intent before request, one request, URN recorded, re-publish refused (e2e); live needs the LinkedIn token |
-| Cloud scheduling (Worker) | VERIFIED (Miniflare) · NOT_VERIFIED in production | 86 vitest incl. atomic claim, kill switch, hash gate, `schema_missing`; production D1 migrations and Access unverified (OWNER_ACTION) |
+| Cloud scheduling (Worker) | VERIFIED (Miniflare) · NOT_VERIFIED in production | 90 vitest incl. atomic claim, kill switch, hash gate, `schema_missing`; production D1 migrations and Access unverified (OWNER_ACTION) |
 | Cloud Control Center | VERIFIED (Miniflare) · NOT_VERIFIED in production | fail-closed 503 observed by the owner; Access path needs the owner decision below |
 | Publication verification | VERIFIED | API 201 + URN; ambiguous → `NEEDS_RECONCILE`, human reconcile (LinkedIn grants no read-back) |
 | Analytics | VERIFIED (manual/CSV) · BLOCKED official API (7B) | e2e: recorded metrics → rate + features |
@@ -105,6 +105,17 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 - LCE-007 (PR #22): `lce cloud doctor`, read-only preflight that names the first
   open production gate and its exact command.
 - LCE-008 (PR #22): [LIVE_TEST.md](LIVE_TEST.md), the 4D runbook.
+- LCE-011 (PR #25): Access service tokens (`LCE_CF_ACCESS_CLIENT_ID/SECRET`) for
+  non-interactive clients; `lce cloud doctor` exit codes 0/1/2.
+- LCE-012 (PR #25): `production-smoke` workflow verifies production from GitHub
+  (fail-closed without credentials; read-only doctor with a service token).
+  Needs the repository variable `LCE_API_BASE` (OWNER_ACTION).
+- LCE-013 (PR #26): the Web Control Center at `<api_base>/pipeline/` shows the
+  whole private pipeline from any device via `lce cloud sync` → D1 mirror
+  (migration 0003). Read-only.
+- LCE-014: QA warns when a post opens or closes like a recent post (30 days).
+- LCE-015: sweep fixed stale capability claims (verification shown as "not
+  implemented", LinkedIn provider shown as text-only) and stale docstrings.
 - LCE-010: `wrangler.toml` no longer carries a placeholder `database_id`; Wrangler
   resolves the existing D1 `lce` by name for deploys and `--remote` migrations
   (the placeholder made `migrations apply lce --remote` target a nonexistent id).

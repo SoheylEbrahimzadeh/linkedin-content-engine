@@ -108,7 +108,7 @@ def test_capabilities_are_truthful():
     p, _ = pub()
     c = p.capabilities
     assert c.can_publish and not c.can_find_existing and not c.can_get_status
-    assert not c.can_schedule and not p.supports_native_scheduling and not c.supports_media
+    assert not c.can_schedule and not p.supports_native_scheduling and c.supports_media
     with pytest.raises(UnsupportedCapability):
         p.find_existing("k", "0" * 64)
     with pytest.raises(UnsupportedCapability):

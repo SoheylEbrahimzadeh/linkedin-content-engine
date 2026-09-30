@@ -102,10 +102,10 @@ class ProviderCapabilities:
 PROVIDER_CAPABILITIES: dict[str, ProviderCapabilities] = {
     "linkedin_api": ProviderCapabilities(
         can_publish=True, can_find_existing=False, can_get_status=False, can_schedule=False,
-        supports_media=False, max_chars=3000,
+        supports_media=True, max_chars=3000,
         notes=("reading member posts needs r_member_social (restricted by LinkedIn)",
                "no provider-side idempotency key; ambiguous results need a human decision",
-               "text posts only in Phase 3")),
+               "one image per post (Images API upload, Phase 6B); no video/documents/polls")),
 }
 
 
