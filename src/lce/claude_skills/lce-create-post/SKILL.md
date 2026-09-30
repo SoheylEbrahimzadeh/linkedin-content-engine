@@ -41,7 +41,9 @@ Phase 1 ends at the approval boundary. **You never run `lce approve`,
 6. **Image**: decide what, if anything, the post needs, then record it:
    `lce image decide <post_id> --kind none --rationale "..."`, or with a file:
    `lce image decide <post_id> --kind diagram|architecture|chart|screenshot|source_image|generated_concept --file <png/jpg/gif> --rationale "..." --relation "<what it shows and how it supports the point>" --alt "<alt text>" --origin <origin> --usage <usage> [--source-url --license --credit] [--method "<tool/code>" --prompt "..."]`.
-   Prefer a diagram or chart built from the post's own recorded facts; a
+   If the post cites recorded figures, `lce image chart <post_id>` draws them
+   (verbatim claim text, source shown, provenance recorded). Otherwise prefer a
+   diagram built from the post's own recorded facts; a
    third-party image only with its licence; a screenshot only of the owner's
    own work or a cited source; a generated concept image only when it adds
    meaning. Never a random stock/AI image to fill space: choose `none`. Never

@@ -192,6 +192,16 @@
           "maximum": 1
         }
       }
+    },
+    "visuals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      }
     }
   }
 }

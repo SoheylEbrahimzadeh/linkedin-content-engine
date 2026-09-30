@@ -275,6 +275,14 @@ def cmd_image_decide(args):
     return cmd_image_check(args)
 
 
+def cmd_image_chart(args):
+    from lce.visuals import chart
+
+    doc = chart(_store(args), args.post, claims=args.claim or None)
+    print(f"✓ chart generated for {args.post} ({doc['file']}, sha256 {doc['sha256'][:12]}…)")
+    return cmd_image_check(args)
+
+
 def cmd_image_check(args):
     from lce.images import check
 
@@ -919,6 +927,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--method", default=None, help="generation tool/code for generated images")
     p.add_argument("--prompt", default=None)
     p.add_argument("--by", default="agent", help="who decided (agent or owner)")
+    p = gcmd(g, "chart", cmd_image_chart, "chart from the post's recorded claims (visuals extra)")
+    p.add_argument("post")
+    p.add_argument("--claim", type=int, action="append", default=[],
+                   help="0-based index of a recorded claim to include (repeatable)")
     p = gcmd(g, "check", cmd_image_check, "verify the image decision")
     p.add_argument("post")
 
