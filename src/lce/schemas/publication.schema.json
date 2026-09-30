@@ -64,6 +64,15 @@
       "type": "string",
       "pattern": "^https://www\\.linkedin\\.com/"
     },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["urn", "sha256"],
+      "properties": {
+        "urn": {"type": "string", "pattern": "^urn:li:image:[A-Za-z0-9_-]+$"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
     "published_at": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\+00:00$"

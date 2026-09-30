@@ -101,3 +101,7 @@ If you post the approved text yourself, record it with
 `lce publish manual <post> --published-url <URL>` in your own terminal (typed
 phrase `PUBLISHED <post>`). Only the exact approved text and image can be
 recorded. See [ANALYTICS.md](ANALYTICS.md).
+
+## Images
+
+Posts with an approved image are published with it (Images API upload, then the post). See [IMAGES.md](IMAGES.md).

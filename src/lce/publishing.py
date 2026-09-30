@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from lce.clock import iso_utc, now, parse_iso
 from lce.posts import current_text, set_state
-from lce.publish.base import Outcome, PostPayload, PublishResult
+from lce.publish.base import ImageAttachment, Outcome, PostPayload, PublishResult
 from lce.publish.linkedin import LinkedInConfig, LinkedInPublisher, Transport
 from lce.publish.little import to_little
 from lce.state import PostState
@@ -90,6 +90,14 @@ def _save_publication(store: DataStore, doc: dict) -> None:
                   json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
 
 
+def _sha_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def prep_image_sha(store: DataStore, post_id: str) -> str | None:
+    return ((store.load_post(post_id).get("approval") or {}).get("image_hash") or None)
+
+
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -129,15 +137,20 @@ def prepare(store: DataStore, post_id: str, publisher: LinkedInPublisher) -> Pre
 
     if not image_unchanged(store, post):
         raise StoreError("the image does not match the approved image; nothing is sent")
-    if (load_image(store, post_id) or {}).get("kind", NO_IMAGE) != NO_IMAGE:
-        raise StoreError("this post has an image; image upload is not implemented yet "
-                         "(Phase 6B), so it is not published without it")
+    img = load_image(store, post_id) or {}
+    attachment = None
+    if img.get("kind", NO_IMAGE) != NO_IMAGE:
+        data = (store.post_dir(post_id) / img["file"]).read_bytes()
+        if _sha_bytes(data) != approval.get("image_hash"):
+            raise StoreError("the image does not match the approved image; nothing is sent")
+        attachment = ImageAttachment(data=data, alt_text=img.get("alt_text", ""),
+                                     sha256=approval["image_hash"], file_name=img["file"])
     existing = load_publication(store, post_id)
     if existing and existing["state"] in {"publishing", "needs_reconcile", "published"}:
         raise StoreError(f"a publish attempt is already recorded ({existing['state']}); "
                          "run `lce publish reconcile`")
     payload = PostPayload(post_id=post_id, idempotency_key=_sha(f"{post_id}:{h}"), text=text,
-                          content_hash=h, language=post["language"])
+                          content_hash=h, language=post["language"], image=attachment)
     issues = publisher.validate(payload)
     if issues:
         raise StoreError("cannot publish: " + "; ".join(f"{i.code}: {i.message}" for i in issues))
@@ -149,9 +162,14 @@ def dry_run(store: DataStore, post_id: str, publisher: LinkedInPublisher) -> dic
     """Exactly what would be sent. No token is read, nothing is written or sent."""
     prep = prepare(store, post_id, publisher)
     url, headers, body = publisher.build_request(prep.payload)
+    image = prep.payload.image
     return {"url": url, "headers": {**headers, "Authorization": "Bearer <from Keychain>"},
             "body": body, "approved_hash": prep.payload.content_hash,
             "characters": len(prep.text.strip()),
+            "image": ({"file": image.file_name, "sha256": image.sha256, "bytes": len(image.data),
+                       "steps": ["POST /rest/images?action=initializeUpload",
+                                 "PUT <uploadUrl> (the image bytes)", "POST /rest/posts"]}
+                      if image else None),
             "capabilities": publisher.capabilities}
 
 
@@ -203,6 +221,8 @@ def _record_result(store: DataStore, post: dict, record: dict, attempt: dict,
         if d.get(key) not in (None, ""):
             attempt[key] = d[key]
     pid = post["post_id"]
+    if d.get("image_urn") and prep_image_sha(store, pid):
+        record["image"] = {"urn": d["image_urn"], "sha256": prep_image_sha(store, pid)}
     if result.outcome == Outcome.PUBLISHED:
         attempt["outcome"] = "published"
         record.update({"state": "published", "remote_id": result.remote_id, "url": result.url,
