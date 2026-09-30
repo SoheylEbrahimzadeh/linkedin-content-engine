@@ -10,6 +10,8 @@ Derived terms (all from the private data directory, nothing hard-coded):
 - cadence slot tokens as they appear in slot/job ids, e.g. `<day>-<HHMM>`;
 - profile identity: display name, current role, headlines, positioning,
   LinkedIn profile path;
+- brand: objective, throughline, career chapter titles and summaries, target
+  markets and roles;
 - stories: story id, title, sensitive terms;
 - posts: post id and the opening line of each draft/post and of imported
   published posts.
@@ -66,6 +68,14 @@ def derive_terms(store: DataStore) -> list[str]:
     url = linkedin.get("profile_url") or ""
     if "linkedin.com/" in url:
         terms.append(url.split("linkedin.com/", 1)[1].strip("/"))
+
+    brand = store.brand() or {}
+    narrative = brand.get("narrative") or {}
+    target = brand.get("target") or {}
+    terms += [brand.get("objective"), narrative.get("throughline"),
+              *target.get("markets", []), *target.get("roles", [])]
+    for ch in narrative.get("chapters", []):
+        terms += [ch.get("title"), ch.get("summary")]
 
     for story_id, story in store.stories().items():
         terms += [story_id, story.get("title"), *(story.get("sensitive_terms") or [])]

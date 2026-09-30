@@ -11,6 +11,8 @@ candidate_id: c-c68b014357d8
 sources: []
 claims: []
 stories_used: []
+brand:
+  evidence: external
 state: NEEDS_REVISION
 history:
 - at: '2025-05-04T15:45:00+00:00'

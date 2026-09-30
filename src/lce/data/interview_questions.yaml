@@ -28,6 +28,25 @@ questions:
   # 4 ── pillars
   - {id: pillars, group: pillars, target: profile, path: pillars, type: yaml, required: true,
      prompt: "3–5 content pillars. For each: an id, a name, and a few topics."}
+  # 4b ── personal brand (profile/brand.yaml)
+  - {id: brand_objective, group: brand, target: brand, path: objective, type: text, required: true,
+     prompt: "The long-term reputation goal your content serves (what should people associate with you in 2–3 years?)."}
+  - {id: brand_themes, group: brand, target: brand, path: themes, type: yaml, required: true,
+     prompt: "Recurring themes across pillars. For each: id, name, optional pillars [ids], evidence: personal | external | either (personal = needs a PUBLIC story)."}
+  - {id: brand_throughline, group: brand, target: brand, path: narrative.throughline, type: text,
+     prompt: "One sentence every post should be consistent with."}
+  - {id: brand_chapters, group: brand, target: brand, path: narrative.chapters, type: yaml,
+     prompt: "Career chapters, oldest first: id, title, period, summary, stories [story ids as evidence]."}
+  - {id: brand_target_markets, group: brand, target: brand, path: target.markets, type: list,
+     prompt: "Markets/regions you want to be recognised in (direction only; posts are not about them)."}
+  - {id: brand_target_roles, group: brand, target: brand, path: target.roles, type: list,
+     prompt: "Roles you want to be recognised for."}
+  - {id: brand_target_industries, group: brand, target: brand, path: target.industries, type: list,
+     prompt: "Industries you want to be recognised in."}
+  - {id: brand_mix, group: brand, target: brand, path: mix, type: yaml,
+     prompt: "Content balance: {pillars: {<pillar id>: share 0..1}, window_days: 28, min_personal_share: 0..1}."}
+  - {id: brand_credibility, group: brand, target: brand, path: credibility.rules, type: list,
+     prompt: "Credibility rules in your words (e.g. what may only be said with evidence)."}
   # 5 ── voice
   - {id: voice_language, group: voice, target: voice, path: language, type: enum, options: [en, de, fa], required: true,
      prompt: "Which language is this voice profile for?"}

@@ -99,6 +99,16 @@
         "type": "string"
       }
     },
+    "brand": {
+      "type": "object",
+      "description": "Personal-brand placement of this post (theme, evidence mode, career chapter).",
+      "additionalProperties": false,
+      "properties": {
+        "theme": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "chapter": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "evidence": {"enum": ["personal", "external"]}
+      }
+    },
     "state": {
       "enum": [
         "RESEARCHED",

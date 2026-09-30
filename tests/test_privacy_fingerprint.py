@@ -78,3 +78,11 @@ def test_history_scan_finds_terms_in_old_commits_and_messages(git_repo, tmp_path
     assert main(["--root", str(git_repo), "--history"]) == 1
     out = capsys.readouterr().out
     assert "wed-1405" not in out and "history scan" in out
+
+
+def test_brand_terms_are_derived(store):
+    terms = fingerprint.derive_terms(store)
+    b = store.brand()
+    assert b["objective"] in terms and b["narrative"]["throughline"] in terms
+    assert b["target"]["markets"][0] in terms
+    assert b["narrative"]["chapters"][0]["title"] in terms

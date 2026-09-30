@@ -47,7 +47,12 @@ def rank_candidates(store: DataStore, today: date) -> list[dict]:
     tuning = store.tuning()["duplicates"]
     recent = recent_posts(store, today, tuning["topic_window_days"])
     shares = pillar_shares(store, today)
-    pillars = {p["id"]: p for p in store.profile().get("pillars", [])}
+    profile = store.profile()
+    pillars = {p["id"]: p for p in profile.get("pillars", [])}
+    mix = store.brand().get("mix") or {}
+    targets = mix.get("pillars") or {}
+    brand_shares = pillar_shares(store, today, mix.get("window_days", 28)) if targets else {}
+    avoid = [t.lower() for t in profile.get("topics", {}).get("avoid", [])]
     ranked = []
     for cand in store.candidates().values():
         if cand.get("status") != "new":
@@ -64,6 +69,13 @@ def rank_candidates(store: DataStore, today: date) -> list[dict]:
             if shares.get(pillar, 0.0) >= limit:
                 reasons.append(f"pillar {pillar} over its share")
                 score -= 0.3
+        if pillar in targets and brand_shares.get(pillar, 0.0) < targets[pillar]:
+            reasons.append(f"pillar {pillar} below its brand target")
+            score += 0.2
+        text = f"{cand['title']} {cand.get('summary', '')}".lower()
+        if any(set(words(term)) and set(words(term)) <= set(words(text)) for term in avoid):
+            reasons.append("matches a topic on the avoid list")
+            score -= 1.0
         if not cand.get("sources"):
             score -= 0.1
         ranked.append({"candidate_id": cand["candidate_id"], "title": cand["title"],
@@ -95,11 +107,23 @@ def _new_post_id(store: DataStore, plan_date: date, topic: str) -> str:
 
 
 def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt: str,
-           plan_date: date, topic: str | None = None, stories: list[str] | None = None) -> dict:
-    """Create a post from a research candidate: RESEARCHED → SELECTED (or NEEDS_INPUT)."""
+           plan_date: date, topic: str | None = None, stories: list[str] | None = None,
+           theme: str | None = None, evidence: str | None = None,
+           chapter: str | None = None) -> dict:
+    """Create a post from a research candidate: RESEARCHED → SELECTED (or NEEDS_INPUT).
+
+    Brand placement: an optional theme and career chapter from brand.yaml, and an
+    evidence mode. A post that needs personal evidence but has no PUBLIC story
+    goes to NEEDS_INPUT; evidence is never invented.
+    """
+    from lce import brand as brand_engine
     missing = ready_for_drafting(store)
     if missing:
         raise StoreError("profile is incomplete; answer first: " + ", ".join(q.id for q in missing))
+    if theme and brand_engine.theme(store, theme) is None:
+        raise StoreError(f"unknown brand theme {theme!r}")
+    if chapter and brand_engine.chapter(store, chapter) is None:
+        raise StoreError(f"unknown narrative chapter {chapter!r}")
     cand = store.read_doc(store.candidate_path(candidate_id))
     if not cand:
         raise StoreError(f"candidate {candidate_id} does not exist")
@@ -116,6 +140,16 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
             raise StoreError(f"story {sid!r} does not exist")
         if story["publication_status"] != "PUBLIC":
             blocked.append(sid)
+    usable = [s for s in (stories or []) if s not in blocked]
+    try:
+        mode = brand_engine.resolve_evidence(store, theme, evidence, usable)
+    except ValueError as exc:
+        raise StoreError(str(exc)) from exc
+    placement = {"evidence": mode}
+    if theme:
+        placement["theme"] = theme
+    if chapter:
+        placement["chapter"] = chapter
     language = profile.get("languages", {}).get("primary", "en")
     topic = topic or cand["title"]
     post = {
@@ -130,7 +164,8 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
         "candidate_id": candidate_id,
         "sources": cand.get("sources", []),
         "claims": cand.get("claims", []),
-        "stories_used": [s for s in (stories or []) if s not in blocked],
+        "stories_used": usable,
+        "brand": placement,
         "state": S.RESEARCHED.value,
         "history": [{"at": now_iso(), "state": S.RESEARCHED.value, "note": "from candidate"}],
     }
@@ -155,6 +190,10 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
     if blocked:
         return set_state(store, post, S.NEEDS_INPUT,
                          "non-public stories requested: " + ", ".join(blocked))
+    if mode == "personal" and not usable:
+        return set_state(store, post, S.NEEDS_INPUT,
+                         "personal evidence required: add or publish a PUBLIC story, "
+                         "or choose external evidence")
     post = set_state(store, post, S.SELECTED, "selected")
     sync_plan(store, post)
     return post

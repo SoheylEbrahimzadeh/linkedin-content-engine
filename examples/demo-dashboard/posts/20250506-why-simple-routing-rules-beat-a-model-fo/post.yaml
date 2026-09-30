@@ -12,6 +12,8 @@ sources: []
 claims: []
 stories_used:
 - demo-ticket-routing
+brand:
+  evidence: personal
 state: APPROVED
 history:
 - at: '2025-05-04T14:45:00+00:00'

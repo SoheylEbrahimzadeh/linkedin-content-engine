@@ -221,6 +221,35 @@ function viewResearch(s) {
   ];
 }
 
+function viewBrand(s) {
+  const b = s.brand;
+  if (!b || !b.configured) {
+    return [card(null, empty("No brand strategy yet. Answer the brand questions: "), mono("lce interview next"))];
+  }
+  const share = (x) => (x === null || x === undefined ? "—" : x.toFixed(2));
+  return [
+    h("div", { class: "grid three" },
+      card("Posts in window", h("p", { class: "big" }, badge(`${b.posts_in_window} / ${b.window_days} days`, "info"))),
+      card("Personal-evidence share", h("p", { class: "big" }, badge(share(b.personal_share),
+        b.min_personal_share !== null && b.personal_share < b.min_personal_share ? "warn" : "ok")),
+        b.min_personal_share !== null ? h("p", { class: "sub" }, `minimum ${share(b.min_personal_share)}`) : null),
+      card("Consistency", h("p", { class: "big" }, badge(b.problems.length ? `${b.problems.length} problem(s)` : "consistent", b.problems.length ? "error" : "ok")))),
+    card("Objective", kv([["Objective", b.objective], ["Throughline", b.throughline]])),
+    card("Pillar balance", table(["Pillar", "Posts", "Actual", "Target", "PUBLIC stories"],
+      b.pillars.map((r) => h("tr", {}, h("td", {}, r.name), h("td", {}, String(r.posts)), h("td", {}, share(r.actual)),
+        h("td", {}, share(r.target)), h("td", {}, String(r.evidence_stories)))))),
+    card("Themes", b.themes.length ? table(["Theme", "Posts", "Evidence", "PUBLIC stories"],
+      b.themes.map((t) => h("tr", {}, h("td", {}, t.name), h("td", {}, String(t.posts)), h("td", {}, t.evidence),
+        h("td", {}, t.needs_personal_input ? badge("needs personal input", "warn") : String(t.evidence_stories))))) : empty("No themes.")),
+    card("Next content moves", b.next.length ? table(["Pillar", "Theme", "Evidence", "Why"],
+      b.next.map((r) => h("tr", {}, h("td", {}, r.pillar), h("td", {}, show(r.theme)),
+        h("td", {}, r.needs_personal_input ? badge("personal input needed", "warn") : r.evidence),
+        h("td", {}, r.reasons.join("; "))))) : empty("No pillars configured.")),
+    b.problems.length ? card("Problems", h("ul", {}, b.problems.map((p) => h("li", {}, p)))) : null,
+    h("p", { class: "note" }, "Recommendations are deterministic: pillar balance against the configured mix, least-used theme, and whether PUBLIC stories exist. Evidence is never invented: a personal theme without a PUBLIC story needs your input. CLI: ", mono("lce brand next"), "."),
+  ];
+}
+
 function viewCalendar(s) {
   const months = calendarMonths(s.calendar);
   const dow = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -367,7 +396,7 @@ function render() {
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.route === route.name));
   document.getElementById("nav").classList.remove("open");
   if (!snapshot) return;
-  const views = { dashboard: viewDashboard, posts: viewPosts, research: viewResearch, calendar: viewCalendar,
+  const views = { dashboard: viewDashboard, brand: viewBrand, posts: viewPosts, research: viewResearch, calendar: viewCalendar,
     approval: viewApproval, publishing: viewPublishing, automation: viewAutomation, monitoring: viewMonitoring, errors: viewErrors,
     analytics: viewAnalytics, settings: viewSettings };
   const content = route.name === "posts" && route.id ? viewPost(snapshot, route.id) : views[route.name](snapshot);

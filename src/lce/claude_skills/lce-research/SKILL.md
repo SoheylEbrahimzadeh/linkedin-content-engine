@@ -12,6 +12,9 @@ description: Gather candidate topics for LinkedIn posts from the owner's configu
 - Only record facts you actually read in a source, with the source URL.
 - Stay inside the owner's pillars and public topics (`lce status`,
   `profile/profile.yaml`). Skip anything on the avoid list.
+- Research for the brand, not for volume: prefer the pillars and themes that
+  `lce brand next` reports as under-served, and sources an international
+  professional audience would recognise.
 - No paid services, no API keys, no scraping of LinkedIn.
 
 ## Steps

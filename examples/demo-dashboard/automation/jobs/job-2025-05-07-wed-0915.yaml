@@ -15,7 +15,7 @@ attempts: 0
 max_attempts: 3
 revisions: 0
 created_at: '2025-05-04T14:45:00+00:00'
-created_by: 20250504T144500Z-198f58
+created_by: 20250504T144500Z-5a085d
 updated_at: '2025-05-05T14:45:00+00:00'
 steps: []
 history:
@@ -23,20 +23,20 @@ history:
   from: null
   to: SCHEDULED
   reason: created
-  invocation_id: 20250504T144500Z-198f58
+  invocation_id: 20250504T144500Z-5a085d
 - at: '2025-05-05T14:45:00+00:00'
   from: SCHEDULED
   to: READY
   reason: prepare window open
-  invocation_id: 20250505T144500Z-21cc31
+  invocation_id: 20250505T144500Z-0a3877
 - at: '2025-05-05T14:45:00+00:00'
   from: READY
   to: RUNNING
   reason: execution started
-  invocation_id: 20250505T144500Z-21cc31
+  invocation_id: 20250505T144500Z-0a3877
 - at: '2025-05-05T14:45:00+00:00'
   from: RUNNING
   to: BLOCKED
   reason: 'no post yet: research/select/draft needed'
-  invocation_id: 20250505T144500Z-21cc31
+  invocation_id: 20250505T144500Z-0a3877
 blocked_reason: awaiting_agent
