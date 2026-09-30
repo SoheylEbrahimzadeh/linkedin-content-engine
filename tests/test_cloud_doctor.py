@@ -157,7 +157,8 @@ def test_cli_exit_code_distinguishes_broken_from_open_gates(configured, monkeypa
 
 
 def test_missing_migration_0003_is_detected(configured):
-    by, _ = run(configured, Worker(pipeline=(503, {"error": "database schema missing: apply cloud/migrations to D1"})))
+    missing = (503, {"error": "database schema missing: apply cloud/migrations to D1"})
+    by, _ = run(configured, Worker(pipeline=missing))
     assert by["database"]["status"] == "action" and "0003" in by["database"]["detail"]
 
 
