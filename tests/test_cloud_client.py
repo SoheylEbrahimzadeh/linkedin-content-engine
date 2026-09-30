@@ -139,9 +139,44 @@ def test_cloud_config_is_validated(store):
         cloud.load_cloud_config(store)
 
 
-def test_posts_with_an_image_are_not_delegated(env):
+def _with_image(store, pid, tmp_path, size=None):
+    from test_images import png
+
+    from lce import images
+
+    f = png(tmp_path / "i.png")
+    if size:
+        f.write_bytes(f.read_bytes() + b"\0" * size)
+    post = store.load_post(pid)
+    images.decide(store, pid, kind="chart", rationale="one number carries the point",
+                  source_file=str(f), relation="plots the figure the post discusses",
+                  alt_text="Bar chart", provenance={"origin": "own_creation", "usage": "owned",
+                                                    "generation": {"method": "chart script"}})
+    # re-approve text + image the way the owner would (test shortcut on fictional data)
+    post = store.load_post(pid)
+    post["state"] = "READY_TO_PUBLISH"
+    post["approval"] = {**post.get("approval", {}), "state": "approved",
+                        "approved_hash": post["content_hash"],
+                        "approved_at": "2026-09-30T10:00:00+00:00",
+                        "image_hash": images.approval_hash(store, pid)}
+    store.save_post(post)
+
+
+def test_push_sends_the_approved_image(env, tmp_path):
     store, pid, fake, client = env
-    (store.post_dir(pid) / "image.yaml").write_text("kind: diagram\nrationale: x\n")
-    with pytest.raises(CloudError, match="text-only"):
+    _with_image(store, pid, tmp_path)
+    cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)
+    sent = fake.posts[pid]
+    assert sent["image"]["sha256"] == store.load_post(pid)["approval"]["image_hash"]
+    assert sent["image"]["alt_text"] == "Bar chart" and sent["image"]["data_base64"]
+
+
+def test_push_refuses_changed_or_oversized_images(env, tmp_path):
+    store, pid, fake, client = env
+    _with_image(store, pid, tmp_path, size=cloud.CLOUD_MAX_IMAGE_BYTES)
+    with pytest.raises(CloudError, match="publish this post locally|Publish this post locally"):
+        cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)
+    (store.post_dir(pid) / "image.png").write_bytes(b"\x89PNG\r\n\x1a\nchanged")
+    with pytest.raises(CloudError, match="approved image"):
         cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)
     assert not (store.post_dir(pid) / "delegation.json").exists()

@@ -37,6 +37,19 @@ lce cloud pull  ◄─────────────────  outcomes
 - **A missed window** (slot + lateness passed) expires the consent; nothing is
   published late.
 
+## Images
+
+A post with an approved image is pushed with it (`lce cloud push`: the image is
+re-hashed against the approval and sent base64 with its alt text). The Worker
+verifies the bytes against the approved hash and the PNG/JPEG/GIF signature,
+stores them in `post_images` (never in listings or the snapshot) and, at the
+slot, re-verifies the hash, uploads through the Images API
+(`initializeUpload` → `PUT` to LinkedIn's `dms-uploads` URL → post with
+`content.media`), exactly like the local publisher (shared request vector).
+A failure before the post creates nothing and becomes `PUBLISH_FAILED`
+(owner rearms). Images over 1.5 MB (D1 row limit) are refused at push; publish
+those locally.
+
 ## Credentials
 
 | Credential | Where | Who sets it |

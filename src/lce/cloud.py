@@ -113,6 +113,28 @@ def make_client(store: DataStore, transport: CloudTransport | None = None,
                        transport or UrllibCloudTransport())
 
 
+CLOUD_MAX_IMAGE_BYTES = 1_500_000  # the Worker stores images in D1 (rows ≤ ~2 MB)
+
+
+def _image_payload(store: DataStore, post_id: str, approval: dict) -> dict | None:
+    """The approved image for the Worker, re-hashed against the approval; None for no image."""
+    import base64
+    import hashlib
+
+    doc = store.read_doc(store.post_dir(post_id) / "image.yaml")
+    if not doc or doc.get("kind", "none") == "none":
+        return None
+    data = (store.post_dir(post_id) / doc["file"]).read_bytes()
+    sha = hashlib.sha256(data).hexdigest()
+    if sha != approval.get("image_hash"):
+        raise CloudError("the image does not match the approved image; nothing is sent")
+    if len(data) > CLOUD_MAX_IMAGE_BYTES:
+        raise CloudError(f"the image is {len(data)} bytes; the cloud publisher accepts up to "
+                         f"{CLOUD_MAX_IMAGE_BYTES}. Publish this post locally (`lce publish`).")
+    return {"data_base64": base64.b64encode(data).decode("ascii"), "sha256": sha,
+            "alt_text": doc.get("alt_text", "")}
+
+
 # ── delegation (one publisher per post) ───────────────────────────────
 def delegation_path(store: DataStore, post_id: str):
     return store.post_dir(post_id) / "delegation.json"
@@ -147,16 +169,15 @@ def push(store: DataStore, post_id: str, client: CloudClient, *, confirm=input, 
         raise CloudError("this post was already delegated with a different text")
     if (store.post_dir(post_id) / "publication.json").exists():
         raise CloudError("a local publish attempt exists for this post; it cannot be delegated")
-    image = store.read_doc(store.post_dir(post_id) / "image.yaml")
-    if image and image.get("kind", "none") != "none":
-        raise CloudError("this post has an image; the cloud publisher is text-only until image "
-                         "upload exists, so it is not delegated")
+    image_payload = _image_payload(store, post_id, approval)
     _confirm(confirm, is_tty, f"DELEGATE {post_id}",
              f"From now on only the cloud may publish {post_id} (hash {h[:12]}); local "
              "`lce publish` will refuse it.")
-    result = client.call("PUT", f"/posts/{post_id}", {
-        "text": text, "approved_hash": h, "approved_at": approval["approved_at"],
-        "language": post["language"], "plan_date": post.get("plan_date")})
+    body = {"text": text, "approved_hash": h, "approved_at": approval["approved_at"],
+            "language": post["language"], "plan_date": post.get("plan_date")}
+    if image_payload:
+        body["image"] = image_payload
+    result = client.call("PUT", f"/posts/{post_id}", body)
     record = {"post_id": post_id, "runtime": "cloud", "api_base": client.api_base,
               "approved_hash": h, "delegated_at": existing["delegated_at"] if existing else iso_utc(now())}
     _atomic_write(delegation_path(store, post_id), json.dumps(record, indent=2) + "\n")

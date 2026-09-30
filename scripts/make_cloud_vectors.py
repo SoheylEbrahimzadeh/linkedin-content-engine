@@ -13,7 +13,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from lce.publish.base import PostPayload
+from lce.publish.base import ImageAttachment, PostPayload
 from lce.publish.credentials import MemoryTokenStore
 from lce.publish.linkedin import HttpResponse, LinkedInConfig, LinkedInPublisher
 from lce.publish.little import to_little
@@ -52,6 +52,9 @@ SCHEDULES = [
      ["2026-09-20T00:00:00+00:00", "2026-10-06T00:00:00+00:00"]),
 ]
 
+IMAGE_URN = "urn:li:image:C4E10AQVector1"
+IMAGE_ALT = "  Diagram: three queues (fictional)  "
+
 RESPONSES = [
     (201, {"x-restli-id": "urn:li:share:7000000000000000001"}),
     (201, {"x-restli-id": "urn:li:ugcPost:42"}),
@@ -77,6 +80,11 @@ def main() -> None:
                       for s, (a, b) in SCHEDULES],
         "responses": [],
         "request": {"text": TEXTS[5], "headers": headers, "body": body},
+        "request_image": {"text": TEXTS[5], "urn": IMAGE_URN, "alt": IMAGE_ALT,
+                          "body": pub.build_request(PostPayload(
+                              "20260101-x", "k", TEXTS[5], "0" * 64, "en",
+                              image=ImageAttachment(b"x", IMAGE_ALT, "0" * 64, "image.png")),
+                              IMAGE_URN)[2]},
     }
     for code, hdrs in RESPONSES:
         r = pub._map(HttpResponse(code, hdrs, b"{}"))

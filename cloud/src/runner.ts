@@ -10,9 +10,9 @@
 // NEEDS_RECONCILE and are never retried.
 
 import { event, loadSettings, type ConsentRow, type Env, type PostRow, type Settings } from "./db";
-import { configProblems, publish, type FetchLike, type LinkedInConfig, type PublishResult } from "./linkedin";
+import { configProblems, publish, type FetchLike, type ImageInput, type LinkedInConfig, type PublishResult } from "./linkedin";
 import { isoUtc, parseIsoUtc } from "./schedule";
-import { contentHash, sha256Hex, stripText, toLittle } from "./text";
+import { contentHash, sha256Bytes, sha256Hex, stripText, toLittle } from "./text";
 
 const ACTOR = "cron";
 
@@ -78,6 +78,14 @@ async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settin
     return invalidate(env, now, c, "hash_mismatch");
   }
   if (stripText(post.text).length > cfg.maxChars) return invalidate(env, now, c, "text_too_long");
+  const img = await env.DB.prepare("SELECT data, sha256, alt_text FROM post_images WHERE post_id = ?")
+    .bind(post.post_id).first<{ data: ArrayBuffer; sha256: string; alt_text: string }>();
+  let image: ImageInput | undefined;
+  if (img) {
+    const data = new Uint8Array(img.data);
+    if ((await sha256Bytes(data)) !== img.sha256) return invalidate(env, now, c, "image_hash_mismatch");
+    image = { data, alt: img.alt_text };
+  }
 
   const at = isoUtc(now);
   const commentary = toLittle(stripText(post.text));
@@ -117,7 +125,7 @@ async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settin
 
   let result: PublishResult;
   try {
-    result = await publish(cfg, token, post.text, fetchImpl);        // the single request
+    result = await publish(cfg, token, post.text, fetchImpl, 25000, image);  // the single post request
   } catch (err) {
     result = { outcome: "ambiguous", detail: { reason: `internal:${(err as Error)?.name}`, sent: true } };
   }
@@ -142,12 +150,14 @@ async function record(env: Env, now: number, postId: string, slotId: string, r: 
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE publications SET state = ?, remote_id = COALESCE(?, remote_id), url = COALESCE(?, url),
+         image_urn = COALESCE(?, image_urn),
          published_at = CASE WHEN ? = 'published' THEN ? ELSE published_at END,
          verified_by = CASE WHEN ? = 'published' THEN 'api_response' ELSE verified_by END,
          attempts = json_set(attempts, '$[#-1]', json_patch(json_extract(attempts, '$[#-1]'), json(?))),
          updated_at = ?
        WHERE post_id = ?`,
-    ).bind(map.pub, r.remoteId ?? null, r.url ?? null, map.pub, at, map.pub, attemptPatch, at, postId),
+    ).bind(map.pub, r.remoteId ?? null, r.url ?? null, d.image_urn ?? null, map.pub, at, map.pub, attemptPatch,
+      at, postId),
     env.DB.prepare("UPDATE posts SET state = ?, updated_at = ? WHERE post_id = ? AND state = 'PUBLISHING'")
       .bind(map.post, at, postId),
     env.DB.prepare("UPDATE jobs SET state = ?, reason = ?, updated_at = ? WHERE slot_id = ?")

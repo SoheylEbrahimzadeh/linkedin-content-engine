@@ -30,4 +30,11 @@ describe("parity with the Python reference implementation", () => {
     expect(headers).toEqual(vectors.request.headers);
     expect(body).toEqual(vectors.request.body);
   });
+
+  it("request shape with an image", () => {
+    const v = vectors.request_image;
+    const { body } = buildRequest({ apiVersion: "202609", personUrn: "urn:li:person:Vector1",
+      visibility: "PUBLIC", maxChars: 3000 }, v.text, { urn: v.urn, alt: v.alt });
+    expect(body).toEqual(v.body);
+  });
 });

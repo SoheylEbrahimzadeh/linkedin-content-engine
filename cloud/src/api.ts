@@ -5,10 +5,36 @@
 import { AuthError, verifyAccess, type CertsFetcher } from "./auth";
 import { event, loadSettings, SETTING_KEYS, type ConsentRow, type Env, type PostRow } from "./db";
 import { isoUtc, loadSchedule, parseIsoUtc, ScheduleError, slotById, slotsBetween } from "./schedule";
-import { contentHash } from "./text";
+import { contentHash, sha256Bytes } from "./text";
 
 const POST_ID_RE = /^\d{8}-[a-z0-9-]{1,56}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
+export const MAX_IMAGE_BYTES = 1_500_000;   // D1 rows are limited to ~2 MB
+const MAGIC: [number[], string][] = [[[0x89, 0x50, 0x4e, 0x47], "png"], [[0xff, 0xd8, 0xff], "jpeg"],
+  [[0x47, 0x49, 0x46, 0x38], "gif"]];
+
+type ImageIn = { data: Uint8Array; sha256: string; alt: string };
+
+async function parseImage(raw: unknown): Promise<ImageIn | null> {
+  if (raw === undefined || raw === null) return null;
+  const img = raw as { data_base64?: unknown; sha256?: unknown; alt_text?: unknown };
+  if (typeof img.data_base64 !== "string" || !HEX64.test(String(img.sha256))) {
+    throw new HttpError(400, "image needs data_base64 and sha256");
+  }
+  const alt = String(img.alt_text ?? "").trim();
+  if (!alt || alt.length > 4086) throw new HttpError(400, "image alt_text is required (≤ 4086 chars)");
+  let data: Uint8Array;
+  try {
+    data = Uint8Array.from(atob(img.data_base64), (ch) => ch.charCodeAt(0));
+  } catch {
+    throw new HttpError(400, "image data is not valid base64");
+  }
+  if (data.length === 0) throw new HttpError(400, "image is empty");
+  if (data.length > MAX_IMAGE_BYTES) throw new HttpError(413, `image is larger than ${MAX_IMAGE_BYTES} bytes; publish it locally`);
+  if (!MAGIC.some(([m]) => m.every((b, i) => data[i] === b))) throw new HttpError(400, "image must be PNG, JPEG or GIF");
+  if ((await sha256Bytes(data)) !== img.sha256) throw new HttpError(409, "image does not match its approved hash");
+  return { data, sha256: String(img.sha256), alt };
+}
 const SECURITY_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
@@ -80,19 +106,25 @@ async function pushPost(env: Env, now: number, actor: string, rawId: string, b: 
   parseIsoUtc(approved_at);
   const h = await contentHash(text);
   if (h !== approved_hash) throw new HttpError(409, "text does not match the approved hash");
+  const image = await parseImage(b.image);
   const existing = await env.DB.prepare("SELECT * FROM posts WHERE post_id = ?").bind(id).first<PostRow>();
   if (existing) {
-    if (existing.approved_hash === h) return { post_id: id, state: existing.state, unchanged: true };
-    throw new HttpError(409, `post already exists with a different approved text (${existing.state})`);
+    const had = await env.DB.prepare("SELECT sha256 FROM post_images WHERE post_id = ?").bind(id).first<{ sha256: string }>();
+    if (existing.approved_hash === h && (had?.sha256 ?? null) === (image?.sha256 ?? null)) {
+      return { post_id: id, state: existing.state, unchanged: true };
+    }
+    throw new HttpError(409, `post already exists with a different approved text or image (${existing.state})`);
   }
   const at = isoUtc(now);
   await env.DB.batch([
     env.DB.prepare(`INSERT INTO posts (post_id, text, language, plan_date, state, content_hash, approved_hash,
                     approved_at, pushed_at, pushed_by, updated_at) VALUES (?, ?, ?, ?, 'READY_TO_PUBLISH', ?, ?, ?, ?, ?, ?)`)
       .bind(id, text, String(language ?? "en"), plan_date ?? null, h, h, approved_at, at, actor, at),
-    event(env.DB, now, "post.pushed", actor, id, { approved_hash: h }),
+    ...(image ? [env.DB.prepare("INSERT INTO post_images (post_id, data, sha256, alt_text, bytes) VALUES (?, ?, ?, ?, ?)")
+      .bind(id, image.data, image.sha256, image.alt, image.data.length)] : []),
+    event(env.DB, now, "post.pushed", actor, id, { approved_hash: h, image_sha256: image?.sha256 ?? null }),
   ]);
-  return { post_id: id, state: "READY_TO_PUBLISH" };
+  return { post_id: id, state: "READY_TO_PUBLISH", image: image ? { sha256: image.sha256, bytes: image.data.length } : null };
 }
 
 // ── consent: explicit, per post and per slot ────────────────────────────
@@ -259,6 +291,8 @@ export async function snapshot(env: Env, now: number) {
     q<Record<string, unknown>>("SELECT * FROM publications"),
     q("SELECT * FROM events ORDER BY id DESC LIMIT 200"),
   ]);
+  const imgs = new Map((await q<{ post_id: string; sha256: string; bytes: number }>(
+    "SELECT post_id, sha256, bytes FROM post_images")).map((r) => [r.post_id, { sha256: r.sha256, bytes: r.bytes }]));
   let upcoming: unknown[] = [], scheduleError: string | null = null;
   try {
     upcoming = slotsBetween(loadSchedule(settings as unknown as Record<string, unknown>), now, now + 14 * 86400e3);
@@ -273,7 +307,7 @@ export async function snapshot(env: Env, now: number) {
     next_scheduled_publication: active[0] ?? null,
     schedule_error: scheduleError,
     upcoming_slots: upcoming,
-    posts, consents, jobs,
+    posts: posts.map((p) => ({ ...p, image: imgs.get(p.post_id) ?? null })), consents, jobs,
     publications: publications.map((p) => ({ ...p, attempts: JSON.parse(String(p.attempts ?? "[]")) })),
     events,
   };
