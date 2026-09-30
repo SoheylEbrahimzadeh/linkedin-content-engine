@@ -8,7 +8,8 @@ author has verified and approved.
 > approval; approved posts can be published to your own LinkedIn profile via
 > the official API **only by you**, with `lce publish` in an interactive
 > terminal. See [docs/ROADMAP.md](docs/ROADMAP.md), [docs/AUTOMATION.md](docs/AUTOMATION.md)
-> and [docs/PUBLISHING.md](docs/PUBLISHING.md).
+> and [docs/PUBLISHING.md](docs/PUBLISHING.md). A device-independent cloud
+> publisher (Cloudflare Worker, not yet deployed) is described in [docs/CLOUD.md](docs/CLOUD.md).
 
 ## Personal brand
 

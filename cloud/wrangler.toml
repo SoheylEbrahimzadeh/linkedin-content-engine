@@ -1,0 +1,28 @@
+# Cloudflare Worker for scheduled publishing of human-approved, explicitly
+# consented posts. This file contains NO secrets and NO account identifiers.
+# The deploy workflow substitutes the placeholders from GitHub Variables/Secrets.
+#
+# Secrets (never in this repo): set with `wrangler secret put LINKEDIN_TOKEN`
+# or in the Cloudflare dashboard.
+name = "lce-cloud"
+main = "src/index.ts"
+compatibility_date = "2026-08-22"
+workers_dev = true
+send_metrics = false          # no Wrangler usage telemetry
+
+[triggers]
+# One cron trigger (Free plan allows 5). Cron runs in UTC; the Worker computes
+# the configured schedule itself, including DST.
+crons = ["*/5 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lce"
+database_id = "00000000-0000-0000-0000-000000000000" # replaced at deploy time
+migrations_dir = "migrations"
+
+[vars]
+# Cloudflare Access (Zero Trust) application that protects the API.
+# Replaced at deploy time; if left empty the API refuses every request.
+ACCESS_TEAM_DOMAIN = ""
+ACCESS_AUD = ""

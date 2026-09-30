@@ -26,6 +26,7 @@ LAYOUT: dict[str, str] = {
     "posts/*/metrics.yaml": "metrics",
     "config/automation.yaml": "automation",
     "config/linkedin.yaml": "linkedin",
+    "config/cloud.yaml": "cloud",
     "posts/*/publication.json": "publication",
     "automation/jobs/*.yaml": "job",
 }
