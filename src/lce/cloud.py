@@ -463,3 +463,81 @@ def sync(store: DataStore, client: CloudClient) -> dict:
     out = client.call("PUT", "/pipeline", snap)
     store.log_event("cloud.synced", bytes=out.get("bytes"), sha256=out.get("sha256"))
     return out
+
+
+
+# ── smoke: unauthenticated production checks (LCE-018) ────────────────
+# Anything 2xx here without credentials is a security failure. Redirects are
+# not followed: Cloudflare Access answers a browser without a session with a
+# 302 to its login page, which must count as "refused", not as the login HTML.
+PROTECTED = [("GET", "/", None), ("GET", "/pipeline/", None), ("GET", "/api/snapshot", None),
+             ("GET", "/api/pipeline", None), ("PUT", "/api/settings", {"auto_publish": True}),
+             ("POST", "/api/consents", {}), ("PUT", "/api/pipeline", {"schema": 1, "meta": {"mode": "real"}})]
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        return None
+
+
+class StatusTransport:
+    """HTTPS status probe: no redirects, no credentials, body ignored."""
+
+    def __init__(self, timeout: float = 15):
+        self.opener = urllib.request.build_opener(_NoRedirect())
+        self.timeout = timeout
+
+    def status(self, method: str, url: str, body: dict | None = None) -> tuple[int, bytes]:
+        if not url.startswith("https://"):
+            raise CloudError("the cloud API must use https")
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, method=method, headers={
+            "content-type": "application/json", "x-lce-client": "cli"})
+        try:
+            with self.opener.open(req, timeout=self.timeout) as resp:  # noqa: S310
+                return resp.status, resp.read(4096)
+        except urllib.error.HTTPError as exc:
+            return exc.code, b""
+        except OSError as exc:
+            raise CloudError(f"cloud API unreachable: {type(exc).__name__}") from exc
+
+
+def smoke(api_base: str, transport: StatusTransport | None = None, *, wait_seconds: int = 0,
+          sleep: Callable[[float], None] | None = None) -> list[dict]:
+    """Reachability, then fail-closed checks on every protected path. Sends no credential."""
+    import time
+
+    base = api_base.rstrip("/")
+    t = transport or StatusTransport()
+    sleep = sleep or time.sleep
+    deadline_tries = max(1, wait_seconds // 15 + 1)
+    out: list[dict] = []
+    code, body, last_err = 0, b"", ""
+    for i in range(deadline_tries):
+        try:
+            code, body = t.status("GET", f"{base}/api/health")
+            if code == 200 or code in (302, 401, 403):
+                break
+        except CloudError as exc:
+            last_err = str(exc)
+        if i + 1 < deadline_tries:
+            sleep(15)
+    if code == 200 and b'"ok":true' in body.replace(b" ", b""):
+        out.append(_check("worker", OK, "/api/health 200"))
+    elif code in (302, 401, 403):
+        out.append(_check("worker", OK, f"/api/health behind Cloudflare Access at the edge ({code})"))
+    else:
+        return [_check("worker", FAIL, last_err or f"/api/health answered HTTP {code}",
+                       "check the Workers Builds deploy and the URL")]
+    for method, path, payload in PROTECTED:
+        try:
+            status, _ = t.status(method, f"{base}{path}", payload)
+        except CloudError as exc:
+            out.append(_check(f"{method} {path}", FAIL, str(exc)))
+            continue
+        if 200 <= status < 300:
+            out.append(_check(f"{method} {path}", FAIL, f"HTTP {status} without credentials",
+                              "the Worker must refuse unauthenticated requests: check Access"))
+        else:
+            out.append(_check(f"{method} {path}", OK, f"refused without credentials ({status})"))
+    return out

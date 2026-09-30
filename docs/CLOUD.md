@@ -153,8 +153,11 @@ Approving stays terminal-only: the mirror cannot approve, schedule or publish.
 `.github/workflows/production-smoke.yml` runs after every push to `main`, daily
 and on demand. With the repository **variable** `LCE_API_BASE`
 (`https://<worker>.<subdomain>.workers.dev`, not a secret) it waits for the
-Worker, then proves it is fail-closed: `/`, `/api/snapshot`, `/api/pipeline`
-and two mutations must never answer 2xx without credentials. With an **Access
+Worker, then runs `lce cloud smoke`: `/`, `/pipeline/`, `/api/snapshot`,
+`/api/pipeline` and three mutations must never answer 2xx without credentials
+(redirects are not followed, so an Access login redirect counts as refused).
+The private repository's `cloud-sync` workflow runs the same command against
+its `config/cloud.yaml`. With an **Access
 service token** (Zero Trust → Access → Service Auth → create token; add a
 policy with action *Service Auth* for it on the Worker's Access application)
 stored as the repository secrets `LCE_CF_ACCESS_CLIENT_ID` and
