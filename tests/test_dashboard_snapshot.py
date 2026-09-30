@@ -50,10 +50,10 @@ def test_publication_is_never_claimed(real_store):
     assert pub["token"]["checked"] is False and pub["token"]["stored_in"] == "macOS Keychain"
     assert pub["trigger"].startswith("manual only")
     assert pub["capabilities"]["can_find_existing"] is False
-    assert snap["analytics"]["available"] is False
+    assert snap["analytics"]["overall"]["posts"] == 0      # nothing estimated
     stages = {s["id"]: s["status"] for s in snap["pipeline"]}
-    assert stages["publishing"] == "manual"
-    assert stages["verification"] == stages["analytics"] == "not_implemented"
+    assert stages["publishing"] == stages["analytics"] == "manual"
+    assert stages["verification"] == "not_implemented"
     assert "published" not in {s["status"] for s in snap["pipeline"]}
 
 
@@ -210,8 +210,8 @@ def test_latest_run_follows_most_recent_activity(real_store):
     assert st["research"] == st["planning"] == st["draft"] == st["humanize"] == "done"
     assert st["qa"] == "failed"
     assert st["duplicate"] == st["approval"] == "not_reached"
-    assert st["publishing"] == "not_reached"
-    assert st["verification"] == st["analytics"] == "not_implemented"
+    assert st["publishing"] == st["analytics"] == "not_reached"
+    assert st["verification"] == "not_implemented"
 
 
 def _touch(store, pid):

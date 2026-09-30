@@ -15,6 +15,7 @@ Phase 1 ends at the approval boundary. **You never run `lce approve`,
   (objective, throughline, narrative chapters, themes, content mix,
   credibility rules; target markets are direction, never the post subject)
 - `lce brand next`: the recommended pillar, theme and evidence mode
+- `lce analytics insights`: what has worked, and saturated topics to avoid
 - `story_bank/stories/*.yaml` — only `PUBLIC` stories may be used, and only
   their `allowed_claims`
 - the candidate: `research/candidates/<id>.yaml`

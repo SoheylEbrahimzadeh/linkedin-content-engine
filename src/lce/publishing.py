@@ -23,7 +23,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from lce.clock import iso_utc, now
+from lce.clock import iso_utc, now, parse_iso
 from lce.posts import current_text, set_state
 from lce.publish.base import Outcome, PostPayload, PublishResult
 from lce.publish.linkedin import LinkedInConfig, LinkedInPublisher, Transport
@@ -226,6 +226,54 @@ def _record_result(store: DataStore, post: dict, record: dict, attempt: dict,
         store.log_event("publish.ambiguous", post_id=pid, reason=d.get("reason"),
                         http_status=d.get("http_status"))
     return {"post": post, "publication": record, "result": result}
+
+
+# ── manual publication (owner posted it themselves) ───────────────────
+def record_manual(store: DataStore, post_id: str, *, url: str, published_at: str | None = None,
+                  confirm: Callable[[str], str] = input,
+                  is_tty: Callable[[], bool] | None = None) -> dict:
+    """The owner declares they posted the approved text on LinkedIn by hand.
+
+    Human-only (terminal + typed phrase); bound to the approved text and image,
+    so only exactly what was approved can be recorded as published."""
+    from lce.approval import image_unchanged
+
+    if not (is_tty or _tty)():
+        raise StoreError("recording a manual publication requires an interactive terminal")
+    post = store.load_post(post_id)
+    if PostState(post["state"]) != S.READY_TO_PUBLISH:
+        raise StoreError(f"only READY_TO_PUBLISH posts can be recorded (run `lce ready` after "
+                         f"approval); this one is {post['state']}")
+    if (store.post_dir(post_id) / "delegation.json").exists():
+        raise StoreError("this post is delegated to the cloud publisher")
+    if load_publication(store, post_id):
+        raise StoreError("a publication record already exists; use `lce publish reconcile`")
+    text = current_text(store, post_id)
+    h = content_hash(text)
+    if (post.get("approval") or {}).get("approved_hash") != h or not image_unchanged(store, post):
+        raise StoreError("the post no longer matches its approval; nothing is recorded")
+    m = RECONCILE_URL_RE.match(url.strip())
+    if not m:
+        raise StoreError("expected a LinkedIn post URL "
+                         "(https://www.linkedin.com/feed/update/urn:li:... or /posts/...)")
+    at = iso_utc(parse_iso(published_at)) if published_at else iso_utc(now())
+    phrase = f"PUBLISHED {post_id}"
+    typed = confirm(f"You confirm you posted the approved text (hash {h[:12]}) yourself at {url}. "
+                    f"Type '{phrase}': ")
+    if typed.strip() != phrase:
+        raise StoreError("confirmation phrase did not match; nothing changed")
+    record = {"post_id": post_id, "provider": "manual", "idempotency_key": _sha(f"{post_id}:{h}"),
+              "approved_hash": h, "commentary_hash": _sha(text), "state": "published",
+              "url": url.strip(), "published_at": at, "verified_by": "owner", "attempts": [],
+              "resolution": {"at": iso_utc(now()), "decision": "published", "by": "owner",
+                             "note": "posted manually by the owner"}}
+    if m.group(1):
+        record["remote_id"] = m.group(1)
+    _save_publication(store, record)
+    post = set_state(store, post, S.PUBLISHING, "owner posted it manually")
+    post = set_state(store, post, S.PUBLISHED, "manual publication recorded by the owner")
+    store.log_event("publish.manual", post_id=post_id)
+    return {"post": post, "publication": record}
 
 
 # ── reconcile ─────────────────────────────────────────────────────────
