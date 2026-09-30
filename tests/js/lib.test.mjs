@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  UNKNOWN, calendarMonths, checkMode, claimLabel, describeRun, duplicateEvidenceNote, issueCounts, parseRoute,
+  UNKNOWN, calendarMonths, checkMode, claimLabel, describeRun, duplicateEvidenceNote, jobCounts, jobStateMeta, issueCounts, parseRoute,
   publicationLabel, researchGroups, runStatus, shortHash, show, splitApprovals, stateMeta,
 } from "../../src/lce/dashboard/static/lib.js";
 
@@ -100,4 +100,21 @@ test("zero-history duplicate check is qualified, not presented as evidence", () 
   assert.doesNotMatch(duplicateEvidenceNote({ status: "failed", compared_against: 0 }), /passed/);
   assert.equal(duplicateEvidenceNote(null), null);
   assert.equal(duplicateEvidenceNote({ status: "passed" }), null); // unknown count: no claim either way
+});
+
+test("job states and counts are explicit, never estimated", () => {
+  assert.deepEqual(jobCounts({ BLOCKED: 2 }), { SCHEDULED: 0, READY: 0, RUNNING: 0, BLOCKED: 2,
+    SUCCEEDED: 0, FAILED: 0, SKIPPED: 0, NEEDS_RECONCILE: 0 });
+  assert.deepEqual(Object.values(jobCounts(null)).reduce((a, b) => a + b, 0), 0);
+  assert.equal(jobStateMeta("NEEDS_RECONCILE").tone, "error");
+  assert.notEqual(jobStateMeta("FAILED").label, jobStateMeta("NEEDS_RECONCILE").label);
+  assert.match(jobStateMeta("BLOCKED", "awaiting_agent").detail, /Claude Code/);
+  assert.equal(jobStateMeta("WHATEVER").label, "WHATEVER");
+});
+
+test("scheduler and job events are described", () => {
+  assert.equal(describeRun({ event: "job.transition", job_id: "job-x", from: "RUNNING", to: "FAILED", reason: "r" }).tone, "error");
+  assert.match(describeRun({ event: "scheduler.locked", holder: "a" }).title, /locked/);
+  assert.match(describeRun({ event: "job.error", kind: "filesystem", retryable: true, message: "m" }).detail, /^retryable/);
+  assert.equal(describeRun({ event: "scheduler.config_invalid", message: "x" }).tone, "error");
 });

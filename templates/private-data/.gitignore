@@ -9,3 +9,7 @@ token*.json
 .venv/
 __pycache__/
 .DS_Store
+
+# Scheduler lock: exists only while a run is in progress
+automation/scheduler.lock
+automation/scheduler.lock.stale-*

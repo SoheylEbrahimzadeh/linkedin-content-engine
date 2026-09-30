@@ -4,10 +4,10 @@ A reusable, privacy-first content engine for LinkedIn. It plans, drafts, audits
 and — after explicit human approval — publishes posts, using only facts the
 author has verified and approved.
 
-> **Status: Phase 1.** A local pipeline runs from research to an explicit,
-> hash-bound human approval and stops at `READY_TO_PUBLISH`. **There is no
-> publisher yet; nothing is ever sent to LinkedIn.** See
-> [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/PIPELINE.md](docs/PIPELINE.md).
+> **Status: Phase 2.** Scheduled, persisted jobs prepare posts up to an
+> explicit, hash-bound human approval. **There is no publisher yet; nothing is
+> ever sent to LinkedIn.** See [docs/ROADMAP.md](docs/ROADMAP.md),
+> [docs/PIPELINE.md](docs/PIPELINE.md) and [docs/AUTOMATION.md](docs/AUTOMATION.md).
 
 ## Principles
 
@@ -48,6 +48,15 @@ lce init-data /path/outside/this/repo/my-data   # your private data directory
 export LCE_DATA_DIR=/path/outside/this/repo/my-data
 lce skills sync                                  # Claude Code skills into the data dir
 lce status                                       # what the interview still needs
+```
+
+Run the scheduler (one pass; no daemon, nothing is approved or published):
+
+```bash
+lce cadence show
+lce automation run-once --dry-run
+lce automation run-once
+lce jobs agent-tasks
 ```
 
 See the state of everything in the browser (read-only, local only):

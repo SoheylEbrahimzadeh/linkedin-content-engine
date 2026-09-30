@@ -21,6 +21,8 @@ LAYOUT: dict[str, str] = {
     "research/candidates/*.yaml": "research_candidate",
     "plan/calendar.yaml": "plan",
     "posts/*/post.yaml": "post",
+    "config/automation.yaml": "automation",
+    "automation/jobs/*.yaml": "job",
 }
 
 
@@ -94,7 +96,8 @@ def validate_dir(root: Path) -> tuple[int, list[ValidationError]]:
                 errors.append(ValidationError(rel, f"invalid YAML: {exc}"))
                 continue
             errors.extend(ValidationError(rel, m) for m in validate_doc(kind, doc))
-            id_key = {"story": "story_id", "research_candidate": "candidate_id"}.get(kind)
+            id_key = {"story": "story_id", "research_candidate": "candidate_id",
+                      "job": "job_id"}.get(kind)
             if id_key and isinstance(doc, dict) and path.stem != doc.get(id_key):
                 errors.append(ValidationError(rel, f"file name must equal {id_key}"))
             if kind == "post" and isinstance(doc, dict) and path.parent.name != doc.get("post_id"):

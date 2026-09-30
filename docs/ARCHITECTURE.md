@@ -40,6 +40,14 @@ Publishing states (`PUBLISHING`, `PUBLISHED`, reconciliation) are added only
 when a real publisher exists and has been verified. See
 [PIPELINE.md](PIPELINE.md).
 
+## Scheduling (Phase 2)
+
+One job per posting slot, created and advanced by `lce automation run-once`.
+Jobs have their own lifecycle (SCHEDULED, READY, RUNNING, BLOCKED, SUCCEEDED,
+FAILED, SKIPPED, NEEDS_RECONCILE) and drive a post up to AWAITING_APPROVAL.
+Deterministic steps run in the engine; LLM steps are handed to Claude Code.
+See [AUTOMATION.md](AUTOMATION.md).
+
 ## Approval
 
 Phase 1: local approval in an interactive terminal, bound to the SHA-256 of

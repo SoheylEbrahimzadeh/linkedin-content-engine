@@ -11,8 +11,8 @@ import shutil
 from pathlib import Path
 
 from lce.config.paths import DATA_MARKER
-from lce.dashboard.server import STATIC_FILES, config_js, demo_store, static_file
-from lce.dashboard.snapshot import build_snapshot, to_json
+from lce.dashboard.server import STATIC_FILES, config_js, demo_store, snapshot_for, static_file
+from lce.dashboard.snapshot import to_json
 
 
 def build_demo(engine_root: Path, out: Path) -> list[str]:
@@ -21,7 +21,7 @@ def build_demo(engine_root: Path, out: Path) -> list[str]:
         if (parent / DATA_MARKER).exists():
             raise RuntimeError("refusing to build into a private data directory")
     store = demo_store(engine_root)
-    snapshot = build_snapshot(store, mode="demo", data_label="fictional demo data")
+    snapshot = snapshot_for(store, "demo")
     if out.exists():
         shutil.rmtree(out)
     (out / "data").mkdir(parents=True)

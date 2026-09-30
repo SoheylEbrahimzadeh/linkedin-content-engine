@@ -21,6 +21,13 @@ Every text change clears QA, duplicate and approval results. Approved or
 ready posts cannot be edited without `lce post reopen`, which discards the
 approval. `lce ready` re-verifies the approved hash.
 
+## Automation
+
+`lce automation run-once` runs QA, the duplicate check and the approval
+artifact automatically for posts linked to scheduled jobs, and hands research,
+selection, drafting and humanizing to Claude Code. It never approves or
+publishes. See [AUTOMATION.md](AUTOMATION.md).
+
 ## QA checks (deterministic)
 
 Errors block: missing text, over 3000 characters, wall of text, phrases from

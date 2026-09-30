@@ -11,7 +11,7 @@
 | Angle | rules before models |
 | Language | en |
 | Planned date | 2025-05-06 |
-| Generated at | 2026-09-28T19:57:04+00:00 |
+| Generated at | 2025-05-04T14:00:00+00:00 |
 | Characters | 298 |
 | Content hash (SHA-256) | `843c1c71369ccc94674d8e8c295c9bb3afa7855c7aa8d5a303c687beda8de175` |
 | Approval state | **pending** |

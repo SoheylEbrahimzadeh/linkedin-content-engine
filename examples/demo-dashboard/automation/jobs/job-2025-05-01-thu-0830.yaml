@@ -1,0 +1,31 @@
+demo: true
+job_id: job-2025-05-01-thu-0830
+kind: prepare_post
+slot:
+  slot_id: 2025-05-01-thu-0830
+  day: thu
+  time: 08:30
+  local: '2025-05-01T08:30:00-05:00'
+  utc: '2025-05-01T13:30:00+00:00'
+  timezone: America/Chicago
+  dst_adjusted: false
+prepare_from: '2025-04-29T13:30:00+00:00'
+state: SKIPPED
+attempts: 0
+max_attempts: 3
+revisions: 0
+created_at: '2025-05-04T14:00:00+00:00'
+created_by: 20250504T140000Z-6f0ce7
+updated_at: '2025-05-04T14:00:00+00:00'
+steps: []
+history:
+- at: '2025-05-04T14:00:00+00:00'
+  from: null
+  to: SCHEDULED
+  reason: created
+  invocation_id: 20250504T140000Z-6f0ce7
+- at: '2025-05-04T14:00:00+00:00'
+  from: SCHEDULED
+  to: SKIPPED
+  reason: missed_slot
+  invocation_id: 20250504T140000Z-6f0ce7

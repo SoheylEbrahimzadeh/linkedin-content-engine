@@ -30,6 +30,16 @@ SECURITY_HEADERS = {
 }
 
 
+def snapshot_for(store: DataStore, mode: str) -> dict:
+    """Real mode uses the system clock; demo mode uses the fixed demo clock."""
+    if mode == "demo":
+        from lce.clock import FixedClock, use_clock
+
+        with use_clock(FixedClock(DEMO_NOW)):
+            return build_snapshot(store, mode="demo", data_label="fictional demo data")
+    return build_snapshot(store, mode=mode)
+
+
 def static_file(name: str) -> bytes:
     return resources.files("lce.dashboard").joinpath("static", name).read_bytes()
 
@@ -73,7 +83,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == "/api/snapshot":
             try:
-                body = to_json(build_snapshot(self.store, mode=self.mode)).encode()
+                body = to_json(snapshot_for(self.store, self.mode)).encode()
             except Exception as exc:  # report, never fall back to other data
                 err = {"error": type(exc).__name__, "message": str(exc)[:300]}
                 return self._send(HTTPStatus.INTERNAL_SERVER_ERROR, json.dumps(err).encode(),
@@ -103,6 +113,10 @@ def make_server(store: DataStore, *, mode: str, port: int = 8765) -> ThreadingHT
     server.RequestHandlerClass = partial(Handler, store=store, mode=mode,
                                          port=server.server_address[1])
     return server
+
+
+# Fixed clock for the fictional demo, so its schedule and jobs line up.
+DEMO_NOW = "2025-05-05T12:00:00-05:00"
 
 
 def demo_store(engine_root: Path) -> DataStore:

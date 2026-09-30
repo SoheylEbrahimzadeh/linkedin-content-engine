@@ -24,6 +24,7 @@ SCHEMA_VERSION = 1
 
 # Stages of the target architecture and what Phase 1 actually implements.
 PIPELINE = [
+    ("scheduling", "Scheduling", "available"),
     ("research", "Research", "available"),
     ("planning", "Planning", "available"),
     ("draft", "Draft", "available"),
@@ -264,8 +265,75 @@ def research_view(store: DataStore, posts: list[dict]) -> list[dict]:
     return out
 
 
+def automation_view(store: DataStore, posts: list[dict], events: list[dict]) -> dict:
+    """Scheduler and job state straight from automation/ and config (nothing inferred)."""
+    from datetime import timedelta
+
+    from lce import clock
+    from lce.jobs import automation_config, job_id_for, list_jobs, lock_path
+    from lce.schedule import ScheduleError, load_schedule, slots_between
+
+    now = clock.now()
+    jobs = list_jobs(store)
+    by_id = {j["job_id"]: j for j in jobs}
+    posts_by_id = {p["post_id"]: p for p in posts}
+    out: dict = {"now": clock.iso_utc(now), "schedule_ok": False, "schedule_error": None,
+                 "config": None, "config_error": None, "upcoming": [], "next_slot": None,
+                 "trigger": "none configured by the engine (manual: lce automation run-once)"}
+    try:
+        out["config"] = automation_config(store)
+    except Exception as exc:  # shown to the owner, never hidden
+        out["config_error"] = str(exc)[:300]
+    try:
+        schedule = load_schedule(store.settings())
+        out["schedule_ok"] = True
+        horizon = (out["config"] or {}).get("horizon_days", 14)
+        for slot in slots_between(schedule, now, now + timedelta(days=horizon)):
+            job = by_id.get(job_id_for(slot.slot_id))
+            post = posts_by_id.get((job or {}).get("post_id"))
+            out["upcoming"].append({
+                **slot.to_dict(), "job_id": job_id_for(slot.slot_id),
+                "job_state": job["state"] if job else None,
+                "blocked_reason": (job or {}).get("blocked_reason"),
+                "post_id": (job or {}).get("post_id"),
+                "post_state": post["state"] if post else None,
+                "approval_state": post["approval"]["state"] if post else None,
+                "publication_status": post["publication_status"] if post else None,
+            })
+        out["next_slot"] = out["upcoming"][0] if out["upcoming"] else None
+    except ScheduleError as exc:
+        out["schedule_error"] = str(exc)
+    counts: dict[str, int] = {}
+    for j in jobs:
+        counts[j["state"]] = counts.get(j["state"], 0) + 1
+    out["counts"] = counts
+    out["due"] = sum(1 for j in jobs if j["state"] == "READY" or (
+        j["state"] == "SCHEDULED" and clock.parse_iso(j["prepare_from"]) <= now))
+    runs = [e for e in events if e.get("event") in {"scheduler.finish", "scheduler.locked",
+                                                     "scheduler.config_invalid"}]
+    out["last_run"] = runs[-1] if runs else None
+    lock = lock_path(store)
+    out["lock"] = None
+    if lock.exists():
+        try:
+            holder = json.loads(lock.read_text("utf-8"))
+            out["lock"] = {"invocation_id": holder.get("invocation_id"),
+                           "expires_at": holder.get("expires_at"),
+                           "expired": clock.parse_iso(holder["expires_at"]) <= now}
+        except (OSError, ValueError, KeyError):
+            out["lock"] = {"invocation_id": None, "expires_at": None, "expired": True}
+    out["jobs"] = [{k: j.get(k) for k in (
+        "job_id", "state", "blocked_reason", "slot", "prepare_from", "post_id", "attempts",
+        "max_attempts", "revisions", "next_attempt_at", "last_error", "lease", "outcome",
+        "created_at", "created_by", "updated_at", "steps", "history")}
+        | {"lease_expired": bool(j.get("lease")) and clock.parse_iso(
+            j["lease"]["expires_at"]) <= now} for j in jobs]
+    return out
+
+
 def detect_issues(store: DataStore, posts: list[dict], calendar: list[dict],
-                  events: list[dict], bad_lines: list[dict], validation: dict) -> list[dict]:
+                  events: list[dict], bad_lines: list[dict], validation: dict,
+                  automation: dict | None = None) -> list[dict]:
     """Deterministic consistency checks. Returns [] when everything agrees."""
     issues: list[dict] = []
 
@@ -317,6 +385,23 @@ def detect_issues(store: DataStore, posts: list[dict], calendar: list[dict],
         ref = entry.get("draft_ref")
         if ref and ref not in known:
             add("INCONSISTENT", "warning", f"calendar references missing post {ref}")
+    for j in (automation or {}).get("jobs", []):
+        jid = j["job_id"]
+        if j["state"] == "FAILED":
+            err = j.get("last_error") or {}
+            add("FAILED", "error", f"job {jid} failed ({err.get('kind', 'unknown')}"
+                f"{', retry scheduled' if err.get('retryable') else ''})")
+        elif j["state"] == "NEEDS_RECONCILE":
+            add("NEEDS_RECONCILE", "error", f"job {jid} needs reconciliation", j.get("post_id"))
+        elif j["state"] == "RUNNING" and j["lease_expired"]:
+            add("NEEDS_RECONCILE", "warning",
+                f"job {jid} lease expired while RUNNING; the next scheduler pass reconciles it")
+        if j.get("post_id") and j["post_id"] not in known:
+            add("NEEDS_RECONCILE", "error", f"job {jid} links to missing post {j['post_id']}")
+    lock = (automation or {}).get("lock")
+    if lock and lock.get("expired"):
+        add("INCONSISTENT", "warning", "stale scheduler lock (a run was interrupted); "
+            "the next pass takes it over")
     for e in events:
         if e.get("event") == "research.fetch" and e.get("errors"):
             add("FAILED", "warning", f"feed fetch had {e['errors']} error(s) at {e.get('at')}")
@@ -404,7 +489,8 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
         repo = {"available": False, "head": None, "branch": None, "remote": None,
                 "dirty_files": None}
         label = data_label or "fictional demo data"
-    issues = detect_issues(store, posts, calendar, events, bad, validation)
+    automation = automation_view(store, posts, events)
+    issues = detect_issues(store, posts, calendar, events, bad, validation, automation)
     snapshot = {
         "schema": SCHEMA_VERSION,
         "meta": {"mode": mode, "generated_at": now_iso(), "engine": engine,
@@ -439,6 +525,7 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
             "posts": [{"post_id": p["post_id"], "state": p["state"],
                        "publication_status": p["publication_status"]} for p in posts],
         },
+        "automation": automation,
         "analytics": {"available": False,
                       "reason": "No publication data exists; publishing is not implemented."},
     }
