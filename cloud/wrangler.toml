@@ -1,6 +1,5 @@
 # Cloudflare Worker for scheduled publishing of human-approved, explicitly
 # consented posts. This file contains NO secrets and NO account identifiers.
-# The deploy workflow substitutes the placeholders from GitHub Variables/Secrets.
 #
 # Secrets (never in this repo): set with `wrangler secret put LINKEDIN_TOKEN`
 # or in the Cloudflare dashboard.
@@ -18,7 +17,9 @@ crons = ["*/5 * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "lce"
-database_id = "00000000-0000-0000-0000-000000000000" # replaced at deploy time
+# No database_id: Wrangler resolves the existing D1 database named "lce" in the
+# deploying account (deploy, `d1 migrations apply lce --remote`), so no account
+# identifier lives in this public file and no placeholder can be deployed.
 migrations_dir = "migrations"
 
 # Cloudflare Access (Zero Trust) identifiers are Worker SECRETS, not [vars]:

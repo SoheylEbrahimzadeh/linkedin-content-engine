@@ -120,3 +120,13 @@ def test_demo_data_is_marked_demo():
     for p in (ROOT / "examples").rglob("*.yaml"):
         assert "demo: true" in p.read_text(), p
     assert Path(ROOT / "examples" / "demo-persona" / "README.md").exists()
+
+
+def test_wrangler_config_has_no_account_identifiers_or_placeholders():
+    """The D1 database is resolved by name; Access identifiers are Worker secrets."""
+    toml = (ROOT / "cloud" / "wrangler.toml").read_text()
+    body = "\n".join(line.split("#", 1)[0] for line in toml.splitlines())
+    assert "database_id" not in body and "account_id" not in body
+    assert 'database_name = "lce"' in body
+    assert "ACCESS_TEAM_DOMAIN" not in body and "ACCESS_AUD" not in body
+    assert not re.search(r"\b[0-9a-f]{32}\b|[0-9a-f]{8}-[0-9a-f]{4}-", body)

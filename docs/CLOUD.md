@@ -111,8 +111,14 @@ request is wall time, not CPU. Expected cost: €0/month.
 - Workers Builds runs `npx wrangler deploy` by default, which applies **no**
   D1 migrations. If they have not been applied, the cron reports
   `{"cron":"schema_missing"}` in the Worker logs and the API answers 503
-  "database schema missing". Two ways to fix it (owner):
-  - once, with authenticated Wrangler: `cd cloud && npx wrangler d1 migrations apply lce --remote`;
+  "database schema missing". `wrangler.toml` has no `database_id`: Wrangler
+  resolves the existing database **by its name `lce`** in the account you are
+  logged into (a placeholder id used to make `--remote` target a database that
+  does not exist). Two ways to fix it (owner):
+  - once, from an up-to-date checkout with authenticated Wrangler
+    (`npx wrangler login`):
+    `cd cloud && npx wrangler d1 migrations list lce --remote` (shows what is
+    pending), then `npx wrangler d1 migrations apply lce --remote`;
   - or permanently: set the Builds **Deploy command** to `npm run deploy`
     (`cloud/package.json`: applies pending migrations, then deploys). If the
     Builds token lacks D1 permission, that build fails visibly and nothing is
@@ -146,13 +152,13 @@ Menu names can change; follow the current Cloudflare dashboard.
 
 1. **Cloudflare account** (Free plan). Note the account ID.
 2. **D1 database** named `lce` (dashboard → Storage & Databases → D1, or
-   `npx wrangler d1 create lce`). Note its database ID (a UUID).
+   `npx wrangler d1 create lce`). It is found by name; no id is needed.
 3. **Deploy-only API token** (My Profile → API Tokens): start from the
    "Edit Cloudflare Workers" template, add Account → D1 → Edit, and restrict it
    to this one account. Never paste it anywhere except the GitHub secret.
 4. **GitHub repository settings** (Settings → Secrets and variables → Actions):
    - secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`;
-   - variables: `CLOUDFLARE_D1_DATABASE_ID`, `ACCESS_TEAM_DOMAIN`
+   - variables: `ACCESS_TEAM_DOMAIN`
      (`<team>.cloudflareaccess.com`), `ACCESS_AUD` (64 hex characters, step 5),
      and `CLOUD_DEPLOY_ENABLED=true` only when you want to deploy.
 5. **Cloudflare Access** (Zero Trust, Free for up to 50 users): create a
