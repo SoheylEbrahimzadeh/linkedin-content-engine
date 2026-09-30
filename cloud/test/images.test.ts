@@ -27,7 +27,8 @@ async function token(): Promise<string> {
 const certs = async () => ({ keys: [{ ...jwk, kid: "k1", alg: "RS256" }] });
 async function push(body: Record<string, unknown>) {
   const res = await handleApi(new Request("https://lce.example/api/posts/20261006-demo-post", {
-    method: "PUT", headers: { "cf-access-jwt-assertion": await token() }, body: JSON.stringify(body) }), e, NOW, certs);
+    method: "PUT", headers: { "cf-access-jwt-assertion": await token(), "x-lce-client": "cli" },
+    body: JSON.stringify(body) }), e, NOW, certs);
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }
 

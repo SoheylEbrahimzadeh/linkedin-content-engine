@@ -1,4 +1,4 @@
-# Cloud publisher (Phase 4B)
+# Cloud publisher and remote dashboard (Phases 4B, 4C)
 
 Scheduled publishing that needs **no Mac, PC or phone**: a Cloudflare Worker
 with a Cron Trigger publishes an already human-approved post at a slot the
@@ -67,13 +67,39 @@ The dashboard/API exposes only `token_present` and `token_expires_at`.
 `POST /api/consents` · `DELETE /api/consents/:id` · `PUT /api/settings`.
 Every mutation is written to `events` with the Access identity.
 
+Mutation safety: every non-GET request needs the header `x-lce-client`
+(`cli` or `dashboard`), which forces a CORS preflight that is never granted,
+and a foreign `Origin` is refused, so another site cannot ride on the Access
+cookie. Actions that can lead to a publication need the owner's typed phrase in
+`confirm` (HTTP 428 otherwise): `SCHEDULE <post>` (consent), `ENABLE
+AUTO-PUBLISH` (turning the kill switch on), `WITHDRAW <post>`, `REARM <post>`,
+`RECONCILE <post>`. Revoking a consent and turning auto-publish off need no
+phrase (they only stop things).
+
+## Remote dashboard (Phase 4C)
+
+The Worker serves the Cloud Control Center at `/` (plus `/app.js`,
+`/app.css`), behind the same fail-closed Access check: without Access it
+answers 503, without a valid login 401. It works from a phone and shows the
+kill switch with its gates (provider, token present, token expiry, LinkedIn
+config, schedule), the next scheduled publication, upcoming slots with their
+consent, posts in the cloud (state, approved hash, image), publications with
+their LinkedIn links, jobs and the audit log.
+
+From it the owner can schedule a ready post into a slot, revoke a consent,
+withdraw, rearm or reconcile a post, and switch auto-publish off or (with the
+phrase) on. It cannot approve content, edit text, or see or enter the token:
+approval stays local and hash-bound; the token is a Worker secret. The page
+holds no data (it reads `/api/snapshot`), renders everything as text, and is
+served with a strict CSP (`script-src 'self'`, no inline code, no framing).
+
 ## Free-plan budget
 
 One Cron Trigger (`*/5`, 288 runs/day). A run with nothing due makes one D1
 read and no writes. CPU per run is hashing and small queries; the LinkedIn
 request is wall time, not CPU. Expected cost: €0/month.
 
-## Deploying (not done in 4B)
+## Deploying (not done yet)
 
 `.github/workflows/cloud-deploy.yml` runs only manually and only when the
 repository variable `CLOUD_DEPLOY_ENABLED` is `true`. It runs the tests,
@@ -107,14 +133,24 @@ Menu names can change; follow the current Cloudflare dashboard.
    everything (fail-closed); after deploying, confirm that an unauthenticated
    request to `/api/snapshot` is refused.
 6. **Deploy:** Actions → cloud-deploy → Run workflow.
-7. **LinkedIn token (Phase 4D only):** set the Worker secret with
-   `npx wrangler secret put LINKEDIN_TOKEN` or in the dashboard; never in a file,
-   variable, issue or chat. Then set `api_version`, `person_urn`,
-   `token_expires_at`, `timezone` and `cadence` with `PUT /api/settings`. The
-   kill switch stays off until a live test is explicitly authorized.
-8. **Local CLI:** put `api_base: https://lce-cloud.<subdomain>.workers.dev` in
+7. **Local CLI:** put `api_base: https://lce-cloud.<subdomain>.workers.dev` in
    the private data repository's `config/cloud.yaml`, install `cloudflared` and
-   run `cloudflared access login <api_base>` once.
+   run `cloudflared access login <api_base>` once. Open `<api_base>/` in the
+   browser: the dashboard should load after the Access login.
+8. **Settings:** `lce cloud configure --dry-run` shows what will be sent
+   (timezone, cadence, and from `config/linkedin.yaml`: api_version,
+   person_urn, visibility, token_expires_at); `lce cloud configure` sends it.
+   It never sets the kill switch and never sends a token.
+9. **LinkedIn token (credential gate):** set the Worker secret with
+   `npx wrangler secret put LINKEDIN_TOKEN` or in the Cloudflare dashboard;
+   never in a file, variable, issue or chat. The Cloud Control Center then
+   shows "token present".
+10. **First live publication (live gate, 4D):** only with the owner's explicit
+    authorization: `lce cloud push <post>`, schedule it in a slot (dashboard or
+    `lce cloud consent`), turn auto-publish on with its phrase, and afterwards
+    `lce cloud pull` and `lce analytics record`.
+
+After the credentials exist, steps 6–10 are the whole remaining path.
 
 ## Tests
 

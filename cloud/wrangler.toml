@@ -26,3 +26,9 @@ migrations_dir = "migrations"
 # Replaced at deploy time; if left empty the API refuses every request.
 ACCESS_TEAM_DOMAIN = ""
 ACCESS_AUD = ""
+
+# Dashboard files are bundled as text and served by the Worker (no extra service).
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "**/*.css", "**/*.txt"]
+fallthrough = true

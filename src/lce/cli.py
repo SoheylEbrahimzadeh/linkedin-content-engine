@@ -633,7 +633,15 @@ def cmd_readiness(args):
     if not args.no_keychain:
         token = KeychainTokenStore(doc.get("keychain_service", DEFAULT_SERVICE),
                                    doc.get("keychain_account", DEFAULT_ACCOUNT)).exists()
-    rows = check(store, _today_local(store), token_present=token, linkedin_config_ok=config_ok)
+    try:
+        from lce.cloud import load_cloud_config
+
+        load_cloud_config(store)
+        cloud_configured = True
+    except StoreError:
+        cloud_configured = False
+    rows = check(store, _today_local(store), token_present=token, linkedin_config_ok=config_ok,
+                 cloud_available=cloud_configured)
     if args.json:
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return 0
@@ -771,7 +779,16 @@ def cmd_cloud(args):
     from lce import cloud
 
     store = _store(args)
+    if args.sub == "configure" and args.dry_run:
+        print(json.dumps(cloud.configure_payload(store), indent=2, ensure_ascii=False))
+        print("(dry run: nothing sent; auto_publish is never set here)")
+        return 0
     client = cloud.make_client(store)
+    if args.sub == "configure":
+        out = cloud.configure(store, client)
+        print(f"✓ cloud settings updated: {', '.join(out.get('updated', []))} "
+              "(auto-publish unchanged; enable it in the dashboard with its typed phrase)")
+        return 0
     if args.sub == "push":
         out = cloud.push(store, args.post, client)
         print(f"✓ {args.post} delegated to the cloud ({out.get('state')}); local publish is now refused")
@@ -1071,6 +1088,8 @@ def build_parser() -> argparse.ArgumentParser:
     gcmd(g, "revoke", cmd_cloud, "revoke a consent").add_argument("consent")
     gcmd(g, "status", cmd_cloud, "kill switch, token presence, next publication")
     gcmd(g, "pull", cmd_cloud, "mirror cloud outcomes into local posts")
+    p = gcmd(g, "configure", cmd_cloud, "send timezone, cadence and LinkedIn settings (no secrets)")
+    p.add_argument("--dry-run", action="store_true")
 
     g = group("dashboard", "Web Control Center (read-only)")
     p = gcmd(g, "serve", cmd_dashboard_serve, "serve the dashboard on 127.0.0.1")

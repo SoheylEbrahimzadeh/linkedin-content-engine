@@ -20,9 +20,24 @@ async function token(claims: Record<string, unknown> = {}, key = keys.privateKey
   const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(`${h}.${p}`));
   return `${h}.${p}.${b64(sig)}`;
 }
-async function call(method: string, path: string, bodyObj?: unknown, jwt?: string | null, env = e) {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+// The owner's typed phrase for each action, added unless a test sets `confirm` itself.
+export function phraseFor(method: string, path: string, b: Record<string, unknown>): string | undefined {
+  let r: RegExpExecArray | null;
+  if (method === "POST" && path === "/consents") return `SCHEDULE ${b.post_id}`;
+  if ((r = /^\/posts\/([^/]+)\/(withdraw|rearm|reconcile)$/.exec(path))) return `${r[2].toUpperCase()} ${r[1]}`;
+  if (path === "/settings" && b.auto_publish === true) return "ENABLE AUTO-PUBLISH";
+  return undefined;
+}
+
+async function call(method: string, path: string, bodyObj?: unknown, jwt?: string | null, env = e,
+                    extra: Record<string, string> = { "x-lce-client": "cli" }) {
+  const headers: Record<string, string> = { "content-type": "application/json", ...(method === "GET" ? {} : extra) };
   if (jwt !== null) headers["cf-access-jwt-assertion"] = jwt ?? await token();
+  if (method !== "GET" && method !== "DELETE" && bodyObj === undefined) bodyObj = {};
+  if (bodyObj && typeof bodyObj === "object" && !("confirm" in bodyObj)) {
+    const phrase = phraseFor(method, path, bodyObj as Record<string, unknown>);
+    if (phrase) bodyObj = { ...(bodyObj as Record<string, unknown>), confirm: phrase };
+  }
   const res = await handleApi(new Request(`https://lce.example/api${path}`, {
     method, headers, body: bodyObj === undefined ? undefined : JSON.stringify(bodyObj) }), env, NOW, certs);
   return { status: res.status, body: await res.json() as Record<string, unknown> };
@@ -136,5 +151,31 @@ describe("push, consent, settings, reconcile", () => {
     await call("PUT", "/settings", { auto_publish: false });
     const [ev] = await rows<{ event: string; actor: string }>(e, "SELECT * FROM events");
     expect([ev.event, ev.actor]).toEqual(["settings.updated", "owner@example.com"]);
+  });
+});
+
+
+describe("mutation safety (CSRF, typed confirmation)", () => {
+  it("mutations need the client header and a same-origin request", async () => {
+    await insertPost(e, "20261006-demo-post", TEXT, "PUBLISH_FAILED");
+    expect((await call("POST", "/posts/20261006-demo-post/rearm", undefined, undefined, e, {})).status).toBe(403);
+    expect((await call("POST", "/posts/20261006-demo-post/rearm", undefined, undefined, e,
+      { "x-lce-client": "dashboard", origin: "https://evil.example" })).status).toBe(403);
+    expect((await call("POST", "/posts/20261006-demo-post/rearm", undefined, undefined, e,
+      { "x-lce-client": "dashboard", origin: "https://lce.example" })).status).toBe(200);
+    expect((await call("GET", "/snapshot")).status).toBe(200);          // reads need no header
+  });
+
+  it("actions that can lead to a publication need the typed phrase", async () => {
+    await setSettings(e, { timezone: SYNTH.timezone, cadence: JSON.stringify(SYNTH.cadence) });
+    await insertPost(e);
+    const wrong = await call("POST", "/consents", { post_id: "20261006-demo-post", slot_id: "2026-10-07-wed-0030", confirm: "yes" });
+    expect(wrong.status).toBe(428);
+    expect((await call("PUT", "/settings", { auto_publish: true, confirm: "" })).status).toBe(428);
+    expect((await call("PUT", "/settings", { auto_publish: false })).status).toBe(200);   // switching off needs no phrase
+    for (const action of ["withdraw", "rearm", "reconcile"]) {
+      expect((await call("POST", `/posts/20261006-demo-post/${action}`, { confirm: "no" })).status).toBe(428);
+    }
+    expect(await rows(e, "SELECT * FROM consents")).toHaveLength(0);
   });
 });
