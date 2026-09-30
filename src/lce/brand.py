@@ -151,7 +151,9 @@ def recommend(store: DataStore, today: date, count: int = 3) -> list[dict]:
     out = []
     for row in order[:count]:
         fitting = [t for t in themes.values() if not t.get("pillars") or row["id"] in t["pillars"]]
-        fitting.sort(key=lambda t: (theme_use[t["id"]]["posts"], t["id"]))
+        # Themes mapped to this pillar first; pillar-agnostic themes are the fallback.
+        fitting.sort(key=lambda t: (row["id"] not in (t.get("pillars") or []),
+                                    theme_use[t["id"]]["posts"], t["id"]))
         chosen = fitting[0] if fitting else None
         stories = public_stories_for(store, pillar=row["id"],
                                      theme_id=chosen["id"] if chosen else None)

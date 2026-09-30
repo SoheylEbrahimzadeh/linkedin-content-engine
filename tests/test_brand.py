@@ -148,3 +148,11 @@ def test_theme_evidence_counts_stories_of_its_pillars(store):
     assert themes["field-lessons"]["evidence_stories"] == 1          # via pillar automation
     assert themes["field-lessons"]["needs_personal_input"] is False
     assert themes["observations"]["evidence_stories"] == 0            # no pillars, no tag
+
+
+def test_mapped_themes_win_over_pillar_agnostic_ones(store):
+    set_brand(store, mix={}, themes=[
+        {"id": "a-general", "name": "General", "evidence": "external"},
+        {"id": "z-ops", "name": "Ops", "pillars": ["operations"], "evidence": "external"}])
+    recs = {r["pillar"]: r["theme"] for r in brand.recommend(store, DAY)}
+    assert recs["operations"] == "z-ops" and recs["automation"] == "a-general"
