@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-09-30 (production alignment, LCE-001…004)_
+_Last updated: 2026-09-30 (PR #19 merged; end-to-end dry run)_
 
 ## Objective
 
@@ -17,23 +17,38 @@ and image to one human approval → publishes to LinkedIn on schedule without
 depending on the owner's devices → verifies/reconciles → records results →
 learns → improves selection.
 
-## Outcome audit (2026-09-30)
+## Outcome audit (2026-09-30, after PR #19)
+
+Labels: VERIFIED (evidence in tests or on real private data) · NOT_VERIFIED
+(built, but the production evidence is missing) · BLOCKED (credential or live
+gate) · OWNER_ACTION · WAITING_FOR_DATA. `tests/test_end_to_end.py` runs the
+local chain in one test: research candidate with a source and claim →
+selection → draft/humanize → QA (an invented number is blocked) → duplicate
+check → image decision → hash-bound approval → fake-transport publish →
+publication record → metrics → learning inputs.
 
 | Stage | Status | Evidence / what remains |
 |---|---|---|
 | Personal brand | VERIFIED | profile + brand.yaml in the private repo; `lce brand status/next`; `lce readiness` on real data |
-| Research | VERIFIED | `lce-research` skill, `lce research add/claim/fetch`; RSS feeds optional (none configured) |
-| Topic selection | VERIFIED | brand-aware ranking, `lce jobs brief` per slot, avoid list, saturation |
-| English content + humanization | COMPLETED | Claude Code skills with the owner's voice profile; English ruleset |
-| QA / credibility | VERIFIED | deterministic QA, evidence gating (personal → PUBLIC story or `NEEDS_INPUT`), duplicate check |
-| Relevant image | VERIFIED | image decision + provenance, `lce image chart` from recorded figures, checks |
-| Human approval (text + image) | VERIFIED | terminal-only, typed phrase, text hash + image hash |
-| Cloud scheduling | DEPLOYED (owner-reported), not operational | Workers Builds deploys `main` to Worker `linkedin-content-engine` (D1 `lce`). Migrations and Access not verified; `ACCESS_*` reset to empty on each deploy (fail-closed). See CLOUD.md "Current production state" |
-| LinkedIn publishing | COMPLETED, not live | local + cloud, image upload, fake-transport tests — **credential-gated**, first live post **live-action-gated** |
-| Publication verification | VERIFIED | API 201 + URN; `NEEDS_RECONCILE` + human reconcile (LinkedIn grants no read-back); `lce cloud pull` mirrors the cloud record |
-| Analytics | VERIFIED | manual/CSV metrics, cloud publications matched by URL; official API adapter **credential-gated** (7B) |
-| Learning | VERIFIED | insights, theme tie-break, bounded mix suggestion (needs real metrics to say anything) |
-| Personal-experience content | NEEDS_USER_INPUT | 0 PUBLIC stories; experience themes stay `NEEDS_INPUT` |
+| Research | VERIFIED | `lce research add/claim/fetch`, source required for web candidates, claim must cite a candidate source (e2e test); RSS optional, none configured |
+| Topic selection | VERIFIED | brand-aware ranking, `lce jobs brief`, avoid list, saturation |
+| English content + humanization | VERIFIED (tooling) | Claude Code skills + English ruleset + `lce humanize check`; drafting quality depends on the LLM session |
+| QA / credibility | VERIFIED | deterministic QA incl. closing/CTA checks, evidence gating, unsupported-number block (e2e test) |
+| Duplicate detection | VERIFIED | `lce dupcheck`, e2e test |
+| Relevant image | VERIFIED | image decision + provenance + checks; swapped image never sent |
+| Human approval (text + image) | VERIFIED | terminal-only, typed phrase, text + image hash; wrong hash/phrase, edit after approval, tampered artifact, swapped image all refused (tests) |
+| Local publishing (Python) | VERIFIED (fake transport) · BLOCKED live | intent before request, one request, URN recorded, re-publish refused (e2e); live needs the LinkedIn token |
+| Cloud scheduling (Worker) | VERIFIED (Miniflare) · NOT_VERIFIED in production | 84 vitest incl. atomic claim, kill switch, hash gate, `schema_missing`; production D1 migrations and Access unverified (OWNER_ACTION) |
+| Cloud Control Center | VERIFIED (Miniflare) · NOT_VERIFIED in production | fail-closed 503 observed by the owner; Access path needs the owner decision below |
+| Publication verification | VERIFIED | API 201 + URN; ambiguous → `NEEDS_RECONCILE`, human reconcile (LinkedIn grants no read-back) |
+| Analytics | VERIFIED (manual/CSV) · BLOCKED official API (7B) | e2e: recorded metrics → rate + features |
+| Learning | VERIFIED (logic) · WAITING_FOR_DATA | 0 published posts; groups need ≥3 posts; mix suggestion refuses without data (e2e) |
+| Personal-experience content | OWNER_ACTION | 0 PUBLIC stories; experience themes stay `NEEDS_INPUT` |
+
+Roadmap completion, counted over the 14 in-scope phases (2.x and 8 are not
+approved scope): **12/14 built and tested (86%)**; 4D and 7B are BLOCKED on
+owner credentials. Proven against production: 0/4 of the live-dependent
+phases (3, 4B, 4C, 6B), because no credentialed production check has run yet.
 
 Operating procedure: [OPERATING.md](OPERATING.md).
 

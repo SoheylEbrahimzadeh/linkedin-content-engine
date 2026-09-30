@@ -4,12 +4,15 @@ A reusable, privacy-first content engine for LinkedIn. It plans, drafts, audits
 and — after explicit human approval — publishes posts, using only facts the
 author has verified and approved.
 
-> **Status: Phase 3.** Scheduled jobs prepare posts up to a hash-bound human
-> approval; approved posts can be published to your own LinkedIn profile via
-> the official API **only by you**, with `lce publish` in an interactive
-> terminal. See [docs/ROADMAP.md](docs/ROADMAP.md), [docs/AUTOMATION.md](docs/AUTOMATION.md)
-> and [docs/PUBLISHING.md](docs/PUBLISHING.md). A device-independent cloud
-> publisher (Cloudflare Worker, not yet deployed) is described in [docs/CLOUD.md](docs/CLOUD.md).
+> **Status:** phases 0–7A are built and tested (see
+> [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) for evidence labels). Scheduled
+> jobs prepare posts up to a hash-bound human approval; approved posts are
+> published to your own LinkedIn profile via the official API only after that
+> approval, either by you with `lce publish` or by the Cloudflare Worker at a
+> slot you consented to. The Worker is deployed by Workers Builds; its D1
+> migrations, Cloudflare Access and the LinkedIn token are owner steps, so no
+> live post has been made yet. See [docs/ROADMAP.md](docs/ROADMAP.md),
+> [docs/PUBLISHING.md](docs/PUBLISHING.md) and [docs/CLOUD.md](docs/CLOUD.md).
 
 ## Personal brand
 
