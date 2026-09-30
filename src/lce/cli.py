@@ -469,6 +469,89 @@ def _job_cmd(func_name: str, *extra):
     return run
 
 
+# ── publishing (human-triggered only) ─────────────────────────────────
+def cmd_publish(args):
+    from lce import publishing
+
+    store = _store(args)
+    if args.target == "reconcile":
+        if not args.post:
+            raise StoreError("usage: lce publish reconcile <post> --published-url URL | --not-published")
+        out = publishing.reconcile(store, args.post, published_url=args.published_url,
+                                   not_published=args.not_published)
+        print(f"✓ {args.post} → {out['post']['state']} (recorded as the owner's decision)")
+        return 0
+    if args.post or args.published_url or args.not_published:
+        raise StoreError("usage: lce publish <post> [--dry-run]")
+    publisher = publishing.make_publisher(store)
+    if args.dry_run:
+        plan = publishing.dry_run(store, args.target, publisher)
+        print("DRY RUN — no token is read, nothing is sent or written")
+        print(f"POST {plan['url']}")
+        for k, v in plan["headers"].items():
+            print(f"  {k}: {v}")
+        print(json.dumps(plan["body"], indent=2, ensure_ascii=False))
+        print(f"approved hash {plan['approved_hash'][:12]}, {plan['characters']} characters")
+        return 0
+    out = publishing.publish(store, args.target, publisher)
+    post, pub, result = out["post"], out["publication"], out["result"]
+    if post["state"] == "PUBLISHED":
+        print(f"✓ PUBLISHED {pub['remote_id']}\n  {pub['url']}")
+        return 0
+    if post["state"] == "PUBLISH_FAILED":
+        d = result.detail or {}
+        print(f"✗ PUBLISH_FAILED: not created on LinkedIn ({d.get('reason')}"
+              f"{', HTTP ' + str(d['http_status']) if d.get('http_status') else ''})"
+              f"{' — may be retried later with lce publish' if d.get('retryable') else ''}")
+        return 1
+    print("⚠ NEEDS_RECONCILE: the request may have reached LinkedIn, outcome unknown.\n"
+          "  Check your profile, then run:\n"
+          f"  lce publish reconcile {args.target} --published-url <url>   or   --not-published")
+    return 1
+
+
+def cmd_linkedin_status(args):
+    from lce import publishing
+    from lce.publish.credentials import DEFAULT_ACCOUNT, DEFAULT_SERVICE, KeychainTokenStore
+
+    store = _store(args)
+    provider = store.settings().get("publisher", {}).get("provider")
+    print(f"publisher.provider: {provider}")
+    try:
+        doc = publishing.load_linkedin_config(store)
+    except StoreError as exc:
+        print(f"config/linkedin.yaml: ✗ {exc}")
+        return 1
+    print(f"api_version: {doc['api_version']}   person_urn: {doc['person_urn']}   "
+          f"visibility: {doc.get('visibility', 'PUBLIC')}")
+    tokens = KeychainTokenStore(doc.get("keychain_service", DEFAULT_SERVICE),
+                                doc.get("keychain_account", DEFAULT_ACCOUNT))
+    print(f"token in Keychain: {'present' if tokens.exists() else 'absent'} "
+          f"(service {tokens.service!r}, account {tokens.account!r}; value never shown)")
+    if doc.get("token_expires_at"):
+        from lce.clock import now, parse_iso
+
+        days = (parse_iso(doc["token_expires_at"]) - now()).days
+        print(f"token expires: {doc['token_expires_at']} ({days} days)"
+              + ("  ✗ EXPIRED" if days < 0 else "  ⚠ renew soon" if days < 14 else ""))
+    else:
+        print("token expiry: unknown (record token_expires_at in config/linkedin.yaml)")
+    return 0
+
+
+def cmd_linkedin_whoami(args):
+    from lce import publishing
+    from lce.publish.credentials import CredentialError
+
+    store = _store(args)
+    try:
+        info = publishing.make_publisher(store).whoami()
+    except CredentialError as exc:
+        raise StoreError(str(exc)) from exc
+    print(f"sub: {info['sub']}   name: {info['name']}\nperson_urn: {info['person_urn']}")
+    return 0
+
+
 # ── dashboard ─────────────────────────────────────────────────────────
 def _engine_root() -> Path:
     from lce.config.paths import find_engine_root
@@ -656,6 +739,17 @@ def build_parser() -> argparse.ArgumentParser:
     p = gcmd(g, "reconcile", _job_cmd("reconcile", "decision"), "resolve NEEDS_RECONCILE")
     p.add_argument("job")
     p.add_argument("--decision", choices=["retry", "skip", "fail"], default=None)
+
+    p = cmd("publish", cmd_publish, "publish an approved post to LinkedIn (interactive only)")
+    p.add_argument("target", help="post id, or 'reconcile'")
+    p.add_argument("post", nargs="?", default=None, help="post id (with 'reconcile')")
+    p.add_argument("--dry-run", action="store_true", help="show the request; send nothing")
+    p.add_argument("--published-url", default=None)
+    p.add_argument("--not-published", action="store_true")
+
+    g = group("linkedin", "LinkedIn account settings (no secrets are ever printed)")
+    gcmd(g, "status", cmd_linkedin_status, "config, token presence and expiry")
+    gcmd(g, "whoami", cmd_linkedin_whoami, "look up your person URN (network call)")
 
     g = group("dashboard", "Web Control Center (read-only)")
     p = gcmd(g, "serve", cmd_dashboard_serve, "serve the dashboard on 127.0.0.1")

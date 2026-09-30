@@ -47,7 +47,10 @@ from lce.textutil import content_hash
 
 P = PostState
 AGENT_STATES = {None, P.RESEARCHED, P.SELECTED, P.DRAFTED, P.NEEDS_REVISION}
-DONE_STATES = {P.AWAITING_APPROVAL, P.APPROVED, P.READY_TO_PUBLISH}
+# At or past the human approval boundary: the job's part is done. The scheduler
+# never moves a post beyond this point (publishing is human-triggered only).
+DONE_STATES = {P.AWAITING_APPROVAL, P.APPROVED, P.READY_TO_PUBLISH, P.PUBLISHING, P.PUBLISHED,
+               P.PUBLISH_FAILED, P.NEEDS_RECONCILE}
 
 
 @dataclass

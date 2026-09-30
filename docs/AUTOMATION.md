@@ -23,7 +23,7 @@ Human approval (lce approve, interactive terminal only)
    ↓
 APPROVED → READY_TO_PUBLISH (lce ready, human)
    ↓
-STOP — publishing is not implemented
+STOP — publishing is only `lce publish`, run by a human (Phase 3)
 ```
 
 The job lifecycle and the post lifecycle are separate. A job only records the

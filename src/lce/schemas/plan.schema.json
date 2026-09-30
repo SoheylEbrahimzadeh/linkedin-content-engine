@@ -49,7 +49,11 @@
               "approved",
               "ready_to_publish",
               "rejected",
-              "skipped"
+              "skipped",
+              "publishing",
+              "published",
+              "publish_failed",
+              "needs_reconcile"
             ]
           },
           "sources": {
@@ -81,9 +85,12 @@
           "publication_status": {
             "enum": [
               "not_published",
-              "ready_to_publish"
+              "ready_to_publish",
+              "publishing",
+              "published",
+              "unknown"
             ],
-            "description": "Phase 1 never publishes."
+            "description": "unknown = the publish request may or may not have reached LinkedIn (needs reconciliation)."
           }
         }
       }

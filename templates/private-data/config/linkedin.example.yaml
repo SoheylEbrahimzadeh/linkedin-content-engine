@@ -1,0 +1,10 @@
+# Copy to config/linkedin.yaml when you are ready to publish. Non-secret values only.
+# The access token is NEVER stored here: keep it in the macOS Keychain:
+#   security add-generic-password -s lce-linkedin -a default -w
+# (-w without a value prompts for it, so it stays out of your shell history)
+api_version: "202609"                # Linkedin-Version header (YYYYMM); versions last >= 12 months
+person_urn: urn:li:person:REPLACE_ME # from `lce linkedin whoami`
+visibility: PUBLIC                   # PUBLIC | CONNECTIONS | LOGGED_IN
+# token_expires_at: "2026-11-29T00:00:00+00:00"  # record it when you create the token (60 days)
+# keychain_service: lce-linkedin
+# keychain_account: default

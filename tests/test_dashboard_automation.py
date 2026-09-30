@@ -78,7 +78,8 @@ def test_stale_lock_is_flagged(store):
 def test_pipeline_lists_scheduling_as_available_and_publishing_not():
     snap = snapshot_for(demo_store(ROOT), "demo")
     caps = {p["id"]: p["status"] for p in snap["pipeline"]}
-    assert caps["scheduling"] == "available" and caps["publishing"] == "not_implemented"
+    assert caps["scheduling"] == "available" and caps["publishing"] == "manual"
+    assert caps["verification"] == "not_implemented"
 
 
 def test_demo_uses_fixed_demo_clock_and_fictional_jobs():

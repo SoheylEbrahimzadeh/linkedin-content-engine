@@ -38,7 +38,9 @@ def test_story_file_name_must_match(tmp_path):
     assert any("file name" in e.message for e in errors)
 
 
-def test_plan_publication_status_cannot_be_published():
+def test_plan_publication_status_is_a_closed_set():
     doc = {"entries": [{"date": "2025-01-01", "topic": "t", "pillar": "p", "status": "planned",
-                        "publication_status": "published"}]}
+                        "publication_status": "scheduled_on_linkedin"}]}
     assert validate_doc("plan", doc)
+    doc["entries"][0]["publication_status"] = "published"
+    assert validate_doc("plan", doc) == []

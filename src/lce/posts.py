@@ -20,7 +20,20 @@ PLAN_STATUS = {
     S.AWAITING_APPROVAL: "awaiting_approval",
     S.APPROVED: "approved",
     S.READY_TO_PUBLISH: "ready_to_publish",
+    S.PUBLISHING: "publishing",
+    S.PUBLISHED: "published",
+    S.PUBLISH_FAILED: "publish_failed",
+    S.NEEDS_RECONCILE: "needs_reconcile",
     S.REJECTED: "rejected",
+}
+
+
+PUBLICATION_STATUS = {
+    S.READY_TO_PUBLISH: "ready_to_publish",
+    S.PUBLISHING: "publishing",
+    S.PUBLISHED: "published",
+    S.PUBLISH_FAILED: "not_published",
+    S.NEEDS_RECONCILE: "unknown",
 }
 
 
@@ -102,7 +115,5 @@ def sync_plan(store: DataStore, post: dict) -> None:
     entry["duplicate_check"] = dup or "pending"
     appr = post.get("approval", {}).get("state")
     entry["approval_status"] = appr or "pending"
-    entry["publication_status"] = (
-        "ready_to_publish" if state == S.READY_TO_PUBLISH else "not_published"
-    )
+    entry["publication_status"] = PUBLICATION_STATUS.get(state, "not_published")
     store.write_doc(store.plan_path, "plan", plan)
