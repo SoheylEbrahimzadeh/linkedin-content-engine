@@ -101,7 +101,7 @@ def check(store: DataStore, today: date, *, token_present: bool | None,
                      "and record it with `lce publish manual`"))
     rows.append(_row("9 publishing (scheduled, device-independent)",
                      TODO if cloud_available else GATE,
-                     "config/cloud.yaml present; check the deployment with `lce cloud status`"
+                     "config/cloud.yaml present; `lce cloud doctor` shows which production gate is still open"
                      if cloud_available else
                      "Worker and dashboard are built; no config/cloud.yaml (api_base), so the "
                      "deployment is not visible from here",

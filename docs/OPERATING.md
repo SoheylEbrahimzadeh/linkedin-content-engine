@@ -42,6 +42,7 @@ repository. `lce readiness` shows which steps are available in your setup.
 - Add PUBLIC stories to the story bank when you have real experiences to
   share; they unlock the experience-based themes.
 - `lce privacy-denylist` after changing private data.
+- `lce cloud doctor` (read-only): Worker, Access, D1 schema, settings, token expiry.
 - LinkedIn tokens expire after 60 days: the Cloud Control Center and
   `lce linkedin status` show the remaining days.
 

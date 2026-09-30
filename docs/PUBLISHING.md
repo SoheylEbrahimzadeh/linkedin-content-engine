@@ -91,9 +91,10 @@ in the private repository before publishing.
 
 ## Out of scope
 
-Company pages, images/video/documents/polls, publishing at scheduled times
-(Phase 4), reading posts or statistics, refresh tokens, third-party providers,
-browser automation.
+Company pages, video/documents/polls, reading posts or statistics through the
+API (see Phase 7B), refresh tokens, third-party providers, browser automation.
+Images (Phase 6B) and scheduled publishing (Phase 4, `docs/CLOUD.md`) are in
+scope. The first live test is [LIVE_TEST.md](LIVE_TEST.md).
 
 ## Posting by hand (fallback)
 

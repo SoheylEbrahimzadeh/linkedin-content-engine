@@ -82,7 +82,7 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 
 | Gate | Unlocks |
 |---|---|
-| Authorization of the first live publication (4D) | end-to-end proof on LinkedIn |
+| Authorization of the first live publication (4D), runbook [LIVE_TEST.md](LIVE_TEST.md) | end-to-end proof on LinkedIn |
 
 ## Owner input (not gates; the engine runs without them, with less reach)
 

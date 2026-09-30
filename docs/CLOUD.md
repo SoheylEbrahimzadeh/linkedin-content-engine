@@ -168,6 +168,10 @@ Menu names can change; follow the current Cloudflare dashboard.
    the private data repository's `config/cloud.yaml`, install `cloudflared` and
    run `cloudflared access login <api_base>` once. Open `<api_base>/` in the
    browser: the dashboard should load after the Access login.
+   From here on, `lce cloud doctor` checks every remaining gate read-only
+   (Worker reachable, Access login, Access secrets, D1 schema, settings,
+   provider, LinkedIn token and its expiry, kill switch) and prints the exact
+   next command for the first one that is still open. Exit code 0 = all ✓.
 8. **Settings:** `lce cloud configure --dry-run` shows what will be sent
    (timezone, cadence, and from `config/linkedin.yaml`: api_version,
    person_urn, visibility, token_expires_at); `lce cloud configure` sends it.
@@ -179,7 +183,8 @@ Menu names can change; follow the current Cloudflare dashboard.
 10. **First live publication (live gate, 4D):** only with the owner's explicit
     authorization: `lce cloud push <post>`, schedule it in a slot (dashboard or
     `lce cloud consent`), turn auto-publish on with its phrase, and afterwards
-    `lce cloud pull` and `lce analytics record`.
+    `lce cloud pull` and `lce analytics record`. Step by step, with abort
+    paths: [LIVE_TEST.md](LIVE_TEST.md).
 
 After the credentials exist, steps 6–10 are the whole remaining path.
 
