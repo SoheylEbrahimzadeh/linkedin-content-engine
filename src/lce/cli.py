@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from datetime import date
@@ -778,6 +779,15 @@ def cmd_linkedin_whoami(args):
 def cmd_cloud(args):
     from lce import cloud
 
+    if args.sub == "smoke":
+        base = args.api_base or os.environ.get("LCE_API_BASE", "").strip()
+        if not base:
+            base = cloud.load_cloud_config(_store(args))["api_base"]
+        checks = cloud.smoke(base, wait_seconds=args.wait)
+        for c in checks:
+            print(f"{'✓' if c['status'] == cloud.OK else '✗'} {c['check']}: {c['detail']}"
+                  + (f"\n    {c['action']}" if c["action"] else ""))
+        return 2 if any(c["status"] == cloud.FAIL for c in checks) else 0
     store = _store(args)
     if args.sub == "configure" and args.dry_run:
         print(json.dumps(cloud.configure_payload(store), indent=2, ensure_ascii=False))
@@ -1103,6 +1113,9 @@ def build_parser() -> argparse.ArgumentParser:
     gcmd(g, "revoke", cmd_cloud, "revoke a consent").add_argument("consent")
     gcmd(g, "status", cmd_cloud, "kill switch, token presence, next publication")
     gcmd(g, "doctor", cmd_cloud, "read-only production preflight: which owner gate is still open")
+    p = gcmd(g, "smoke", cmd_cloud, "unauthenticated production check: reachable and fail-closed")
+    p.add_argument("--api-base", help="Worker URL (default: $LCE_API_BASE, then config/cloud.yaml)")
+    p.add_argument("--wait", type=int, default=0, help="seconds to wait for /api/health (deploys)")
     gcmd(g, "pull", cmd_cloud, "mirror cloud outcomes into local posts")
     gcmd(g, "sync", cmd_cloud, "mirror the private pipeline to the cloud dashboard (read-only view)")
     p = gcmd(g, "configure", cmd_cloud, "send timezone, cadence and LinkedIn settings (no secrets)")

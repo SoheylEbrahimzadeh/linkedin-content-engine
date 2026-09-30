@@ -1,0 +1,85 @@
+"""`lce cloud smoke`: unauthenticated production check (reachable, fail-closed)."""
+
+import pytest
+
+from lce import cloud
+from lce.cloud import CloudError
+
+BASE = "https://lce.example.workers.dev"
+
+
+class Probe:
+    def __init__(self, health=(200, b'{"ok": true}'), protected=403, overrides=None, fail_times=0):
+        self.health, self.protected, self.overrides = health, protected, overrides or {}
+        self.fail_times, self.calls = fail_times, []
+
+    def status(self, method, url, body=None):
+        self.calls.append((method, url, body))
+        path = url[len(BASE):]
+        if path == "/api/health":
+            if self.fail_times:
+                self.fail_times -= 1
+                raise CloudError("cloud API unreachable: URLError")
+            return self.health
+        return self.overrides.get((method, path), self.protected), b""
+
+
+def by(checks):
+    return {c["check"]: c for c in checks}
+
+
+@pytest.mark.parametrize("protected", [302, 401, 403, 503])
+def test_fail_closed_worker_passes(protected):
+    checks = cloud.smoke(BASE, Probe(protected=protected))
+    assert all(c["status"] == "ok" for c in checks), checks
+    assert len(checks) == 1 + len(cloud.PROTECTED)
+
+
+def test_any_unauthenticated_2xx_is_a_failure():
+    checks = by(cloud.smoke(BASE, Probe(overrides={("GET", "/api/pipeline"): 200})))
+    assert checks["GET /api/pipeline"]["status"] == "fail"
+    assert checks["GET /api/snapshot"]["status"] == "ok"
+
+
+def test_health_behind_access_at_the_edge_counts_as_reachable():
+    checks = by(cloud.smoke(BASE, Probe(health=(302, b""))))
+    assert checks["worker"]["status"] == "ok" and "edge" in checks["worker"]["detail"]
+
+
+def test_unreachable_worker_stops_early_and_waits_when_asked():
+    slept = []
+    p = Probe(fail_times=99)
+    checks = cloud.smoke(BASE, p, wait_seconds=30, sleep=slept.append)
+    assert [c["check"] for c in checks] == ["worker"] and checks[0]["status"] == "fail"
+    assert len(slept) == 2 and len(p.calls) == 3
+
+
+def test_recovers_while_the_deploy_finishes():
+    checks = cloud.smoke(BASE, Probe(fail_times=1), wait_seconds=30, sleep=lambda s: None)
+    assert all(c["status"] == "ok" for c in checks)
+
+
+def test_no_credentials_are_ever_sent():
+    p = Probe()
+    cloud.smoke(BASE, p)
+    assert all(b is None or "token" not in str(b).lower() for _, _, b in p.calls)
+
+
+def test_status_transport_never_follows_redirects():
+    import urllib.request
+
+    t = cloud.StatusTransport()
+    handler = next(h for h in t.opener.handlers if isinstance(h, urllib.request.HTTPRedirectHandler))
+    assert handler.redirect_request(None, None, 302, "Found", {}, "https://login.example") is None
+    with pytest.raises(CloudError):
+        t.status("GET", "http://insecure.example/")
+
+
+def test_cli_uses_api_base_and_exit_codes(monkeypatch, capsys):
+    from lce.cli import main
+
+    monkeypatch.setattr(cloud, "StatusTransport", lambda: Probe(overrides={("GET", "/"): 200}))
+    assert main(["cloud", "smoke", "--api-base", BASE]) == 2
+    assert "✗ GET /: HTTP 200 without credentials" in capsys.readouterr().out
+    monkeypatch.setattr(cloud, "StatusTransport", lambda: Probe())
+    assert main(["cloud", "smoke", "--api-base", BASE]) == 0

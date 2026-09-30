@@ -36,37 +36,6 @@ jobs:
           fi
           [[ "$BASE" =~ ^https://[A-Za-z0-9.-]+/?$ ]] || { echo "::error::LCE_API_BASE must be https://host"; exit 1; }
           echo "skip=false" >> "$GITHUB_OUTPUT"
-      - name: Worker reachable (waits for the Workers Builds deploy)
-        if: steps.cfg.outputs.skip == 'false'
-        run: |
-          B="${BASE%/}"
-          for i in $(seq 1 20); do
-            code=$(curl -s -o /tmp/h.json -w '%{http_code}' --max-time 15 "$B/api/health" || true)
-            case "$code" in
-              200) grep -q '"ok":true' /tmp/h.json && { echo "health 200"; exit 0; } ;;
-              302|401|403) echo "health behind Cloudflare Access at the edge ($code)"; exit 0 ;;
-            esac
-            sleep 15
-          done
-          echo "::error::Worker not reachable at $B/api/health (last HTTP $code)"; exit 1
-      - name: Fail-closed without credentials
-        if: steps.cfg.outputs.skip == 'false'
-        run: |
-          B="${BASE%/}"; bad=0
-          check() {  # method path — anything 2xx without credentials is a security failure
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X "$1" \
-              -H 'content-type: application/json' -H 'x-lce-client: cli' "$B$2" ${3:+--data "$3"} || true)
-            echo "$1 $2 -> $code"
-            [[ "$code" =~ ^2 ]] && { echo "::error::$1 $2 answered $code without authentication"; bad=1; }
-            [[ "$code" == 000 ]] && { echo "::error::$1 $2 unreachable"; bad=1; }
-            return 0
-          }
-          check GET /
-          check GET /api/snapshot
-          check GET /api/pipeline
-          check PUT /api/settings '{"auto_publish":true}'
-          check POST /api/consents '{}'
-          exit $bad
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.cfg.outputs.skip == 'false'
         with:
@@ -75,6 +44,11 @@ jobs:
         if: steps.cfg.outputs.skip == 'false'
         with:
           python-version: "3.12"
+      - name: Reachable and fail-closed without credentials
+        if: steps.cfg.outputs.skip == 'false'
+        run: |
+          pip install -q -e .
+          lce cloud smoke --api-base "${BASE%/}" --wait 300
       - name: Authenticated read-only doctor (only with an Access service token)
         if: steps.cfg.outputs.skip == 'false'
         env:
@@ -84,7 +58,6 @@ jobs:
           if [ -z "$LCE_CF_ACCESS_CLIENT_ID" ]; then
             echo "::notice::No Access service token; authenticated checks skipped."; exit 0
           fi
-          pip install -q -e .
           D="$RUNNER_TEMP/probe"; lce init-data "$D" >/dev/null
           printf 'api_base: %s\n' "${BASE%/}" > "$D/config/cloud.yaml"
           set +e; lce --data-dir "$D" cloud doctor; rc=$?; set -e
