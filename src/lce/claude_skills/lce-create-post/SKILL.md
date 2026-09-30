@@ -37,7 +37,16 @@ Phase 1 ends at the approval boundary. **You never run `lce approve`,
    is missing.
 5. **Duplicate check**: `lce dupcheck <post_id>`. On failure, change the angle
    or topic; do not paraphrase around it.
-6. **Approval artifact**: `lce approval prepare <post_id>`, then show the owner
+6. **Image**: decide what, if anything, the post needs, then record it:
+   `lce image decide <post_id> --kind none --rationale "..."`, or with a file:
+   `lce image decide <post_id> --kind diagram|architecture|chart|screenshot|source_image|generated_concept --file <png/jpg/gif> --rationale "..." --relation "<what it shows and how it supports the point>" --alt "<alt text>" --origin <origin> --usage <usage> [--source-url --license --credit] [--method "<tool/code>" --prompt "..."]`.
+   Prefer a diagram or chart built from the post's own recorded facts; a
+   third-party image only with its licence; a screenshot only of the owner's
+   own work or a cited source; a generated concept image only when it adds
+   meaning. Never a random stock/AI image to fill space: choose `none`. Never
+   generated people, logos or fake screenshots. `lce image check <post_id>`
+   must pass; usage `needs_review` waits for the owner.
+7. **Approval artifact**: `lce approval prepare <post_id>`, then show the owner
    `posts/<post_id>/APPROVAL.md` and the exact command they can run in their
    own terminal.
 

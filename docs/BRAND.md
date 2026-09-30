@@ -6,7 +6,7 @@ recurring theme, optionally a career chapter, and an explicit evidence mode.
 
 ```
 Personal brand → Research → Topic selection → Content strategy → Writing
-→ Humanization → QA → Image (Phase 6) → Approval → Publishing
+→ Humanization → QA → Image ([IMAGES.md](IMAGES.md)) → Approval → Publishing
 → Analytics (Phase 7) → Learning → brand refinement
 ```
 

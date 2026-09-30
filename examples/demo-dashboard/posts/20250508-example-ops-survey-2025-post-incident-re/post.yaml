@@ -58,4 +58,5 @@ duplicate:
   warnings: 0
 approval:
   state: pending
-  artifact_hash: afdf61afeb5df72893840f8011b8cde772cb1f947f804f775e702e78c9c90a3c
+  artifact_hash: fdf61767c0272b05e66c8bacab85d2624aedb0a79699a7503eb31f51b3eada87
+  image_hash: none

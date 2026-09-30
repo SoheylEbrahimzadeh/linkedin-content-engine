@@ -142,6 +142,18 @@ def read_runs(store: DataStore) -> tuple[list[dict], list[dict]]:
     return events, bad
 
 
+def _image_view(store: DataStore, pid: str) -> dict | None:
+    from lce import images
+
+    doc = images.load(store, pid)
+    if doc is None:
+        return None
+    errors, warnings = images.check(store, pid)
+    return {"kind": doc["kind"], "rationale": doc.get("rationale"), "relation": doc.get("relation"),
+            "alt_text": doc.get("alt_text"), "file": doc.get("file"), "sha256": doc.get("sha256"),
+            "provenance": doc.get("provenance"), "errors": errors, "warnings": warnings}
+
+
 def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[dict],
                pillar_names: dict) -> dict:
     meta = store.load_post(pid)
@@ -186,6 +198,8 @@ def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[d
         "sources": meta.get("sources", []),
         "claims": meta.get("claims", []),
         "stories_used": meta.get("stories_used", []),
+        "brand": meta.get("brand"),
+        "image": _image_view(store, pid),
         "candidate_id": meta.get("candidate_id"),
         "history": meta.get("history", []),
         "text": text,

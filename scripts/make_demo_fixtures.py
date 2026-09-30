@@ -20,6 +20,7 @@ from lce import scheduler
 from lce.approval import approve, prepare
 from lce.clock import FixedClock, use_clock
 from lce.dupcheck import run_dupcheck
+from lce.images import decide
 from lce.planning import select
 from lce.posts import save_draft, save_humanized
 from lce.qa import run_qa
@@ -74,7 +75,8 @@ def build(work: Path, clk: FixedClock) -> None:
         scheduler.link_post(store, tue, pid)
         save_draft(store, pid, APPROVED)
         save_humanized(store, pid, APPROVED)
-        scheduler.release(store, tue, "draft and humanized text saved")
+        decide(store, pid, kind="none", rationale="a short argument; an image would be decoration")
+        scheduler.release(store, tue, "draft, humanized text and image decision saved")
         scheduler.run_once(store)  # QA -> duplicate check -> approval artifact
         clk.advance(hours=1)
         post = store.load_post(pid)
@@ -97,6 +99,8 @@ def build(work: Path, clk: FixedClock) -> None:
         save_humanized(store, pid2, AWAITING)
         run_qa(store, pid2, denylist=[])
         run_dupcheck(store, pid2)
+        decide(store, pid2, kind="none",
+               rationale="the survey figure carries the post; a chart would only repeat it")
         prepare(store, pid2)
 
         # Found but not selected, no claims extracted (e.g. the page could not be read).

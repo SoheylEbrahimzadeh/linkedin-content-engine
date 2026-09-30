@@ -123,6 +123,15 @@ def prepare(store: DataStore, post_id: str, publisher: LinkedInPublisher) -> Pre
     if approval.get("state") != "approved" or approval.get("approved_hash") != h \
             or post.get("content_hash") != h:
         raise StoreError("the text does not match the approved hash; nothing is sent")
+    from lce.approval import image_unchanged
+    from lce.images import NO_IMAGE
+    from lce.images import load as load_image
+
+    if not image_unchanged(store, post):
+        raise StoreError("the image does not match the approved image; nothing is sent")
+    if (load_image(store, post_id) or {}).get("kind", NO_IMAGE) != NO_IMAGE:
+        raise StoreError("this post has an image; image upload is not implemented yet "
+                         "(Phase 6B), so it is not published without it")
     existing = load_publication(store, post_id)
     if existing and existing["state"] in {"publishing", "needs_reconcile", "published"}:
         raise StoreError(f"a publish attempt is already recorded ({existing['state']}); "

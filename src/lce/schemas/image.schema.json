@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/image.schema.json",
+  "title": "Image decision",
+  "description": "Per-post image decision (posts/<id>/image.yaml). 'none' is a valid, explicit decision. An image is never decoration: it needs a stated relation to the post and a provenance record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "rationale", "decided_at"],
+  "properties": {
+    "demo": {"type": "boolean"},
+    "kind": {
+      "enum": ["none", "source_image", "diagram", "architecture", "screenshot", "chart",
+               "generated_concept"]
+    },
+    "rationale": {"type": "string", "minLength": 1,
+                  "description": "Why this kind of image (or no image) serves the post."},
+    "relation": {"type": "string",
+                 "description": "What the image shows and how it supports the post's point."},
+    "file": {"type": "string", "pattern": "^image\\.(png|jpg|jpeg|gif)$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "bytes": {"type": "integer", "minimum": 1},
+    "alt_text": {"type": "string"},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "usage"],
+      "properties": {
+        "origin": {"enum": ["own_creation", "owner_screenshot", "owner_photo",
+                            "source_publication", "licensed_stock", "generated"]},
+        "source_url": {"type": "string", "pattern": "^https?://"},
+        "credit": {"type": "string"},
+        "license": {"type": "string"},
+        "usage": {"enum": ["owned", "licensed", "permitted", "public_domain", "needs_review"],
+                  "description": "needs_review blocks approval until the owner resolves it."},
+        "generation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["method"],
+          "properties": {
+            "method": {"type": "string", "minLength": 1,
+                       "description": "Tool or code used (e.g. a diagram script or an image model)."},
+            "prompt": {"type": "string"},
+            "at": {"type": "string"}
+          }
+        }
+      }
+    },
+    "decided_at": {"type": "string"},
+    "decided_by": {"type": "string"}
+  }
+}
