@@ -587,6 +587,56 @@ def cmd_jobs_list(args):
     return 0
 
 
+def cmd_jobs_brief(args):
+    from lce.brief import briefs
+    from lce.jobs import load_job
+    from lce.scheduler import pending_agent_tasks
+
+    store = _store(args)
+    jobs = [load_job(store, args.job)] if args.job else pending_agent_tasks(store)
+    out = briefs(store, _today_local(store), jobs)
+    if args.json:
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+        return 0
+    if not out:
+        print("no agent work pending")
+    for b in out:
+        print(f"- {b['job_id']} · slot {b['slot_local']} · task {b['task']}")
+        for key in ("post_id", "pillar", "theme", "evidence", "candidates", "stories",
+                    "avoid_saturated_topics"):
+            if b.get(key):
+                print(f"    {key}: {b[key]}")
+        print(f"    → {b['instruction']}")
+    return 0
+
+
+def cmd_readiness(args):
+    from lce import publishing
+    from lce.publish.credentials import DEFAULT_ACCOUNT, DEFAULT_SERVICE, KeychainTokenStore
+    from lce.readiness import check
+
+    store = _store(args)
+    try:
+        doc = publishing.load_linkedin_config(store)
+        config_ok = True
+    except StoreError:
+        doc, config_ok = {}, False
+    token = None
+    if not args.no_keychain:
+        token = KeychainTokenStore(doc.get("keychain_service", DEFAULT_SERVICE),
+                                   doc.get("keychain_account", DEFAULT_ACCOUNT)).exists()
+    rows = check(store, _today_local(store), token_present=token, linkedin_config_ok=config_ok)
+    if args.json:
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
+        return 0
+    mark = {"ok": "✓", "todo": "•", "gate": "⛔"}
+    for r in rows:
+        print(f"{mark[r['status']]} {r['step']}: {r['detail']}")
+        if r["action"]:
+            print(f"    → {r['action']}")
+    return 0
+
+
 def cmd_jobs_show(args):
     from lce.jobs import load_job
 
@@ -810,6 +860,9 @@ def build_parser() -> argparse.ArgumentParser:
     cmd("check-data-dir", cmd_check_data_dir, "verify the data directory").add_argument(
         "path", nargs="?", default=None)
     cmd("status", cmd_status, "readiness and post overview")
+    p = cmd("readiness", cmd_readiness, "end-to-end readiness of your real setup")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--no-keychain", action="store_true", help="do not query the Keychain")
 
     g = group("interview", "progressive profile/voice interview")
     p = gcmd(g, "next", cmd_interview_next, "show the next unanswered questions")
@@ -969,6 +1022,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--state", default=None)
     gcmd(g, "show", cmd_jobs_show, "show one job with history").add_argument("job")
     gcmd(g, "agent-tasks", cmd_jobs_agent_tasks, "jobs waiting for Claude Code work")
+    p = gcmd(g, "brief", cmd_jobs_brief, "brand-aware content brief for pending agent work")
+    p.add_argument("job", nargs="?", default=None)
+    p.add_argument("--json", action="store_true")
     p = gcmd(g, "claim", _job_cmd("claim", "holder"), "lease a job for agent work")
     p.add_argument("job")
     p.add_argument("--as", dest="holder", default="claude-code")
