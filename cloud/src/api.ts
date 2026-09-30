@@ -3,7 +3,7 @@
 // only a separate, explicit consent schedules one post for one slot.
 
 import { AuthError, verifyAccess, type CertsFetcher } from "./auth";
-import { event, loadSettings, SETTING_KEYS, type ConsentRow, type Env, type PostRow } from "./db";
+import { event, isSchemaMissing, loadSettings, SETTING_KEYS, type ConsentRow, type Env, type PostRow } from "./db";
 import { isoUtc, loadSchedule, parseIsoUtc, ScheduleError, slotById, slotsBetween } from "./schedule";
 import { contentHash, sha256Bytes } from "./text";
 
@@ -82,6 +82,7 @@ export async function handleApi(request: Request, env: Env, now: number,
     if (err instanceof AuthError) return json(err.status, { error: err.message });
     if (err instanceof HttpError) return json(err.status, { error: err.message });
     if (err instanceof ScheduleError) return json(422, { error: err.message });
+    if (isSchemaMissing(err)) return json(503, { error: "database schema missing: apply cloud/migrations to D1" });
     return json(500, { error: "internal error" });
   }
 }

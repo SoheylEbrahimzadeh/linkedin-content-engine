@@ -99,7 +99,30 @@ One Cron Trigger (`*/5`, 288 runs/day). A run with nothing due makes one D1
 read and no writes. CPU per run is hashing and small queries; the LinkedIn
 request is wall time, not CPU. Expected cost: €0/month.
 
-## Deploying (not done yet)
+## Deploying
+
+### Current production state (owner-reported, 2026-09-30; not verified by the agent)
+
+- The owner connected the repository to Cloudflare **Workers Builds**. Each
+  push to `main` builds and deploys the production Worker
+  `linkedin-content-engine` (binding `DB` → D1 `lce`). `wrangler.toml` uses the
+  same name. Workers Builds would override it anyway (`WRANGLER_CI_OVERRIDE_NAME`),
+  but the manual workflow below would otherwise create a second Worker.
+- Workers Builds runs `wrangler deploy` only. It does **not** apply D1
+  migrations. If they have not been applied, the cron reports
+  `{"cron":"schema_missing"}` in the Worker logs and the API answers 503
+  "database schema missing". Fix it once with
+  `npx wrangler d1 migrations apply lce --remote` (owner, authenticated
+  Wrangler), or make that command part of the Builds deploy command.
+- `wrangler deploy` replaces dashboard variables with `[vars]` from
+  `wrangler.toml`, where `ACCESS_TEAM_DOMAIN`/`ACCESS_AUD` are empty. On this
+  path each deploy therefore leaves the API and dashboard **fail-closed (503)**,
+  even if Access is configured in the dashboard. How the Access identifiers are
+  supplied on the Builds path is an open owner decision (see PROJECT_STATE.md).
+- Use one deploy path. Keep `CLOUD_DEPLOY_ENABLED` unset while Workers Builds
+  deploys production.
+
+### Manual workflow
 
 `.github/workflows/cloud-deploy.yml` runs only manually and only when the
 repository variable `CLOUD_DEPLOY_ENABLED` is `true`. It runs the tests,
@@ -133,7 +156,7 @@ Menu names can change; follow the current Cloudflare dashboard.
    everything (fail-closed); after deploying, confirm that an unauthenticated
    request to `/api/snapshot` is refused.
 6. **Deploy:** Actions → cloud-deploy → Run workflow.
-7. **Local CLI:** put `api_base: https://lce-cloud.<subdomain>.workers.dev` in
+7. **Local CLI:** put `api_base: https://linkedin-content-engine.<subdomain>.workers.dev` in
    the private data repository's `config/cloud.yaml`, install `cloudflared` and
    run `cloudflared access login <api_base>` once. Open `<api_base>/` in the
    browser: the dashboard should load after the Access login.

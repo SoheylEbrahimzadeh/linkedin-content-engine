@@ -103,8 +103,8 @@ def check(store: DataStore, today: date, *, token_present: bool | None,
                      TODO if cloud_available else GATE,
                      "config/cloud.yaml present; check the deployment with `lce cloud status`"
                      if cloud_available else
-                     "Worker and dashboard are built; not deployed (needs a Cloudflare account, "
-                     "Access app and deploy token)",
+                     "Worker and dashboard are built; no config/cloud.yaml (api_base), so the "
+                     "deployment is not visible from here",
                      "" if cloud_available else "owner runbook in docs/CLOUD.md"))
     published = [p for p in posts if p["state"] == PostState.PUBLISHED.value]
     with_metrics = [p for p in published

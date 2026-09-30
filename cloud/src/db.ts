@@ -40,6 +40,12 @@ export async function loadSettings(db: D1Database): Promise<Settings> {
   };
 }
 
+// True when D1 reports a missing table: the database exists but the migrations
+// in cloud/migrations have not been applied to it.
+export function isSchemaMissing(err: unknown): boolean {
+  return /no such table/i.test(err instanceof Error ? err.message : String(err));
+}
+
 export function event(db: D1Database, at: number, name: string, actor: string, postId: string | null,
                       detail: Record<string, unknown> = {}): D1PreparedStatement {
   return db.prepare("INSERT INTO events (at, event, actor, post_id, detail) VALUES (?, ?, ?, ?, ?)")

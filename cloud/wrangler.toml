@@ -4,7 +4,7 @@
 #
 # Secrets (never in this repo): set with `wrangler secret put LINKEDIN_TOKEN`
 # or in the Cloudflare dashboard.
-name = "lce-cloud"
+name = "linkedin-content-engine"   # must match the production Worker (Workers Builds also overrides it)
 main = "src/index.ts"
 compatibility_date = "2026-08-22"
 workers_dev = true

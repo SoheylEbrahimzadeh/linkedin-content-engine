@@ -31,6 +31,17 @@ describe("cron runner", () => {
     expect(await rows(e, "SELECT * FROM events")).toHaveLength(0);
   });
 
+  it("reports schema_missing instead of throwing when migrations are not applied", async () => {
+    const f = fakeFetch();
+    await e.DB.prepare("ALTER TABLE consents RENAME TO consents_unmigrated").run();
+    try {
+      expect((await runScheduled(e, AT("06:31"), f.fn)).status).toBe("schema_missing");
+      expect(f.calls).toHaveLength(0);
+    } finally {
+      await e.DB.prepare("ALTER TABLE consents_unmigrated RENAME TO consents").run();
+    }
+  });
+
   it("publishes exactly once at the slot with the approved text", async () => {
     const f = await armed([created("urn:li:share:9001")]);
     const r = await runScheduled(e, AT("06:31"), f.fn);
