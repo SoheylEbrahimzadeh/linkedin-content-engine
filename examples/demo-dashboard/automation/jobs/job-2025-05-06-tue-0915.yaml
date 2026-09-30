@@ -1,0 +1,100 @@
+demo: true
+job_id: job-2025-05-06-tue-0915
+kind: prepare_post
+slot:
+  slot_id: 2025-05-06-tue-0915
+  day: tue
+  time: 09:15
+  local: '2025-05-06T09:15:00-05:00'
+  utc: '2025-05-06T14:15:00+00:00'
+  timezone: America/Chicago
+  dst_adjusted: false
+prepare_from: '2025-05-04T14:15:00+00:00'
+state: SUCCEEDED
+attempts: 0
+max_attempts: 3
+revisions: 0
+created_at: '2025-05-04T14:45:00+00:00'
+created_by: 20250504T144500Z-198f58
+updated_at: '2025-05-04T14:45:00+00:00'
+steps:
+- at: '2025-05-04T14:45:00+00:00'
+  name: agent_work
+  status: started
+  invocation_id: 20250504T144500Z-e3f8b5
+  detail: claude-code
+- at: '2025-05-04T14:45:00+00:00'
+  name: agent_work
+  status: done
+  invocation_id: 20250504T144500Z-e3f8b5
+  detail: draft and humanized text saved
+- at: '2025-05-04T14:45:00+00:00'
+  name: qa
+  status: started
+  invocation_id: 20250504T144500Z-d27156
+- at: '2025-05-04T14:45:00+00:00'
+  name: qa
+  status: done
+  invocation_id: 20250504T144500Z-d27156
+  detail: passed
+- at: '2025-05-04T14:45:00+00:00'
+  name: duplicate_check
+  status: started
+  invocation_id: 20250504T144500Z-d27156
+- at: '2025-05-04T14:45:00+00:00'
+  name: duplicate_check
+  status: done
+  invocation_id: 20250504T144500Z-d27156
+  detail: passed
+- at: '2025-05-04T14:45:00+00:00'
+  name: approval_artifact
+  status: started
+  invocation_id: 20250504T144500Z-d27156
+- at: '2025-05-04T14:45:00+00:00'
+  name: approval_artifact
+  status: done
+  invocation_id: 20250504T144500Z-d27156
+  detail: AWAITING_APPROVAL
+history:
+- at: '2025-05-04T14:45:00+00:00'
+  from: null
+  to: SCHEDULED
+  reason: created
+  invocation_id: 20250504T144500Z-198f58
+- at: '2025-05-04T14:45:00+00:00'
+  from: SCHEDULED
+  to: READY
+  reason: prepare window open
+  invocation_id: 20250504T144500Z-198f58
+- at: '2025-05-04T14:45:00+00:00'
+  from: READY
+  to: RUNNING
+  reason: execution started
+  invocation_id: 20250504T144500Z-198f58
+- at: '2025-05-04T14:45:00+00:00'
+  from: RUNNING
+  to: BLOCKED
+  reason: 'no post yet: research/select/draft needed'
+  invocation_id: 20250504T144500Z-198f58
+- at: '2025-05-04T14:45:00+00:00'
+  from: BLOCKED
+  to: RUNNING
+  reason: claimed by agent:claude-code
+  invocation_id: 20250504T144500Z-e3f8b5
+- at: '2025-05-04T14:45:00+00:00'
+  from: RUNNING
+  to: READY
+  reason: released by agent:claude-code
+  invocation_id: 20250504T144500Z-e3f8b5
+- at: '2025-05-04T14:45:00+00:00'
+  from: READY
+  to: RUNNING
+  reason: execution started
+  invocation_id: 20250504T144500Z-d27156
+- at: '2025-05-04T14:45:00+00:00'
+  from: RUNNING
+  to: SUCCEEDED
+  reason: awaiting human approval
+  invocation_id: 20250504T144500Z-d27156
+post_id: 20250506-why-simple-routing-rules-beat-a-model-fo
+outcome: awaiting human approval

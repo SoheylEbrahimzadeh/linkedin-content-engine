@@ -4,9 +4,9 @@ timezone: UTC                    # any IANA timezone name, e.g. America/Chicago
 cadence:
   posts_per_week: 3
   slots:
-    - {day: tue, time: "08:30"}
-    - {day: wed, time: "08:30"}
-    - {day: thu, time: "08:30"}
+    - {day: tue, time: "09:15"}
+    - {day: wed, time: "09:15"}
+    - {day: thu, time: "09:15"}
 approval:
   mode: local
   expire_unapproved: true        # unapproved posts are never published

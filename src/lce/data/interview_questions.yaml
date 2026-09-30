@@ -77,7 +77,7 @@ questions:
   - {id: timezone, group: frequency, target: settings, path: timezone, type: text, required: true,
      prompt: "Your timezone (IANA name, e.g. America/Chicago)."}
   - {id: cadence, group: frequency, target: settings, path: cadence, type: yaml, required: true,
-     prompt: "Posts per week and slots, e.g. {posts_per_week: 3, slots: [{day: tue, time: '08:30'}, ...]}."}
+     prompt: "Posts per week and slots, e.g. {posts_per_week: 3, slots: [{day: tue, time: '09:15'}, ...]}."}
   # 11 ── languages
   - {id: language_primary, group: languages, target: profile, path: languages.primary, type: enum, options: [en, de, fa], required: true,
      prompt: "Primary posting language?"}

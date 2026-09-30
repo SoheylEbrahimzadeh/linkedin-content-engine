@@ -62,7 +62,15 @@ def cmd_validate(args):
 def cmd_privacy_scan(args):
     from lce.privacy.scan import main as scan_main
 
-    return scan_main(["--root", args.root])
+    return scan_main(["--root", args.root, *(["--history"] if args.history else [])])
+
+
+def cmd_privacy_denylist(args):
+    from lce.privacy.fingerprint import write_generated
+
+    path, count = write_generated(_store(args))
+    print(f"✓ {count} term(s) derived from the private data directory → {path} (local only)")
+    return 0
 
 
 def cmd_check_data_dir(args):
@@ -614,8 +622,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     cmd("init-data", cmd_init_data, "create a private data directory skeleton").add_argument("path")
     cmd("validate", cmd_validate, "validate a data directory").add_argument("path")
-    cmd("privacy-scan", cmd_privacy_scan, "scan this repository for private data").add_argument(
-        "--root", default=".")
+    p = cmd("privacy-scan", cmd_privacy_scan, "scan this repository for private data")
+    p.add_argument("--root", default=".")
+    p.add_argument("--history", action="store_true", help="also search all commits")
+    cmd("privacy-denylist", cmd_privacy_denylist,
+        "derive a local denylist from the private data directory")
     cmd("check-data-dir", cmd_check_data_dir, "verify the data directory").add_argument(
         "path", nargs="?", default=None)
     cmd("status", cmd_status, "readiness and post overview")

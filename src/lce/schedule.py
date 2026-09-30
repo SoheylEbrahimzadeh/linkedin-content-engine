@@ -4,7 +4,7 @@ The schedule (timezone + cadence slots) is read from the private settings; the
 engine never hard-codes anyone's schedule.
 
 Slot identity is `<local date>-<day>-<HHMM>` in the configured timezone, e.g.
-`2026-10-01-thu-0830`. It does not depend on the machine's timezone or on the
+`2026-10-01-thu-0915`. It does not depend on the machine's timezone or on the
 UTC offset, so it is stable across DST changes and machines.
 
 DST rules (zoneinfo):

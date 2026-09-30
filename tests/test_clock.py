@@ -8,17 +8,17 @@ from lce.store import now_iso
 
 
 def test_fixed_clock_drives_now_and_store_timestamps():
-    with use_clock(FixedClock("2026-09-29T08:30:00+02:00")):
-        assert clock.now() == datetime(2026, 9, 29, 6, 30, tzinfo=UTC)
-        assert now_iso() == "2026-09-29T06:30:00+00:00"
-    assert clock.now() != datetime(2026, 9, 29, 6, 30, tzinfo=UTC)  # restored
+    with use_clock(FixedClock("2026-06-17T11:45:00+02:00")):
+        assert clock.now() == datetime(2026, 6, 17, 9, 45, tzinfo=UTC)
+        assert now_iso() == "2026-06-17T09:45:00+00:00"
+    assert clock.now() != datetime(2026, 6, 17, 9, 45, tzinfo=UTC)  # restored
 
 
 def test_naive_datetimes_are_rejected():
     with pytest.raises(NaiveDatetimeError):
-        parse_iso("2026-09-29T08:30:00")
+        parse_iso("2026-06-17T11:45:00")
     with pytest.raises(NaiveDatetimeError):
-        FixedClock(datetime(2026, 9, 29, 8, 30))
+        FixedClock(datetime(2026, 6, 17, 11, 45))
     with pytest.raises(NaiveDatetimeError):
         iso_utc(datetime(2026, 1, 1))
 

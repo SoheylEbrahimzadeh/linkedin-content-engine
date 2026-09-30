@@ -46,7 +46,7 @@ its part when its post reaches `AWAITING_APPROVAL` (or later).
 ## Identity and idempotency
 
 - `slot_id = <local date>-<day>-<HHMM>` in the configured timezone, e.g.
-  `2026-10-01-thu-0830`; `job_id = job-<slot_id>`. Stable across machines and DST.
+  `2026-10-01-thu-0915`; `job_id = job-<slot_id>`. Stable across machines and DST.
 - Jobs are created with exclusive file creation: a second pass creates nothing.
 - A scheduler lock (`automation/scheduler.lock`, exclusive create, expiry)
   rejects concurrent passes; an expired lock is taken over atomically and logged.
