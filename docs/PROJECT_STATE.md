@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-09-30 (outcome audit)_
+_Last updated: 2026-09-30 (reference re-audit)_
 
 ## Objective
 
@@ -70,6 +70,16 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 
 - PUBLIC stories in the story bank (personal-evidence themes are unusable without them).
 - Optional brand fields: throughline, career chapters, target roles, pillar mix.
+- `cta.allowed` in the voice profile (unset): until set, QA does not check the closing against a CTA policy.
+
+## Reference re-audit (2026-09-30)
+
+`sergebulaev/linkedin-skills` (commit `14d332b`) re-audited against `main`. Only
+gap worth closing without a paid service: QA had no check for generic closers,
+reveal bridges, staccato stacks or performed sincerity, and ignored the voice
+profile's `cta.allowed`. Added as QA warnings. Everything else is present,
+out of scope (engagement/comment tooling, Apify, Publora, Pixfaro, hook-formula
+catalogue) or already rejected in [ATTRIBUTION.md](ATTRIBUTION.md).
 
 ## Tooling blocks
 

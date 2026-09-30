@@ -10,7 +10,8 @@ later phases adapt a concept, it is listed here.
 | Story Bank sections and "never invent" interviewing rule | re-implemented as a structured story schema (`story.schema.json`) and the `lce-interview` skill |
 | Voice profile built from real past posts | re-implemented: `voice.schema.json`; past posts imported only as proposals the owner confirms |
 | Pillar framework and weekly caps | re-implemented as per-pillar `max_share` and rotation checks |
-| English AI-tell lists and post-audit blockers | independently written in `src/lce/rules/en/ruleset.yaml`, language-aware engine |
+| English AI-tell lists and post-audit blockers | independently written in `src/lce/rules/en/ruleset.yaml`, language-aware engine; reveal bridges, staccato stacks, performed sincerity and generic closers added as warnings after a re-audit (2026-09-30) |
+| CTA check in post audit | re-implemented: the closing is checked against the voice profile's `cta.allowed` (warning) |
 | Hook formula catalogue | not adopted; engagement bait is a QA error instead |
 | Treating fetched content as untrusted | implemented: `untrusted: true` on web candidates, skill rules |
 | Draft → approval → publish pattern | re-designed: approval is enforced (hash-bound), not a convention |

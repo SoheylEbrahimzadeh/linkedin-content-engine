@@ -18,6 +18,7 @@ from lce.state import PostState
 from lce.store import DataStore, StoreError, now_iso
 from lce.textutil import (
     EMAIL_RE,
+    HASHTAG_RE,
     PHONE_RE,
     URL_RE,
     claim_numbers,
@@ -130,6 +131,18 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
         if re.search(rx, body, re.M):
             add("placeholder", ERROR, "placeholder text left in the post")
             break
+
+    # ── closing & CTA ─────────────────────────────────────────────────
+    closing = next((c for c in (HASHTAG_RE.sub("", p).strip() for p in reversed(paras)) if c), "")
+    last_sentence = (sentences(closing) or [""])[-1]
+    if any(re.search(rx, last_sentence, re.I) for rx in rules.get("generic_close", [])):
+        add("structure.generic_close", WARNING,
+            "generic closing question; end on a specific point or a specific question")
+    if voice.get("cta", {}).get("allowed") is False and (
+        last_sentence.endswith("?")
+        or any(re.search(rx, closing, re.I) for rx in rules.get("cta_markers", []))
+    ):
+        add("cta.not_allowed", WARNING, "the closing asks readers to act; your voice profile disables CTAs")
 
     # ── hashtags & emoji ──────────────────────────────────────────────
     tags = hashtags(body)

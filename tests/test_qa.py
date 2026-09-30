@@ -70,6 +70,41 @@ def test_privacy_leaks():
                                                              "sources": [], "claims": []})
 
 
+def test_structural_ai_tells():
+    assert "pattern.reveal-question" in codes("We rebuilt the queue. The result? Fewer escalations.")
+    assert "pattern.reveal-bridge" in codes("Most rollouts stall.\n\nHere's why that happens.")
+    assert "pattern.staccato-stack" in codes("No dashboards. No meetings. Just a checklist.")
+    assert "pattern.performed-sincerity" in codes("Let me be honest about the rollout.")
+    plain = codes("The rollout stalled because nobody owned the intake form.")
+    assert not {c for c in plain if c.startswith("pattern.")}
+
+
+def test_generic_close():
+    body = "Routing rules beat a model when the categories are stable.\n\n"
+    assert "structure.generic_close" in codes(body + "Thoughts?")
+    assert "structure.generic_close" in codes(body + "What do you think?\n\n#itsm")
+    assert "structure.generic_close" not in codes(
+        body + "Which category in your queue changes most often?")
+
+
+def test_cta_respects_voice_profile():
+    body = "Routing rules beat a model when the categories are stable.\n\n"
+    ask = body + "Which category in your queue changes most often?"
+    dm = body + "If you are rebuilding intake, DM me."
+
+    def cta_codes(text, allowed):
+        voice = {**VOICE, "cta": {"allowed": allowed}}
+        return {f.code for f in run_checks(text, rules=RULES, voice=voice, profile=PROFILE,
+                                           post={"sources": [], "claims": [], "stories_used": []},
+                                           stories=STORIES, denylist=[])}
+
+    assert "cta.not_allowed" in cta_codes(ask, False)
+    assert "cta.not_allowed" in cta_codes(dm, False)
+    assert "cta.not_allowed" not in cta_codes(ask, True)
+    assert "cta.not_allowed" not in cta_codes(body + "Stable categories are the precondition.", False)
+    assert "cta.not_allowed" not in codes(ask)  # no CTA policy recorded
+
+
 def test_non_ready_language_fails(store):
     pid = selected_post(store)
     post = store.load_post(pid)
