@@ -9,8 +9,8 @@ from lce.clock import FixedClock, use_clock
 from lce.jobs import InvalidJobTransition, J
 from lce.store import DataStore, StoreError
 
-SLOT = {"slot_id": "2025-05-06-tue-0830", "day": "tue", "time": "08:30",
-        "local": "2025-05-06T08:30:00-05:00", "utc": "2025-05-06T13:30:00+00:00",
+SLOT = {"slot_id": "2025-05-06-tue-0915", "day": "tue", "time": "09:15",
+        "local": "2025-05-06T09:15:00-05:00", "utc": "2025-05-06T14:15:00+00:00",
         "timezone": "America/Chicago", "dst_adjusted": False}
 
 
@@ -22,21 +22,21 @@ def store(tmp_path):
 
 
 def make(store):
-    job = jobs.new_job(SLOT, "2025-05-04T13:30:00+00:00", "inv-1", 3)
+    job = jobs.new_job(SLOT, "2025-05-04T14:15:00+00:00", "inv-1", 3)
     assert jobs.create_job(store, job)
     return jobs.load_job(store, job["job_id"])
 
 
 def test_identity_is_deterministic():
-    assert jobs.job_id_for("2025-05-06-tue-0830") == "job-2025-05-06-tue-0830"
-    a = jobs.new_job(SLOT, "2025-05-04T13:30:00+00:00", "x", 3)
-    b = jobs.new_job(SLOT, "2025-05-04T13:30:00+00:00", "y", 3)
+    assert jobs.job_id_for("2025-05-06-tue-0915") == "job-2025-05-06-tue-0915"
+    a = jobs.new_job(SLOT, "2025-05-04T14:15:00+00:00", "x", 3)
+    b = jobs.new_job(SLOT, "2025-05-04T14:15:00+00:00", "y", 3)
     assert a["job_id"] == b["job_id"]
 
 
 def test_create_is_exclusive(store):
     make(store)
-    again = jobs.new_job(SLOT, "2025-05-04T13:30:00+00:00", "inv-2", 3)
+    again = jobs.new_job(SLOT, "2025-05-04T14:15:00+00:00", "inv-2", 3)
     assert jobs.create_job(store, again) is False
     assert jobs.load_job(store, again["job_id"])["created_by"] == "inv-1"
     assert len(jobs.list_jobs(store)) == 1
@@ -45,7 +45,7 @@ def test_create_is_exclusive(store):
 def test_invalid_ids_and_docs(store):
     with pytest.raises(StoreError):
         jobs.job_path(store, "../evil")
-    bad = jobs.new_job(SLOT, "2025-05-04T13:30:00", "x", 3)  # naive timestamp
+    bad = jobs.new_job(SLOT, "2025-05-04T14:15:00", "x", 3)  # naive timestamp
     with pytest.raises(StoreError):
         jobs.create_job(store, bad)
 
@@ -65,7 +65,7 @@ def test_running_to_failed_and_needs_reconcile(store):
     job = make(store)
     for to in (J.READY, J.RUNNING, J.FAILED):
         jobs.transition(store, job, to, "t", "i")
-    job2 = jobs.new_job({**SLOT, "slot_id": "2025-05-08-thu-0830"}, "2025-05-06T13:30:00+00:00",
+    job2 = jobs.new_job({**SLOT, "slot_id": "2025-05-08-thu-0915"}, "2025-05-06T14:15:00+00:00",
                         "i", 3)
     jobs.create_job(store, job2)
     for to in (J.READY, J.RUNNING, J.NEEDS_RECONCILE):

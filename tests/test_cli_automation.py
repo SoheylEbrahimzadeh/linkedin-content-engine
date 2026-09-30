@@ -31,7 +31,7 @@ def test_command_names_contain_no_publish_or_schedule_verbs():
 def test_cadence_show(data, capsys):
     assert run(data, "cadence", "show", "--days", "7") == 0
     out = capsys.readouterr().out
-    assert "America/Chicago" in out and "job-2025-05-06-tue-0830: no job yet" in out
+    assert "America/Chicago" in out and "job-2025-05-06-tue-0915: no job yet" in out
 
 
 def test_dry_run_writes_nothing_and_simulated_time_needs_dry_run(data, capsys):
@@ -52,20 +52,20 @@ def test_run_once_and_job_commands(data, capsys):
     out = capsys.readouterr().out
     assert "Nothing is approved or published" in out
     assert run(data, "jobs", "list", "--state", "BLOCKED") == 0
-    assert "job-2025-05-06-tue-0830" in capsys.readouterr().out
+    assert "job-2025-05-06-tue-0915" in capsys.readouterr().out
     assert run(data, "jobs", "agent-tasks") == 0
-    assert run(data, "jobs", "claim", "job-2025-05-06-tue-0830") == 0
-    assert run(data, "jobs", "release", "job-2025-05-06-tue-0830", "--note", "x") == 0
-    assert run(data, "jobs", "show", "job-2025-05-06-tue-0830") == 0
+    assert run(data, "jobs", "claim", "job-2025-05-06-tue-0915") == 0
+    assert run(data, "jobs", "release", "job-2025-05-06-tue-0915", "--note", "x") == 0
+    assert run(data, "jobs", "show", "job-2025-05-06-tue-0915") == 0
     assert "agent_work" in capsys.readouterr().out
-    assert run(data, "jobs", "skip", "job-2025-05-06-tue-0830", "--reason", "test") == 0
-    assert run(data, "jobs", "retry", "job-2025-05-06-tue-0830") == 1  # not FAILED
+    assert run(data, "jobs", "skip", "job-2025-05-06-tue-0915", "--reason", "test") == 0
+    assert run(data, "jobs", "retry", "job-2025-05-06-tue-0915") == 1  # not FAILED
 
 
 def test_select_with_job_links_and_runs_to_approval(data, capsys, tmp_path):
     run(data, "automation", "run-once")
     assert run(data, "select", "pick", "c-demo-rules-first", "--pillar", "automation",
-               "--angle", "rules first", "--job", "job-2025-05-06-tue-0830",
+               "--angle", "rules first", "--job", "job-2025-05-06-tue-0915",
                "--story", "demo-ticket-routing") == 0
     store = DataStore.open(data)
     pid = store.post_ids()[0]
@@ -77,7 +77,7 @@ def test_select_with_job_links_and_runs_to_approval(data, capsys, tmp_path):
     assert run(data, "automation", "run-once") == 0
     assert store.load_post(pid)["state"] == "AWAITING_APPROVAL"
     assert run(data, "select", "pick", "c-demo-rules-first", "--pillar", "automation",
-               "--angle", "x", "--job", "job-2025-05-06-tue-0830", "--date", "2025-05-07") == 1
+               "--angle", "x", "--job", "job-2025-05-06-tue-0915", "--date", "2025-05-07") == 1
 
 
 def test_skill_for_agent_jobs_is_shipped_and_never_approves():

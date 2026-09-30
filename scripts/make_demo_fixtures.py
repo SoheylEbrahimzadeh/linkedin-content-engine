@@ -53,7 +53,7 @@ NEEDS_REVISION = (
 
 def main() -> None:
     # Fixed, fictional timeline (the demo dashboard uses the same demo clock).
-    clk = FixedClock("2025-05-04T09:00:00-05:00")
+    clk = FixedClock("2025-05-04T09:45:00-05:00")
     with use_clock(clk), tempfile.TemporaryDirectory() as tmp:
         build(Path(tmp) / "data", clk)
 
@@ -66,7 +66,7 @@ def build(work: Path, clk: FixedClock) -> None:
 
         # Scheduler pass: creates jobs; the Tuesday job is handed to the agent.
         scheduler.run_once(store)
-        tue = "job-2025-05-06-tue-0830"
+        tue = "job-2025-05-06-tue-0915"
         scheduler.claim(store, tue, "claude-code")
         pid = select(store, candidate_id="c-demo-rules-first", pillar="automation",
                      angle="rules before models", fmt="text", plan_date=date(2025, 5, 6),
@@ -112,7 +112,7 @@ def build(work: Path, clk: FixedClock) -> None:
         save_draft(store, pid3, NEEDS_REVISION)
         save_humanized(store, pid3, NEEDS_REVISION)
         run_qa(store, pid3, denylist=[])
-        scheduler.link_post(store, "job-2025-05-08-thu-0830", pid2)
+        scheduler.link_post(store, "job-2025-05-08-thu-0915", pid2)
 
         # Next day: the Wednesday job's window opens and is handed to the agent.
         clk.advance(hours=23)

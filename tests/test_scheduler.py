@@ -11,10 +11,10 @@ from lce.clock import FixedClock, parse_iso, use_clock
 from lce.posts import save_draft, save_humanized
 from lce.store import DataStore, StoreError
 
-# Synthetic schedule from the fictional demo persona: tue/wed/thu 08:30 America/Chicago.
-T0 = "2025-05-04T12:00:00-05:00"          # Sunday; Tue slot prepares from Sun 08:30
-TUE = "job-2025-05-06-tue-0830"
-WED = "job-2025-05-07-wed-0830"
+# Synthetic schedule from the fictional demo persona: tue/wed/thu 09:15 America/Chicago.
+T0 = "2025-05-04T12:00:00-05:00"          # Sunday; Tue slot prepares from Sun 09:15
+TUE = "job-2025-05-06-tue-0915"
+WED = "job-2025-05-07-wed-0915"
 
 
 @pytest.fixture
@@ -81,7 +81,7 @@ def test_repeated_invocation_creates_nothing_new(env):
 def test_future_job_becomes_ready_when_window_opens(env):
     store, clk = env
     scheduler.run_once(store)
-    clk.advance(days=1)  # Monday 12:00 → Wed prepares from Mon 08:30
+    clk.advance(days=1)  # Monday 12:00 → Wed prepares from Mon 09:15
     scheduler.run_once(store)
     assert jobs.load_job(store, WED)["state"] == "BLOCKED"
 
@@ -294,7 +294,7 @@ def test_link_post_is_unique(env):
     scheduler.run_once(store)
     pid = humanized_post_for(store)
     with pytest.raises(StoreError):
-        scheduler.link_post(store, "job-2025-05-08-thu-0830", pid)
+        scheduler.link_post(store, "job-2025-05-08-thu-0915", pid)
 
 
 # ── configuration, dry run ───────────────────────────────────────────────
@@ -350,7 +350,7 @@ def test_year_boundary_jobs(tmp_path):
         store = DataStore.open(str(tmp_path / "d"))
         scheduler.run_once(store)
     ids = [j["job_id"] for j in jobs.list_jobs(store)]
-    assert "job-2026-12-29-tue-0830" in ids and "job-2027-01-05-tue-0830" in ids
+    assert "job-2026-12-29-tue-0915" in ids and "job-2027-01-05-tue-0915" in ids
 
 
 def test_events_explain_every_job(env):
@@ -358,7 +358,7 @@ def test_events_explain_every_job(env):
     scheduler.run_once(store)
     inv = events(store, "scheduler.start")[0]["invocation_id"]
     created = [e for e in events(store, "job.created") if e["job_id"] == TUE][0]
-    assert created["invocation_id"] == inv and created["slot_id"] == "2025-05-06-tue-0830"
+    assert created["invocation_id"] == inv and created["slot_id"] == "2025-05-06-tue-0915"
     trans = [e for e in events(store, "job.transition") if e["job_id"] == TUE]
     assert [(t["from"], t["to"]) for t in trans] == [
         ("SCHEDULED", "READY"), ("READY", "RUNNING"), ("RUNNING", "BLOCKED")]
