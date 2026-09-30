@@ -176,3 +176,39 @@ def test_github_actions_annotation_lists_every_result(configured, monkeypatch, c
     main(["--data-dir", str(configured.root), "cloud", "doctor"])
     notice = [line for line in capsys.readouterr().out.splitlines() if line.startswith("::notice")]
     assert len(notice) == 1 and "ok: database" in notice[0] and "fake.access.jwt" not in notice[0]
+
+
+class EdgeWorker(Worker):
+    """Cloudflare Access in front of the whole hostname: 403 without credentials."""
+
+    def request(self, method, url, headers, body):
+        authed = "CF-Access-Client-Id" in headers or "cf-access-token" in headers
+        if not authed:
+            self.calls.append((method, url, dict(headers)))
+            return CloudResponse(403, {})
+        return super().request(method, url, headers, body)
+
+
+def test_access_at_the_edge_is_not_mistaken_for_a_broken_worker(configured):
+    w = EdgeWorker()
+    by, checks = run(configured, w)
+    assert by["worker"]["status"] == "ok" and "through Cloudflare Access" in by["worker"]["detail"]
+    assert all(c["status"] == "ok" for c in checks), checks
+
+
+def test_edge_without_login_reports_the_login_step(configured):
+    def no_login():
+        raise CloudError("no Cloudflare Access token")
+
+    by, checks = run(configured, EdgeWorker(), token=no_login)
+    assert by["worker"]["status"] == "ok" and checks[-1]["check"] == "access login"
+
+
+def test_service_token_rejected_at_the_edge_names_the_policy(configured):
+    class Rejecting(EdgeWorker):
+        def request(self, method, url, headers, body):
+            self.calls.append((method, url, dict(headers)))
+            return CloudResponse(403, {})
+
+    by, _ = run(configured, Rejecting())
+    assert by["worker"]["status"] == "fail" and "Service Auth policy" in by["worker"]["action"]

@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-10-01 (PRs #19–#27 merged; LCE-001…017)_
+_Last updated: 2026-10-01 (engine PRs #19–#31, lce-data PRs #1–#3; LCE-001…021)_
 
 ## Objective
 
@@ -114,7 +114,23 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   whole private pipeline from any device via `lce cloud sync` → D1 mirror
   (migration 0003). Read-only.
 - LCE-014: QA warns when a post opens or closes like a recent post (30 days).
-- LCE-016: private-repo patch prepared (see below); not applied.
+- LCE-016 (lce-data PR #1, owner-approved): ENGINE_REF, skills sync, owner-stated
+  pillar topics, `cloud-sync` workflow, `config/cloud.yaml` (production api_base).
+- LCE-018 (PR #29): `lce cloud smoke`, tested unauthenticated production check.
+- LCE-019 (lce-data PR #2): the private `cloud-sync` workflow verifies production
+  on every push and daily (smoke always; doctor + sync with a service token).
+- LCE-020 (PR #30): doctor detects a missing migration 0003; results as GitHub
+  annotations.
+- LCE-021: doctor no longer mistakes Access at the edge (403 on `/api/health`)
+  for a broken Worker; it retries health through Access with the credential.
+
+**Production evidence (2026-10-01, lce-data `cloud-sync` on `7fde59c`, GitHub
+runner → `https://linkedin-content-engine.<subdomain>.workers.dev`):** every path
+(`/api/health`, `/`, `/pipeline/`, `/api/snapshot`, `/api/pipeline`, and PUT
+settings / POST consents / PUT pipeline) answered **403 from Cloudflare Access at
+the edge** without credentials. Reachable and fail-closed: VERIFIED. Behind the
+edge (Worker Access secrets, D1 schema incl. 0003, `/pipeline/` with data, sync):
+NOT_VERIFIED until an Access service token is stored in GitHub.
 - LCE-017: this owner path.
 - LCE-015: sweep fixed stale capability claims (verification shown as "not
   implemented", LinkedIn provider shown as text-only) and stale docstrings.
@@ -141,23 +157,20 @@ See GitHub; merged when green (no holds).
 
 ## Next unblocked work
 
-No engineering work is open without an owner step (LCE-001…017). In order:
+No engineering work is open without an owner step. In order:
 
-1. **Migrations** (0001–0003): `git pull`, `cd cloud && npx wrangler login`,
-   `npx wrangler d1 migrations list lce --remote`, then
-   `npx wrangler d1 migrations apply lce --remote`; or set the Workers Builds
-   deploy command to `npm run deploy`.
-2. **Access**: Access application on the Worker hostname; Worker secrets
-   `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`; a service token with a *Service Auth*
-   policy on the same application.
-3. **GitHub settings** (both repositories): variable `LCE_API_BASE`; secrets
-   `LCE_CF_ACCESS_CLIENT_ID`, `LCE_CF_ACCESS_CLIENT_SECRET`. The engine's
-   `production-smoke` then verifies production after every push.
-4. **Private repo (owner approval, LCE-016)**: `ENGINE_REF` bump, skills sync,
-   owner-stated pillar topics, `cloud-sync` workflow (mirrors the pipeline to
-   `<api_base>/pipeline/` after every push).
-5. **LinkedIn token + first live post** (4D): [LIVE_TEST.md](LIVE_TEST.md).
-6. **PUBLIC stories** for experience-based themes; `cta.allowed` in the voice profile.
+1. **Access service token** (Zero Trust → Access → Service credentials → create;
+   add a policy with action *Service Auth* for it on the Worker's Access
+   application). Store `LCE_CF_ACCESS_CLIENT_ID` and `LCE_CF_ACCESS_CLIENT_SECRET`
+   as Actions secrets in **lce-data** (and optionally the engine repo together
+   with the variable `LCE_API_BASE`). The next `cloud-sync` run then verifies the
+   Worker's Access secrets, D1 schema (0001–0003), settings and token presence,
+   and fills `<api_base>/pipeline/`.
+2. **Migrations** if doctor reports them missing: `git pull`,
+   `cd cloud && npx wrangler login && npx wrangler d1 migrations apply lce --remote`,
+   or set the Workers Builds deploy command to `npm run deploy`.
+3. **LinkedIn token + first live post** (4D): [LIVE_TEST.md](LIVE_TEST.md).
+4. **PUBLIC stories** for experience-based themes; `cta.allowed` in the voice profile.
 
 ## Housekeeping
 
