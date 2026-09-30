@@ -137,3 +137,11 @@ def test_cloud_config_is_validated(store):
     (store.root / "config" / "cloud.yaml").write_text("api_base: http://insecure.example\n")
     with pytest.raises(CloudError, match="invalid"):
         cloud.load_cloud_config(store)
+
+
+def test_posts_with_an_image_are_not_delegated(env):
+    store, pid, fake, client = env
+    (store.post_dir(pid) / "image.yaml").write_text("kind: diagram\nrationale: x\n")
+    with pytest.raises(CloudError, match="text-only"):
+        cloud.push(store, pid, client, confirm=phrase(f"DELEGATE {pid}"), **TTY)
+    assert not (store.post_dir(pid) / "delegation.json").exists()

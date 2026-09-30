@@ -147,6 +147,10 @@ def push(store: DataStore, post_id: str, client: CloudClient, *, confirm=input, 
         raise CloudError("this post was already delegated with a different text")
     if (store.post_dir(post_id) / "publication.json").exists():
         raise CloudError("a local publish attempt exists for this post; it cannot be delegated")
+    image = store.read_doc(store.post_dir(post_id) / "image.yaml")
+    if image and image.get("kind", "none") != "none":
+        raise CloudError("this post has an image; the cloud publisher is text-only until image "
+                         "upload exists, so it is not delegated")
     _confirm(confirm, is_tty, f"DELEGATE {post_id}",
              f"From now on only the cloud may publish {post_id} (hash {h[:12]}); local "
              "`lce publish` will refuse it.")
