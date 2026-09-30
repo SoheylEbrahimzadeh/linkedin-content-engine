@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>LCE Control Center</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div id="mode-banner" class="mode-banner loading" role="status">Loading…</div>
+  <header class="topbar">
+    <button id="menu" class="icon-btn" aria-label="Toggle navigation" aria-controls="nav">☰</button>
+    <span class="brand">LCE Control Center</span>
+    <button id="refresh" class="btn" hidden>Refresh</button>
+  </header>
+  <div class="layout">
+    <nav id="nav" class="sidebar" aria-label="Sections"></nav>
+    <main id="main" tabindex="-1"><p class="empty">Loading…</p></main>
+  </div>
+  <noscript>This dashboard needs JavaScript.</noscript>
+</body>
+</html>

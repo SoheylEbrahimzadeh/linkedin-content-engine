@@ -37,6 +37,22 @@ describe("remote dashboard", () => {
     }
   });
 
+  it("serves the Web Control Center at /pipeline/ behind the same Access check", async () => {
+    for (const [path, type] of [["/pipeline/", "text/html"], ["/pipeline/app.js", "text/javascript"],
+      ["/pipeline/lib.js", "text/javascript"], ["/pipeline/styles.css", "text/css"], ["/pipeline/config.js", "text/javascript"]]) {
+      const ok = await get(path);
+      expect(ok.status, path).toBe(200);
+      expect(ok.headers.get("content-type")).toContain(type);
+      expect(ok.headers.get("content-security-policy")).not.toContain("unsafe");
+      expect((await get(path, false)).status).toBe(401);
+    }
+    expect(await (await get("/pipeline/config.js")).text()).toContain('"snapshotUrl": "/api/pipeline"');
+    const redirect = await get("/pipeline");
+    expect(redirect.status).toBe(301);
+    expect(redirect.headers.get("location")).toBe("/pipeline/");
+    expect((await get("/pipeline", false)).status).toBe(401);
+  });
+
   it("fails closed when Access is not configured", async () => {
     const off = testEnv({ ACCESS_TEAM_DOMAIN: "", ACCESS_AUD: "" });
     const r = await get("/", true, off);

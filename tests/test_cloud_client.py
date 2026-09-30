@@ -274,3 +274,32 @@ def test_consent_slot_defaults_to_the_linked_job(env):
     store, pid, fake, client = env
     with pytest.raises(CloudError, match="give --slot"):
         cloud.slot_for_post(store, pid)
+
+
+def test_sync_uploads_a_real_snapshot_without_local_paths_or_remote(store):
+    class Sink:
+        def __init__(self):
+            self.calls = []
+
+        def request(self, method, url, headers, body):
+            self.calls.append((method, url, json.loads(body)))
+            return CloudResponse(200, {"stored": True, "bytes": len(body), "sha256": "ab" * 32})
+
+    sink = Sink()
+    client = CloudClient("https://lce.example", lambda: ACCESS, sink)
+    out = cloud.sync(store, client)
+    method, url, snap = sink.calls[0]
+    assert (method, url) == ("PUT", "https://lce.example/api/pipeline") and out["stored"]
+    assert snap["meta"]["mode"] == "real" and isinstance(snap["schema"], int)
+    assert "remote" not in snap["meta"]["data"]["git"]
+    assert str(store.root) not in json.dumps(snap)
+
+
+def test_sync_refuses_a_snapshot_that_leaks_a_local_path(store, monkeypatch):
+    from lce.dashboard import snapshot as snapmod
+
+    real = snapmod.build_snapshot
+    monkeypatch.setattr(snapmod, "build_snapshot",
+                        lambda s, **k: {**real(s, **k), "leak": str(s.root)})
+    with pytest.raises(CloudError, match="local path"):
+        cloud.sync_payload(store)

@@ -417,3 +417,25 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
     out.append(_check("kill switch", OK, "auto-publish ON" if s.get("auto_publish") else
                       "auto-publish OFF (nothing publishes until you enable it with its phrase)"))
     return out
+
+
+
+# ── sync: private-pipeline mirror for the cloud Web Control Center (LCE-013) ──
+def sync_payload(store: DataStore) -> dict:
+    """The dashboard snapshot, without local paths or the private repository's remote."""
+    from lce.dashboard.snapshot import build_snapshot
+
+    snap = build_snapshot(store, mode="real", data_label="private data (cloud mirror)")
+    git = snap["meta"]["data"].get("git") or {}
+    snap["meta"]["data"]["git"] = {k: git.get(k) for k in ("available", "head", "branch", "dirty_files")}
+    root = str(store.root)
+    if root in json.dumps(snap, default=str):
+        raise CloudError("the snapshot still contains a local path; refusing to upload")
+    return snap
+
+
+def sync(store: DataStore, client: CloudClient) -> dict:
+    snap = sync_payload(store)
+    out = client.call("PUT", "/pipeline", snap)
+    store.log_event("cloud.synced", bytes=out.get("bytes"), sha256=out.get("sha256"))
+    return out
