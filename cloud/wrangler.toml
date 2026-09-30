@@ -21,11 +21,12 @@ database_name = "lce"
 database_id = "00000000-0000-0000-0000-000000000000" # replaced at deploy time
 migrations_dir = "migrations"
 
-[vars]
-# Cloudflare Access (Zero Trust) application that protects the API.
-# Replaced at deploy time; if left empty the API refuses every request.
-ACCESS_TEAM_DOMAIN = ""
-ACCESS_AUD = ""
+# Cloudflare Access (Zero Trust) identifiers are Worker SECRETS, not [vars]:
+# `wrangler deploy` (Workers Builds on every push) replaces plain variables with
+# this file but never touches secrets. Set once by the owner:
+#   npx wrangler secret put ACCESS_TEAM_DOMAIN   # <team>.cloudflareaccess.com
+#   npx wrangler secret put ACCESS_AUD           # 64-hex Application Audience tag
+# Missing or malformed values make the API and dashboard refuse everything (503).
 
 [previews]
 

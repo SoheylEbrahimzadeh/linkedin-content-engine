@@ -19,7 +19,7 @@ let jwk: JsonWebKey;
 const enc = (o: unknown) => btoa(JSON.stringify(o)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
 async function token(): Promise<string> {
   const head = enc({ alg: "RS256", kid: "k1" });
-  const claims = enc({ aud: ["test-aud"], iss: "https://test-team.cloudflareaccess.com", exp: Math.floor(NOW / 1000) + 600,
+  const claims = enc({ aud: ["0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"], iss: "https://test-team.cloudflareaccess.com", exp: Math.floor(NOW / 1000) + 600,
     email: "owner@example.com" });
   const sig = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key.privateKey, new TextEncoder().encode(`${head}.${claims}`)));
   return `${head}.${claims}.${btoa(String.fromCharCode(...sig)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_")}`;

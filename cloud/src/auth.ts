@@ -17,6 +17,9 @@ function b64urlToBytes(s: string): Uint8Array {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
+const TEAM_RE = /^[a-z0-9-]+\.cloudflareaccess\.com$/;
+const AUD_RE = /^[0-9a-f]{64}$/;
+
 export class AuthError extends Error {
   constructor(message: string, readonly status = 401) {
     super(message);
@@ -25,8 +28,10 @@ export class AuthError extends Error {
 
 export async function verifyAccess(request: Request, env: { ACCESS_TEAM_DOMAIN?: string; ACCESS_AUD?: string },
                                    nowMs: number, fetchCerts: CertsFetcher = defaultCertsFetcher): Promise<Identity> {
-  const team = env.ACCESS_TEAM_DOMAIN, aud = env.ACCESS_AUD;
+  const team = (env.ACCESS_TEAM_DOMAIN ?? "").trim(), aud = (env.ACCESS_AUD ?? "").trim().toLowerCase();
   if (!team || !aud) throw new AuthError("Cloudflare Access is not configured", 503);
+  // The team domain decides where signing keys are fetched from: accept only an Access team domain.
+  if (!TEAM_RE.test(team) || !AUD_RE.test(aud)) throw new AuthError("Cloudflare Access is misconfigured", 503);
   const token = request.headers.get("cf-access-jwt-assertion");
   if (!token) throw new AuthError("missing Cloudflare Access token");
   const parts = token.split(".");

@@ -48,9 +48,7 @@ jobs:
           [[ "$TEAM" =~ ^[a-z0-9-]+\.cloudflareaccess\.com$ ]] || { echo "bad ACCESS_TEAM_DOMAIN"; exit 1; }
           [[ "$AUD" =~ ^[0-9a-f]{64}$ ]] || { echo "bad ACCESS_AUD"; exit 1; }
           sed -i "s/00000000-0000-0000-0000-000000000000/${D1_ID}/" wrangler.toml
-          sed -i "s/^ACCESS_TEAM_DOMAIN = \"\"/ACCESS_TEAM_DOMAIN = \"${TEAM}\"/" wrangler.toml
-          sed -i "s/^ACCESS_AUD = \"\"/ACCESS_AUD = \"${AUD}\"/" wrangler.toml
-          ! grep -q '00000000-0000-0000-0000-000000000000\|= ""' wrangler.toml || { echo "placeholders left"; exit 1; }
+          ! grep -q '00000000-0000-0000-0000-000000000000' wrangler.toml || { echo "placeholders left"; exit 1; }
       - name: Apply D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -61,3 +59,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler deploy
+      - name: Set Access identifiers as Worker secrets (survive later deploys)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TEAM: ${{ vars.ACCESS_TEAM_DOMAIN }}
+          AUD: ${{ vars.ACCESS_AUD }}
+        run: |
+          printf '%s' "$TEAM" | npx wrangler secret put ACCESS_TEAM_DOMAIN
+          printf '%s' "$AUD" | npx wrangler secret put ACCESS_AUD
