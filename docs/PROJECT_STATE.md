@@ -105,6 +105,9 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 - LCE-007 (PR #22): `lce cloud doctor`, read-only preflight that names the first
   open production gate and its exact command.
 - LCE-008 (PR #22): [LIVE_TEST.md](LIVE_TEST.md), the 4D runbook.
+- LCE-010: `wrangler.toml` no longer carries a placeholder `database_id`; Wrangler
+  resolves the existing D1 `lce` by name for deploys and `--remote` migrations
+  (the placeholder made `migrations apply lce --remote` target a nonexistent id).
 
 ## Reference re-audit (2026-09-30)
 
@@ -127,8 +130,10 @@ See GitHub; merged when green (no holds).
 
 None without an owner step. In order:
 
-1. Owner: apply D1 migrations (`cd cloud && npx wrangler d1 migrations apply lce --remote`,
-   or set the Builds deploy command to `npm run deploy`).
+1. Owner, from an up-to-date `main` checkout (`git pull`): `npx wrangler login`, then
+   `cd cloud && npx wrangler d1 migrations list lce --remote` and
+   `npx wrangler d1 migrations apply lce --remote`; or set the Builds deploy
+   command to `npm run deploy`.
 2. Owner: Access application + Worker secrets `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`;
    `config/cloud.yaml` with `api_base` in the private repo; `cloudflared access login`.
 3. `lce cloud doctor` until every line is ✓ except the kill switch.
