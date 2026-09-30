@@ -222,3 +222,42 @@ describe("withdraw and re-delegate", () => {
     expect((await push(TEXT, h)).status).toBe(409);            // a live post is never replaced
   });
 });
+
+
+describe("pipeline mirror (LCE-013)", () => {
+  const snap = (extra: Record<string, unknown> = {}) => ({ schema: 1, meta: { mode: "real",
+    generated_at: "2026-09-30T11:00:00+00:00" }, posts: [{ post_id: "20261006-demo-post", state: "AWAITING_APPROVAL" }], ...extra });
+
+  it("is empty until the first sync, then returns the latest snapshot with mirror metadata", async () => {
+    const empty = await call("GET", "/pipeline");
+    expect(empty.status).toBe(404);
+    expect(String(empty.body.error)).toContain("lce cloud sync");
+    const put = await call("PUT", "/pipeline", snap());
+    expect(put.status).toBe(200);
+    expect(put.body.stored).toBe(true);
+    await call("PUT", "/pipeline", snap({ posts: [] }));          // replaces, never appends
+    expect(await rows(e, "SELECT id FROM pipeline_snapshot")).toHaveLength(1);
+    const got = await call("GET", "/pipeline");
+    expect(got.status).toBe(200);
+    expect(got.body.posts).toEqual([]);
+    const meta = got.body.meta as { mode: string; mirror: { received_by: string; received_at: string } };
+    expect(meta.mode).toBe("real");
+    expect(meta.mirror.received_by).toBe("owner@example.com");
+    expect((await rows(e, "SELECT event FROM events WHERE event = 'pipeline.synced'"))).toHaveLength(2);
+  });
+
+  it("requires Access and the CLI header, and rejects anything but a real-mode snapshot", async () => {
+    expect((await call("GET", "/pipeline", undefined, null)).status).toBe(401);
+    expect((await call("PUT", "/pipeline", snap(), null)).status).toBe(401);
+    expect((await call("PUT", "/pipeline", snap(), undefined, e, {})).status).toBe(403);
+    expect((await call("PUT", "/pipeline", { schema: 1, meta: { mode: "demo" } })).status).toBe(400);
+    expect((await call("PUT", "/pipeline", { meta: { mode: "real" } })).status).toBe(400);
+    expect((await call("PUT", "/pipeline", [1, 2])).status).toBe(400);
+    expect(await rows(e, "SELECT id FROM pipeline_snapshot")).toHaveLength(0);
+  });
+
+  it("refuses oversized snapshots", async () => {
+    const r = await call("PUT", "/pipeline", snap({ blob: "x".repeat(1_500_001) }));
+    expect(r.status).toBe(413);
+  });
+});

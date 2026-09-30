@@ -818,6 +818,10 @@ def cmd_cloud(args):
         print(f"next scheduled: {nxt['post_id'] + ' at ' + nxt['slot_utc'] if nxt else 'none'}")
         for p in snap.get("posts", []):
             print(f"- {p['post_id']} [{p['state']}]")
+    elif args.sub == "sync":
+        out = cloud.sync(store, client)
+        print(f"✓ pipeline mirrored to the cloud dashboard ({out.get('bytes')} bytes, "
+              f"sha256 {str(out.get('sha256'))[:12]}) — open <api_base>/pipeline/")
     elif args.sub == "pull":
         for c in cloud.pull(store, client):
             print(f"✓ {c['post_id']} → {c['state']} (mirrored)")
@@ -1100,6 +1104,7 @@ def build_parser() -> argparse.ArgumentParser:
     gcmd(g, "status", cmd_cloud, "kill switch, token presence, next publication")
     gcmd(g, "doctor", cmd_cloud, "read-only production preflight: which owner gate is still open")
     gcmd(g, "pull", cmd_cloud, "mirror cloud outcomes into local posts")
+    gcmd(g, "sync", cmd_cloud, "mirror the private pipeline to the cloud dashboard (read-only view)")
     p = gcmd(g, "configure", cmd_cloud, "send timezone, cadence and LinkedIn settings (no secrets)")
     p.add_argument("--dry-run", action="store_true")
 

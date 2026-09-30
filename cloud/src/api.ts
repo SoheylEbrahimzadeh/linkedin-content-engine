@@ -70,6 +70,8 @@ export async function handleApi(request: Request, env: Env, now: number,
     const m = (re: RegExp) => re.exec(url.pathname);
     let r: RegExpExecArray | null;
     if (request.method === "GET" && url.pathname === "/api/snapshot") return json(200, await snapshot(env, now));
+    if (request.method === "GET" && url.pathname === "/api/pipeline") return await getPipeline(env);
+    if (request.method === "PUT" && url.pathname === "/api/pipeline") return json(200, await putPipeline(env, now, actor, request));
     if (request.method === "PUT" && (r = m(/^\/api\/posts\/([^/]+)$/))) return json(200, await pushPost(env, now, actor, r[1], await body(request)));
     if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/withdraw$/))) return json(200, await withdraw(env, now, actor, r[1], await body(request)));
     if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/rearm$/))) return json(200, await rearm(env, now, actor, r[1], await body(request)));
@@ -349,4 +351,44 @@ export async function snapshot(env: Env, now: number) {
     publications: publications.map((p) => ({ ...p, attempts: JSON.parse(String(p.attempts ?? "[]")) })),
     events,
   };
+}
+
+
+// ── LCE-013: private-pipeline mirror for the cloud Web Control Center ──
+export const MAX_PIPELINE_BYTES = 1_500_000;   // D1 rows are limited to ~2 MB
+
+async function putPipeline(env: Env, now: number, actor: string, request: Request) {
+  const raw = await request.text();
+  const bytes = new TextEncoder().encode(raw).length;
+  if (bytes > MAX_PIPELINE_BYTES) throw new HttpError(413, `pipeline snapshot is larger than ${MAX_PIPELINE_BYTES} bytes`);
+  let snap: { schema?: unknown; meta?: { mode?: unknown; generated_at?: unknown } };
+  try {
+    snap = JSON.parse(raw);
+  } catch {
+    throw new HttpError(400, "expected a JSON object");
+  }
+  if (!snap || typeof snap !== "object" || Array.isArray(snap)) throw new HttpError(400, "expected a JSON object");
+  if (typeof snap.schema !== "number" || snap.meta?.mode !== "real") {
+    throw new HttpError(400, "not a real-mode dashboard snapshot (lce cloud sync builds one)");
+  }
+  const generated = typeof snap.meta.generated_at === "string" ? snap.meta.generated_at : null;
+  const sha = await sha256Bytes(new TextEncoder().encode(raw));
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO pipeline_snapshot (id, body, sha256, bytes, generated_at, received_at, received_by)
+      VALUES (1, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET body = excluded.body, sha256 = excluded.sha256,
+      bytes = excluded.bytes, generated_at = excluded.generated_at, received_at = excluded.received_at,
+      received_by = excluded.received_by`).bind(raw, sha, bytes, generated, isoUtc(now), actor),
+    event(env.DB, now, "pipeline.synced", actor, null, { bytes, sha256: sha, generated_at: generated }),
+  ]);
+  return { stored: true, bytes, sha256: sha, received_at: isoUtc(now) };
+}
+
+async function getPipeline(env: Env): Promise<Response> {
+  const row = await env.DB.prepare("SELECT body, received_at, received_by, sha256 FROM pipeline_snapshot WHERE id = 1")
+    .first<{ body: string; received_at: string; received_by: string; sha256: string }>();
+  if (!row) return json(404, { error: "no pipeline snapshot yet: run `lce cloud sync` from the private data" });
+  const snap = JSON.parse(row.body) as { meta?: Record<string, unknown> };
+  snap.meta = { ...(snap.meta ?? {}), mirror: { received_at: row.received_at, received_by: row.received_by,
+    sha256: row.sha256 } };
+  return json(200, snap);
 }
