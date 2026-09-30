@@ -776,6 +776,13 @@ def cmd_linkedin_whoami(args):
 
 
 # ── cloud (Phase 4B) ──────────────────────────────────────────────────
+def _annotate(tool: str, checks: list[dict]) -> None:
+    """In GitHub Actions, one notice line with every result (readable via the checks API)."""
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        summary = " | ".join(f"{c['status']}: {c['check']} ({c['detail']})" for c in checks)
+        print(f"::notice title={tool}::{summary}")
+
+
 def cmd_cloud(args):
     from lce import cloud
 
@@ -784,6 +791,7 @@ def cmd_cloud(args):
         if not base:
             base = cloud.load_cloud_config(_store(args))["api_base"]
         checks = cloud.smoke(base, wait_seconds=args.wait)
+        _annotate("lce cloud smoke", checks)
         for c in checks:
             print(f"{'✓' if c['status'] == cloud.OK else '✗'} {c['check']}: {c['detail']}"
                   + (f"\n    {c['action']}" if c["action"] else ""))
@@ -796,6 +804,7 @@ def cmd_cloud(args):
     if args.sub == "doctor":
         marks = {cloud.OK: "✓", cloud.ACTION: "→", cloud.FAIL: "✗"}
         checks = cloud.doctor(store)
+        _annotate("lce cloud doctor", checks)
         for c in checks:
             print(f"{marks[c['status']]} {c['check']}: {c['detail']}"
                   + (f"\n    {c['action']}" if c["action"] else ""))

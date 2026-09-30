@@ -16,16 +16,19 @@ READY = {"settings": {"timezone": "Europe/Berlin", "cadence": {"posts_per_week":
 
 
 class Worker:
-    """Scripted Worker: health and snapshot answers; records every request."""
+    """Scripted Worker: health, snapshot and pipeline answers; records every request."""
 
-    def __init__(self, health=(200, {"ok": True}), snapshot=(200, READY)):
-        self.health, self.snapshot, self.calls = health, snapshot, []
+    def __init__(self, health=(200, {"ok": True}), snapshot=(200, READY),
+                 pipeline=(200, {"meta": {"mirror": {"received_at": "2026-10-01T00:00:00+00:00"}}})):
+        self.health, self.snapshot, self.pipeline, self.calls = health, snapshot, pipeline, []
 
     def request(self, method, url, headers, body):
         self.calls.append((method, url, dict(headers)))
         if isinstance(self.health, Exception):
             raise self.health
         path = url.split("/api", 1)[1]
+        if path == "/pipeline":
+            return CloudResponse(*self.pipeline)
         return CloudResponse(*(self.health if path == "/health" else self.snapshot))
 
 
@@ -151,3 +154,25 @@ def test_cli_exit_code_distinguishes_broken_from_open_gates(configured, monkeypa
     assert main(["--data-dir", str(configured.root), "cloud", "doctor"]) == 2
     monkeypatch.setattr(cloud, "UrllibCloudTransport", lambda: Worker())
     assert main(["--data-dir", str(configured.root), "cloud", "doctor"]) == 0
+
+
+def test_missing_migration_0003_is_detected(configured):
+    missing = (503, {"error": "database schema missing: apply cloud/migrations to D1"})
+    by, _ = run(configured, Worker(pipeline=missing))
+    assert by["database"]["status"] == "action" and "0003" in by["database"]["detail"]
+
+
+def test_mirror_not_synced_yet_is_an_owner_step(configured):
+    by, _ = run(configured, Worker(pipeline=(404, {"error": "no pipeline snapshot yet"})))
+    assert by["database"]["status"] == "ok" and by["pipeline mirror"]["status"] == "action"
+
+
+def test_github_actions_annotation_lists_every_result(configured, monkeypatch, capsys):
+    from lce.cli import main
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("LCE_CF_ACCESS_TOKEN", "fake.access.jwt")
+    monkeypatch.setattr(cloud, "UrllibCloudTransport", lambda: Worker())
+    main(["--data-dir", str(configured.root), "cloud", "doctor"])
+    notice = [line for line in capsys.readouterr().out.splitlines() if line.startswith("::notice")]
+    assert len(notice) == 1 and "ok: database" in notice[0] and "fake.access.jwt" not in notice[0]
