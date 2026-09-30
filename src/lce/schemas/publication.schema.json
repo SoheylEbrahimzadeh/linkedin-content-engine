@@ -24,8 +24,10 @@
     },
     "provider": {
       "enum": [
-        "linkedin_api"
-      ]
+        "linkedin_api",
+        "manual"
+      ],
+      "description": "manual = the owner posted the approved text themselves and recorded it with `lce publish manual`."
     },
     "idempotency_key": {
       "type": "string",

@@ -11,10 +11,10 @@ _Last updated: 2026-09-30_
 
 | | |
 |---|---|
-| Current phase | **6A** — image stage (decision, provenance, approval binding) |
+| Current phase | **7A** — analytics & learning loop (stacked on 6A) |
 | Parallel track | **4B** — cloud runtime, CI green, **held by the owner** (PR #5) |
 | Current gate | Owner hold on PR #5 (blocks 4C and deployment only) |
-| Next phase | **7** — analytics & learning loop (independent of PR #5); 6B image upload after PR #5 |
+| Next phase | 6B image upload and 4C once PR #5 is merged; 7B at the LinkedIn access gate |
 | After that | 7 analytics & learning loop; 4C once PR #5 is merged; 4D at the credential/live gates |
 
 ## Phases
@@ -31,11 +31,12 @@ _Last updated: 2026-09-30_
 | Operating contract | merged | #6, #7 |
 | Privacy: derived denylist + history scan | merged | #8 |
 | 5 Personal Brand Engine | merged | #9 |
-| 6A image stage | in review | — |
+| 6A image stage | CI green; merge blocked by tool permission | #10 |
+| 7A analytics & learning loop | in review | — |
 | 4C remote dashboard (behind Access) | waits for PR #5 | — |
 | 4D controlled live publishing test | credential + live gates | — |
 | 6B image upload in publishers | after PR #5 | — |
-| 7 analytics & learning loop | next | — |
+| 7B analytics API adapter | credential gate (LinkedIn Community Management access) | — |
 | 8 more languages, approval channels | not started | — |
 
 ## Open PRs and holds
@@ -52,6 +53,8 @@ _Last updated: 2026-09-30_
 | 4D live test | LinkedIn developer app and access token supplied by the owner as a Worker secret (credential gate); explicit authorization of a live publication (production gate) |
 
 ## Open follow-ups (routine)
+
+- Tooling: this session's permission checks blocked merging PR #10 and bumping `ENGINE_REF` in the private repo; both need the owner (merge button / explicit approval).
 
 - After PR #5 merges: record 4B as merged here, then start 4C.
 - `phase-4b` must refuse `lce cloud push` for posts whose image decision is not `none` (the Worker is text-only until 6B); added when main (6A) is merged into `phase-4b`.
