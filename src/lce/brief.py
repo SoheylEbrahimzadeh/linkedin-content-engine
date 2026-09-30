@@ -73,8 +73,11 @@ def briefs(store: DataStore, today: date, jobs: list[dict]) -> list[dict]:
             b["instruction"] = (f"Fix the text from posts/{pid}/qa.json or duplicate.json and "
                                 "save it with `lce humanize save`.")
         elif task == "image_decision":
+            has_figures = bool(store.load_post(pid).get("claims"))
             b["instruction"] = (f"Decide the image with `lce image decide {pid}` ('none' is "
-                                "valid; never a decorative image).")
+                                "valid; never a decorative image)"
+                                + (f", or draw the cited figures with `lce image chart {pid}`."
+                                   if has_figures else "."))
         else:
             b["instruction"] = "Run `lce automation run-once`; the scheduler continues."
         out.append(b)
