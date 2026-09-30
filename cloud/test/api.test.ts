@@ -54,6 +54,16 @@ describe("authentication (Cloudflare Access)", () => {
   it("health is public and reveals nothing", async () => {
     expect(await call("GET", "/health", undefined, null)).toEqual({ status: 200, body: { ok: true } });
   });
+  it("reports a missing schema as 503, not an opaque 500", async () => {
+    await e.DB.prepare("ALTER TABLE settings RENAME TO settings_unmigrated").run();
+    try {
+      const r = await call("GET", "/snapshot");
+      expect(r.status).toBe(503);
+      expect(String(r.body.error)).toContain("apply cloud/migrations");
+    } finally {
+      await e.DB.prepare("ALTER TABLE settings_unmigrated RENAME TO settings").run();
+    }
+  });
   it("fails closed without Access configuration", async () => {
     const r = await call("GET", "/snapshot", undefined, undefined, testEnv({ ACCESS_AUD: "" }));
     expect(r.status).toBe(503);

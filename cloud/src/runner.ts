@@ -9,7 +9,7 @@
 // concurrent run cannot win the same claim. Ambiguous results become
 // NEEDS_RECONCILE and are never retried.
 
-import { event, loadSettings, type ConsentRow, type Env, type PostRow, type Settings } from "./db";
+import { event, isSchemaMissing, loadSettings, type ConsentRow, type Env, type PostRow, type Settings } from "./db";
 import { configProblems, publish, type FetchLike, type ImageInput, type LinkedInConfig, type PublishResult } from "./linkedin";
 import { isoUtc, parseIsoUtc } from "./schedule";
 import { contentHash, sha256Bytes, sha256Hex, stripText, toLittle } from "./text";
@@ -34,9 +34,16 @@ async function invalidate(env: Env, now: number, c: ConsentRow, reason: string, 
 }
 
 export async function runScheduled(env: Env, now: number, fetchImpl: FetchLike): Promise<RunReport> {
-  const due = (await env.DB.prepare(
-    "SELECT * FROM consents WHERE status = 'active' AND slot_utc <= ? ORDER BY slot_utc LIMIT 5",
-  ).bind(isoUtc(now)).all<ConsentRow>()).results;
+  let due: ConsentRow[];
+  try {
+    due = (await env.DB.prepare(
+      "SELECT * FROM consents WHERE status = 'active' AND slot_utc <= ? ORDER BY slot_utc LIMIT 5",
+    ).bind(isoUtc(now)).all<ConsentRow>()).results;
+  } catch (err) {
+    // Deployed without migrations: nothing can be due, so report it instead of throwing every run.
+    if (isSchemaMissing(err)) return { status: "schema_missing", detail: "apply cloud/migrations to D1" };
+    throw err;
+  }
   if (due.length === 0) return { status: "idle" };            // no writes when nothing is due
 
   const settings = await loadSettings(env.DB);

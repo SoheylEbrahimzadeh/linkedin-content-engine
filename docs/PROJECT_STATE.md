@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-09-30 (reference re-audit)_
+_Last updated: 2026-09-30 (production alignment, LCE-001…004)_
 
 ## Objective
 
@@ -28,7 +28,7 @@ learns → improves selection.
 | QA / credibility | VERIFIED | deterministic QA, evidence gating (personal → PUBLIC story or `NEEDS_INPUT`), duplicate check |
 | Relevant image | VERIFIED | image decision + provenance, `lce image chart` from recorded figures, checks |
 | Human approval (text + image) | VERIFIED | terminal-only, typed phrase, text hash + image hash |
-| Cloud scheduling | COMPLETED, not deployed | Worker cron, consents, kill switch, Cloud Control Center — **credential-gated** |
+| Cloud scheduling | DEPLOYED (owner-reported), not operational | Workers Builds deploys `main` to Worker `linkedin-content-engine` (D1 `lce`). Migrations and Access not verified; `ACCESS_*` reset to empty on each deploy (fail-closed). See CLOUD.md "Current production state" |
 | LinkedIn publishing | COMPLETED, not live | local + cloud, image upload, fake-transport tests — **credential-gated**, first live post **live-action-gated** |
 | Publication verification | VERIFIED | API 201 + URN; `NEEDS_RECONCILE` + human reconcile (LinkedIn grants no read-back); `lce cloud pull` mirrors the cloud record |
 | Analytics | VERIFIED | manual/CSV metrics, cloud publications matched by URL; official API adapter **credential-gated** (7B) |
@@ -40,8 +40,10 @@ Operating procedure: [OPERATING.md](OPERATING.md).
 ## Dependency graph (what blocks what)
 
 ```
-Cloudflare account + Access app + deploy-only token (CREDENTIAL GATE)
-   └─► deploy Worker + dashboard (runbook steps 1–8; authorization to deploy)
+Worker deployed by Workers Builds on every push to main (owner-reported)
+   ├─► D1 migrations applied to `lce` (OWNER ACTION, unverified)
+   └─► Access app + how ACCESS_* survive Builds deploys (OWNER DECISION)
+         └─► dashboard + API usable (runbook steps 7–8)
          └─► LinkedIn token as Worker secret (CREDENTIAL GATE)
                └─► first live scheduled publication (LIVE GATE, 4D)
                      └─► real metrics → learning loop gets data
@@ -55,7 +57,8 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 
 | Gate | Unlocks |
 |---|---|
-| Cloudflare account, D1, Access app, deploy-only token; authorization to deploy | scheduled publishing + remote dashboard |
+| D1 migrations on the production `lce` (`wrangler d1 migrations apply lce --remote`) | cron and API work (until then `schema_missing` / 503) |
+| Access app + a decision on how `ACCESS_TEAM_DOMAIN`/`ACCESS_AUD` reach the Builds deploy | remote dashboard + API (fail-closed until then) |
 | LinkedIn developer app + `w_member_social` token | real publishing (local or cloud) |
 | LinkedIn Community Management access (`r_member_postAnalytics`) | 7B analytics API |
 | Private-repo change (owner approval): `ENGINE_REF` bump + skills sync in the private data repo | private CI validates brand/image/metrics files with the current engine |
@@ -71,6 +74,14 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 - PUBLIC stories in the story bank (personal-evidence themes are unusable without them).
 - Optional brand fields: throughline, career chapters, target roles, pillar mix.
 - `cta.allowed` in the voice profile (unset): until set, QA does not check the closing against a CTA policy.
+
+## Production alignment (2026-09-30)
+
+- LCE-002: `wrangler.toml` name set to the production Worker `linkedin-content-engine`
+  (the manual workflow would otherwise create a second Worker `lce-cloud`).
+- LCE-003: an unmigrated D1 no longer makes every cron run throw; it reports
+  `schema_missing`, and the API answers 503 with the fix instead of 500.
+- LCE-004: docs and `lce readiness` no longer claim "not deployed".
 
 ## Reference re-audit (2026-09-30)
 
