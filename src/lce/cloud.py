@@ -369,7 +369,7 @@ def _check(name: str, status: str, detail: str, action: str = "") -> dict:
 
 def doctor(store: DataStore, transport: CloudTransport | None = None,
            token: Callable[[], str | dict[str, str]] | None = None,
-           today: date | None = None) -> list[dict]:
+           today: date | None = None, probe: StatusTransport | None = None) -> list[dict]:
     """Read-only checks of the deployed Worker, in dependency order. Stops at the
     first gate that hides everything behind it. Never sends a mutation."""
     out: list[dict] = []
@@ -437,6 +437,20 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
                           "" if synced else "lce cloud sync (or the private cloud-sync workflow)"))
     else:
         out.append(_check("database", FAIL, f"/api/pipeline HTTP {pipe.status} {perr}".strip()))
+    probe = probe or StatusTransport()
+    pages = {"/": b"LCE Cloud Control Center", "/pipeline/": b"LCE Control Center",
+             "/pipeline/config.js": b'"snapshotUrl": "/api/pipeline"'}
+    bad = []
+    for path, marker in pages.items():
+        try:
+            code, body = probe.status("GET", f"{base}{path}", headers=access_headers(credential))
+        except CloudError as exc:
+            bad.append(f"{path}: {exc}")
+            continue
+        if code != 200 or marker not in body:
+            bad.append(f"{path}: HTTP {code}")
+    out.append(_check("dashboard", FAIL if bad else OK,
+                      "; ".join(bad) if bad else "/, /pipeline/ and its config load through Access"))
     s = snap.body.get("settings", {})
     missing = [k for k in ("timezone", "cadence", "api_version", "person_urn") if not s.get(k)]
     out.append(_check("settings", ACTION if missing else OK,
@@ -479,9 +493,17 @@ def sync_payload(store: DataStore) -> dict:
     snap = build_snapshot(store, mode="real", data_label="private data (cloud mirror)")
     git = snap["meta"]["data"].get("git") or {}
     snap["meta"]["data"]["git"] = {k: git.get(k) for k in ("available", "head", "branch", "dirty_files")}
-    root = str(store.root)
-    if root in json.dumps(snap, default=str):
+    text = json.dumps(snap, default=str)
+    if str(store.root) in text:
         raise CloudError("the snapshot still contains a local path; refusing to upload")
+    remote = (git.get("remote") or "").strip()
+    if remote and remote.removesuffix(".git") in text:
+        raise CloudError("the snapshot contains the private repository URL; refusing to upload")
+    for name in ("LCE_CF_ACCESS_CLIENT_ID", "LCE_CF_ACCESS_CLIENT_SECRET", "LCE_CF_ACCESS_TOKEN",
+                 "GITHUB_TOKEN", "LINKEDIN_TOKEN"):
+        value = os.environ.get(name, "").strip()
+        if len(value) >= 8 and value in text:
+            raise CloudError(f"the snapshot contains the value of {name}; refusing to upload")
     return snap
 
 
@@ -514,12 +536,13 @@ class StatusTransport:
         self.opener = urllib.request.build_opener(_NoRedirect())
         self.timeout = timeout
 
-    def status(self, method: str, url: str, body: dict | None = None) -> tuple[int, bytes]:
+    def status(self, method: str, url: str, body: dict | None = None,
+               headers: dict[str, str] | None = None) -> tuple[int, bytes]:
         if not url.startswith("https://"):
             raise CloudError("the cloud API must use https")
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, method=method, headers={
-            "content-type": "application/json", "x-lce-client": "cli"})
+            "content-type": "application/json", "x-lce-client": "cli", **(headers or {})})
         try:
             with self.opener.open(req, timeout=self.timeout) as resp:  # noqa: S310
                 return resp.status, resp.read(4096)
