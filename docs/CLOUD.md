@@ -148,6 +148,15 @@ request is wall time, not CPU. Expected cost: €0/month.
 - Use one deploy path. Keep `CLOUD_DEPLOY_ENABLED` unset while Workers Builds
   deploys production.
 
+### Public privacy policy (LCE-034)
+
+`<api_base>/privacy` is the only page the Worker serves without its own Access
+check: static HTML (no scripts, no data), required by the LinkedIn Developer
+Portal. It describes exactly what the project processes (`cloud/src/public/privacy.html`).
+Cloudflare Access must not cover that path: add an Access application for
+`<hostname>/privacy` with a **Bypass** policy (Include: Everyone). `lce cloud
+smoke` reports the page as ok, behind Access, or missing.
+
 ### Full pipeline on any device (LCE-013)
 
 The Cloud Control Center (`/`) shows what the Worker owns: delegated posts,

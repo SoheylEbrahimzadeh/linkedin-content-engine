@@ -2,6 +2,7 @@
 // plus an Access-protected JSON API and the remote dashboard (Phase 4C).
 
 import { handleApi } from "./api";
+import { handlePublic, isPublicPath } from "./public";
 import type { Env } from "./db";
 import { runScheduled } from "./runner";
 import { handleUi, isUiPath } from "./ui";
@@ -9,6 +10,7 @@ import { handleUi, isUiPath } from "./ui";
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (isPublicPath(url.pathname)) return handlePublic(request);
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, Date.now());
     if (isUiPath(url.pathname)) return handleUi(request, env, Date.now());
     return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
