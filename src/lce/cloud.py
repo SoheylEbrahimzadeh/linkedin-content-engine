@@ -149,6 +149,29 @@ def default_access(api_base: str) -> str | dict[str, str]:
     return access_token_from_cloudflared(api_base)
 
 
+def service_token_format() -> str | None:
+    """Shape check of the service token from the environment, never its value.
+
+    Cloudflare issues client IDs as `<32 hex>.access` and secrets as 64 hex
+    characters; anything else is usually a paste error (quotes, a header name,
+    whitespace). Returns None when no service token is configured.
+    """
+    import re
+
+    cid = os.environ.get("LCE_CF_ACCESS_CLIENT_ID", "")
+    secret = os.environ.get("LCE_CF_ACCESS_CLIENT_SECRET", "")
+    if not cid.strip() and not secret.strip():
+        return None
+    problems = []
+    if not re.fullmatch(r"[0-9a-f]{32}\.access", cid.strip()):
+        problems.append(f"client id is not '<32 hex>.access' ({len(cid.strip())} chars)")
+    if not re.fullmatch(r"[0-9a-f]{64}", secret.strip()):
+        problems.append(f"client secret is not 64 hex characters ({len(secret.strip())} chars)")
+    if cid != cid.strip() or secret != secret.strip():
+        problems.append("surrounding whitespace (ignored when sent)")
+    return "; ".join(problems) or "ok"
+
+
 def access_headers(credential: str | dict[str, str]) -> dict[str, str]:
     return dict(credential) if isinstance(credential, dict) else {"cf-access-token": credential}
 
@@ -451,9 +474,19 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
         health = transport.request("GET", f"{base}/api/health", access_headers(credential), None)
         if health.status != 200 or health.body.get("ok") is not True:
             why = health.body.get("_raw") or f"HTTP {health.status}"
-            return out + [_check("worker", FAIL, f"/api/health with credentials: {why}",
-                                 "Access did not let the credential through: check the service "
-                                 "token's Service Auth policy on the Worker's Access application")]
+            shape = service_token_format()
+            if shape not in (None, "ok"):
+                return out + [_check("worker", FAIL, f"/api/health with credentials: {why}"),
+                              _check("service token format", FAIL, shape,
+                                     "re-enter both GitHub secrets: the raw Client ID and Client "
+                                     "Secret values only, no quotes or header names")]
+            hint = ("service token format ok, so Access does not accept it for this application: "
+                    "check that the Service Auth policy includes this service token and is attached "
+                    "to the application that covers this hostname" if shape == "ok" else
+                    "Access did not let the credential through: for a service token check the "
+                    "Service Auth policy on the Worker's Access application; for cloudflared run "
+                    f"cloudflared access login {base} again")
+            return out + [_check("worker", FAIL, f"/api/health with credentials: {why}", hint)]
         out.append(_check("worker", OK, "/api/health 200 through Cloudflare Access"))
     else:
         out.append(_check("worker", OK, "/api/health 200"))
