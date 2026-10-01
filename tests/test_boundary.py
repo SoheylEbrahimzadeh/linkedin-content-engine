@@ -122,12 +122,21 @@ def test_demo_data_is_marked_demo():
     assert Path(ROOT / "examples" / "demo-persona" / "README.md").exists()
 
 
-def test_wrangler_config_has_no_account_identifiers_or_placeholders():
-    """The D1 database is resolved by name; Access identifiers are Worker secrets."""
+def test_wrangler_config_has_no_secrets_ids_or_placeholders():
+    """D1 is resolved by name. The only deployment-specific values are the public
+    Cloudflare Access identifiers (sent to every visitor in the login redirect)."""
+    import tomllib
+
     toml = (ROOT / "cloud" / "wrangler.toml").read_text()
-    body = "\n".join(line.split("#", 1)[0] for line in toml.splitlines())
-    assert "database_id" not in body and "account_id" not in body
-    assert 'database_name = "lce"' in body
-    assert "keep_vars = true" in body   # dashboard variables survive Workers Builds deploys
-    assert "ACCESS_TEAM_DOMAIN" not in body and "ACCESS_AUD" not in body
-    assert not re.search(r"\b[0-9a-f]{32}\b|[0-9a-f]{8}-[0-9a-f]{4}-", body)
+    cfg = tomllib.loads(toml)
+    assert "account_id" not in cfg
+    assert [{k: v for k, v in d.items() if k != "migrations_dir"} for d in cfg["d1_databases"]] == [
+        {"binding": "DB", "database_name": "lce"}]
+    assert cfg["keep_vars"] is True       # dashboard variables survive Workers Builds deploys
+    assert set(cfg["vars"]) == {"LCE_ACCESS_TEAM_DOMAIN", "LCE_ACCESS_AUD"}
+    assert re.fullmatch(r"[a-z0-9-]+\.cloudflareaccess\.com", cfg["vars"]["LCE_ACCESS_TEAM_DOMAIN"])
+    assert re.fullmatch(r"[0-9a-f]{64}", cfg["vars"]["LCE_ACCESS_AUD"])
+    others = "\n".join(line.split("#", 1)[0] for line in toml.splitlines()
+                       if not line.startswith("LCE_ACCESS_"))
+    assert "ACCESS_TEAM_DOMAIN" not in others and "ACCESS_AUD" not in others
+    assert not re.search(r"\b[0-9a-f]{32}\b|[0-9a-f]{8}-[0-9a-f]{4}-", others)

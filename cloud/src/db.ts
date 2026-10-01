@@ -7,6 +7,8 @@ export type Env = {
   LINKEDIN_TOKEN?: string;
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
+  LCE_ACCESS_TEAM_DOMAIN?: string;
+  LCE_ACCESS_AUD?: string;
 };
 
 export const SETTING_KEYS = ["auto_publish", "provider", "timezone", "cadence", "api_version",

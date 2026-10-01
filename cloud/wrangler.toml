@@ -1,5 +1,6 @@
 # Cloudflare Worker for scheduled publishing of human-approved, explicitly
-# consented posts. This file contains NO secrets and NO account identifiers.
+# consented posts. This file contains NO secrets. Its only deployment-specific
+# values are the public Cloudflare Access identifiers in [vars].
 #
 # Secrets (never in this repo): set with `wrangler secret put LINKEDIN_TOKEN`
 # or in the Cloudflare dashboard.
@@ -26,12 +27,21 @@ database_name = "lce"
 # identifier lives in this public file and no placeholder can be deployed.
 migrations_dir = "migrations"
 
-# Cloudflare Access (Zero Trust) identifiers are Worker SECRETS, not [vars]:
-# `wrangler deploy` (Workers Builds on every push) replaces plain variables with
-# this file but never touches secrets. Set once by the owner:
+[vars]
+# Cloudflare Access application of the production Worker (LCE-031). Both values
+# are public: Cloudflare sends the team host and the application AUD to every
+# unauthenticated visitor in the login redirect. Carrying them here means every
+# Workers Builds deploy configures the Worker itself (dashboard variables were
+# lost twice). The Worker still verifies every request's Access JWT against them
+# and refuses everything (503) if they are missing or malformed. Optional Worker
+# secrets ACCESS_TEAM_DOMAIN + ACCESS_AUD, when both are set, take precedence.
+LCE_ACCESS_TEAM_DOMAIN = "small-wood-2de3.cloudflareaccess.com"
+LCE_ACCESS_AUD = "2e41a088ef87997e12e9533d2c4860e95dfa8d5b329f6ac864657bef928ffe7a"
+
+# To use another Access application without editing this file, set both Worker
+# secrets (they are never removed by deploys and take precedence):
 #   npx wrangler secret put ACCESS_TEAM_DOMAIN   # <team>.cloudflareaccess.com
 #   npx wrangler secret put ACCESS_AUD           # 64-hex Application Audience tag
-# Missing or malformed values make the API and dashboard refuse everything (503).
 
 [previews]
 

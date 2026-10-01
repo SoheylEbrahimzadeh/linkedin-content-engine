@@ -26,9 +26,20 @@ export class AuthError extends Error {
   }
 }
 
-export async function verifyAccess(request: Request, env: { ACCESS_TEAM_DOMAIN?: string; ACCESS_AUD?: string },
+type AccessEnv = { ACCESS_TEAM_DOMAIN?: string; ACCESS_AUD?: string;
+  LCE_ACCESS_TEAM_DOMAIN?: string; LCE_ACCESS_AUD?: string };
+
+// The pair of secrets wins when both are set; otherwise the public pair that every
+// deploy carries in wrangler.toml [vars] (LCE-031). Never mixed.
+export function accessConfig(env: AccessEnv): { team: string; aud: string } {
+  const pair = (t?: string, a?: string) => ({ team: (t ?? "").trim(), aud: (a ?? "").trim().toLowerCase() });
+  const secret = pair(env.ACCESS_TEAM_DOMAIN, env.ACCESS_AUD);
+  return secret.team && secret.aud ? secret : pair(env.LCE_ACCESS_TEAM_DOMAIN, env.LCE_ACCESS_AUD);
+}
+
+export async function verifyAccess(request: Request, env: AccessEnv,
                                    nowMs: number, fetchCerts: CertsFetcher = defaultCertsFetcher): Promise<Identity> {
-  const team = (env.ACCESS_TEAM_DOMAIN ?? "").trim(), aud = (env.ACCESS_AUD ?? "").trim().toLowerCase();
+  const { team, aud } = accessConfig(env);
   if (!team || !aud) throw new AuthError("Cloudflare Access is not configured", 503);
   // The team domain decides where signing keys are fetched from: accept only an Access team domain.
   if (!TEAM_RE.test(team) || !AUD_RE.test(aud)) throw new AuthError("Cloudflare Access is misconfigured", 503);
