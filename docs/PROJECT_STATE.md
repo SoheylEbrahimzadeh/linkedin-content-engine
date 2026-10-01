@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-10-01 (engine PRs #19–#31, lce-data PRs #1–#3; LCE-001…021)_
+_Last updated: 2026-10-01 (engine PRs #19–#38, lce-data PRs #1–#11; LCE-001…028)_
 
 ## Objective
 
@@ -124,6 +124,26 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 - LCE-021: doctor no longer mistakes Access at the edge (403 on `/api/health`)
   for a broken Worker; it retries health through Access with the credential.
 
+- LCE-022 (PR #32): doctor loads `/`, `/pipeline/`, `/pipeline/config.js` through
+  Access; sync refuses payloads containing the private repo URL or credential values.
+- LCE-023 (PR #33): explicit `lce-cli/<version>` User-Agent (Cloudflare's Browser
+  Integrity Check refused `Python-urllib` with 403 before Access); no redirects;
+  refusal classification.
+- LCE-024…027 (PRs #34–#37): service token shape check (values never printed);
+  pasted dashboard labels removed; Cloudflare's `cfast_` secret format
+  (since 2026-08-26) accepted and added to gitleaks, privacy scan and redaction.
+- LCE-028 (PR #38): smoke/doctor name the Access application that answers
+  (team host, AUD prefix from the login redirect); actions in annotations.
+
+**Authenticated path (LCE-022, lce-data `cloud-sync` on `58f6db0`):** the request
+now reaches Cloudflare Access with a well-formed service token, and Access answers
+with its login redirect from application `small-wood-2de3.cloudflareaccess.com`,
+AUD `2e41a088ef87…`: the token is not accepted by that application. BLOCKED on the
+Access configuration (owner). Not yet verified behind Access: Worker
+`ACCESS_*` secrets, D1 schema 0001–0003, `/pipeline/` with data, sync. The D1
+database ID cannot be checked from GitHub without a Cloudflare API credential;
+`wrangler.toml` binds `DB` to the database named `lce` in the account.
+
 **Production evidence (2026-10-01, lce-data `cloud-sync` on `7fde59c`, GitHub
 runner → `https://linkedin-content-engine.<subdomain>.workers.dev`):** every path
 (`/api/health`, `/`, `/pipeline/`, `/api/snapshot`, `/api/pipeline`, and PUT
@@ -157,20 +177,24 @@ See GitHub; merged when green (no holds).
 
 ## Next unblocked work
 
-No engineering work is open without an owner step. In order:
+No engineering work is open; the next step is the owner's Access configuration
+(Zero Trust → Access → Applications):
 
-1. **Access service token** (Zero Trust → Access → Service credentials → create;
-   add a policy with action *Service Auth* for it on the Worker's Access
-   application). Store `LCE_CF_ACCESS_CLIENT_ID` and `LCE_CF_ACCESS_CLIENT_SECRET`
-   as Actions secrets in **lce-data** (and optionally the engine repo together
-   with the variable `LCE_API_BASE`). The next `cloud-sync` run then verifies the
-   Worker's Access secrets, D1 schema (0001–0003), settings and token presence,
-   and fills `<api_base>/pipeline/`.
-2. **Migrations** if doctor reports them missing: `git pull`,
-   `cd cloud && npx wrangler login && npx wrangler d1 migrations apply lce --remote`,
-   or set the Workers Builds deploy command to `npm run deploy`.
-3. **LinkedIn token + first live post** (4D): [LIVE_TEST.md](LIVE_TEST.md).
-4. **PUBLIC stories** for experience-based themes; `cta.allowed` in the voice profile.
+1. Open the application whose **Application Audience (AUD) tag starts with
+   `2e41a088ef87`** (team `small-wood-2de3`). If it is not "LinkedIn Content
+   Engine" (for example an application created automatically for the
+   `workers.dev` hostname), add the Service Auth policy there, or remove the
+   duplicate so one application covers the hostname.
+2. On that application, the policy with action **Service Auth** must *include*
+   the service token "LCE GitHub Actions".
+3. The Worker secret `ACCESS_AUD` must equal that application's AUD tag, and
+   `ACCESS_TEAM_DOMAIN` must be `small-wood-2de3.cloudflareaccess.com`.
+4. If all three are right, the stored secret no longer matches the token
+   (e.g. regenerated): store the raw Client Secret again in lce-data.
+
+Any push to lce-data (or its daily run) then re-runs smoke + doctor + sync; the
+annotations show the result. After that: migrations if doctor reports them,
+then the LinkedIn token and [LIVE_TEST.md](LIVE_TEST.md).
 
 ## Housekeeping
 
