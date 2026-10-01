@@ -840,9 +840,16 @@ def cmd_cloud(args):
         for p in snap.get("posts", []):
             print(f"- {p['post_id']} [{p['state']}]")
     elif args.sub == "sync":
-        out = cloud.sync(store, client)
+        out = cloud.sync(store, client, verify=args.verify)
         print(f"✓ pipeline mirrored to the cloud dashboard ({out.get('bytes')} bytes, "
               f"sha256 {str(out.get('sha256'))[:12]}) — open <api_base>/pipeline/")
+        if args.verify:
+            checks = out["checks"]
+            _annotate("lce cloud sync --verify", checks)
+            for c in checks:
+                print(f"{'✓' if c['status'] == cloud.OK else '✗'} {c['check']}: {c['detail']}")
+            if any(c["status"] != cloud.OK for c in checks):
+                return 2
     elif args.sub == "pull":
         for c in cloud.pull(store, client):
             print(f"✓ {c['post_id']} → {c['state']} (mirrored)")
@@ -1128,7 +1135,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--api-base", help="Worker URL (default: $LCE_API_BASE, then config/cloud.yaml)")
     p.add_argument("--wait", type=int, default=0, help="seconds to wait for /api/health (deploys)")
     gcmd(g, "pull", cmd_cloud, "mirror cloud outcomes into local posts")
-    gcmd(g, "sync", cmd_cloud, "mirror the private pipeline to the cloud dashboard (read-only view)")
+    p = gcmd(g, "sync", cmd_cloud, "mirror the private pipeline to the cloud dashboard (read-only view)")
+    p.add_argument("--verify", action="store_true",
+                   help="read the mirror back: same sha256 and posts, no leaks")
     p = gcmd(g, "configure", cmd_cloud, "send timezone, cadence and LinkedIn settings (no secrets)")
     p.add_argument("--dry-run", action="store_true")
 
