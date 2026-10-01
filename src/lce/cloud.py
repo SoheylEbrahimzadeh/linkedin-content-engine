@@ -636,25 +636,67 @@ def sync_payload(store: DataStore) -> dict:
     snap = build_snapshot(store, mode="real", data_label="private data (cloud mirror)")
     git = snap["meta"]["data"].get("git") or {}
     snap["meta"]["data"]["git"] = {k: git.get(k) for k in ("available", "head", "branch", "dirty_files")}
-    text = json.dumps(snap, default=str)
+    problems = leak_problems(store, json.dumps(snap, default=str), git.get("remote") or "")
+    if problems:
+        raise CloudError(f"{problems[0]}; refusing to upload")
+    return snap
+
+
+def leak_problems(store: DataStore, text: str, remote: str = "") -> list[str]:
+    """What must never be in a cloud snapshot: local paths, the private remote, credentials."""
+    from lce.dashboard.snapshot import SECRET_RE
+
+    out = []
     if str(store.root) in text:
-        raise CloudError("the snapshot still contains a local path; refusing to upload")
-    remote = (git.get("remote") or "").strip()
-    if remote and remote.removesuffix(".git") in text:
-        raise CloudError("the snapshot contains the private repository URL; refusing to upload")
+        out.append("the snapshot contains a local path")
+    remote = remote.strip().removesuffix(".git")
+    if remote and remote in text:
+        out.append("the snapshot contains the private repository URL")
     for name in ("LCE_CF_ACCESS_CLIENT_ID", "LCE_CF_ACCESS_CLIENT_SECRET", "LCE_CF_ACCESS_TOKEN",
                  "GITHUB_TOKEN", "LINKEDIN_TOKEN"):
         value = os.environ.get(name, "").strip()
         if len(value) >= 8 and value in text:
-            raise CloudError(f"the snapshot contains the value of {name}; refusing to upload")
-    return snap
+            out.append(f"the snapshot contains the value of {name}")
+    cid, secret = _service_token()
+    for label, value in (("service token id", cid), ("service token secret", secret)):
+        if len(value) >= 8 and value in text:
+            out.append(f"the snapshot contains the {label}")
+    if SECRET_RE.search(text):
+        out.append("the snapshot contains a secret-shaped string")
+    return out
 
 
-def sync(store: DataStore, client: CloudClient) -> dict:
+def sync(store: DataStore, client: CloudClient, verify: bool = False) -> dict:
     snap = sync_payload(store)
     out = client.call("PUT", "/pipeline", snap)
     store.log_event("cloud.synced", bytes=out.get("bytes"), sha256=out.get("sha256"))
+    if verify:
+        out["checks"] = verify_sync(store, client, snap, out)
     return out
+
+
+def verify_sync(store: DataStore, client: CloudClient, sent: dict, stored: dict) -> list[dict]:
+    """Read the mirror back from production and prove it is what was sent, and clean."""
+    got = client.call("GET", "/pipeline")
+    mirror = got.get("meta", {}).get("mirror", {})
+    checks = []
+    same_sha = bool(stored.get("sha256")) and mirror.get("sha256") == stored.get("sha256")
+    read_sha, sent_sha = str(mirror.get("sha256"))[:12], str(stored.get("sha256"))[:12]
+    checks.append(_check("mirror stored", OK if same_sha else FAIL,
+                         f"D1 row sha256 {read_sha}… received {mirror.get('received_at')}"
+                         if same_sha else f"stored {sent_sha} ≠ read back {read_sha}"))
+    ids = lambda snap: sorted(p.get("post_id") for p in snap.get("posts", []))  # noqa: E731
+    same_posts = ids(got) == ids(sent)
+    checks.append(_check("mirror content", OK if same_posts else FAIL,
+                         f"{len(ids(got))} post(s), {len(got.get('research', []))} research item(s), "
+                         f"generated {got.get('meta', {}).get('generated_at')}" if same_posts
+                         else "posts read back differ from those sent"))
+    body = {k: v for k, v in got.items() if k != "meta"}
+    body["meta"] = {k: v for k, v in got.get("meta", {}).items() if k != "mirror"}
+    leaks = leak_problems(store, json.dumps(body, default=str))
+    checks.append(_check("mirror privacy", FAIL if leaks else OK,
+                         "; ".join(leaks) if leaks else "no local path, private remote or credential"))
+    return checks
 
 
 

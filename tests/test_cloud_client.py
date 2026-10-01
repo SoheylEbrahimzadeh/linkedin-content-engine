@@ -332,3 +332,50 @@ def test_sync_refuses_a_snapshot_containing_the_private_remote(store, monkeypatc
     monkeypatch.setattr(snapmod, "build_snapshot", fake)
     with pytest.raises(CloudError, match="private repository URL"):
         cloud.sync_payload(store)
+
+
+class MirrorWorker:
+    """Stores PUT /pipeline like D1 and returns it on GET with mirror metadata."""
+
+    def __init__(self, tamper=None):
+        self.row, self.tamper = None, tamper
+
+    def request(self, method, url, headers, body):
+        import hashlib
+
+        if method == "PUT" and url.endswith("/api/pipeline"):
+            self.row = body
+            return CloudResponse(200, {"stored": True, "bytes": len(body),
+                                       "sha256": hashlib.sha256(body).hexdigest()})
+        if method == "GET" and url.endswith("/api/pipeline"):
+            snap = json.loads(self.row)
+            sha = hashlib.sha256(self.row).hexdigest()
+            if self.tamper:
+                snap, sha = self.tamper(snap, sha)
+            snap["meta"]["mirror"] = {"sha256": sha, "received_at": "2026-10-01T00:00:00+00:00",
+                                      "received_by": "lce-gh-actions"}
+            return CloudResponse(200, snap)
+        return CloudResponse(404, {"error": "not found"})
+
+
+def test_sync_verify_reads_the_mirror_back(store):
+    out = cloud.sync(store, CloudClient("https://lce.example", lambda: ACCESS, MirrorWorker()), verify=True)
+    assert [c["status"] for c in out["checks"]] == ["ok", "ok", "ok"], out["checks"]
+
+
+def test_sync_verify_detects_a_different_row_and_a_leak(store):
+    def other_sha(snap, sha):
+        return snap, "0" * 64
+
+    out = cloud.sync(store, CloudClient("https://lce.example", lambda: ACCESS, MirrorWorker(other_sha)),
+                     verify=True)
+    assert {c["check"]: c["status"] for c in out["checks"]}["mirror stored"] == "fail"
+
+    def leaky(snap, sha):
+        snap["posts"] = snap.get("posts", []) + [{"post_id": "x", "note": str(store.root)}]
+        return snap, sha
+
+    out = cloud.sync(store, CloudClient("https://lce.example", lambda: ACCESS, MirrorWorker(leaky)),
+                     verify=True)
+    by = {c["check"]: c["status"] for c in out["checks"]}
+    assert by["mirror privacy"] == "fail" and by["mirror content"] == "fail"
