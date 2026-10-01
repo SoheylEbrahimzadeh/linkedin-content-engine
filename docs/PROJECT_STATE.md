@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-10-01 (engine PRs #19–#41, lce-data PRs #1–#12; LCE-001…030)_
+_Last updated: 2026-10-01 (engine PRs #19–#45, lce-data PRs #1–#17; LCE-001…033)_
 
 ## Objective
 
@@ -139,7 +139,34 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   production (same sha256 and posts, no leaks).
 - LCE-030: `keep_vars = true`, so dashboard variables survive Workers Builds deploys.
 
-**Authenticated path (LCE-029, lce-data `cloud-sync` on `bbd4380`, after the owner
+- LCE-031 (PR #43): every deploy carries the public Access identifiers
+  (`[vars]` `LCE_ACCESS_TEAM_DOMAIN` / `LCE_ACCESS_AUD`, read from the login
+  redirect); the Worker uses the `ACCESS_*` secret pair when both are set.
+- LCE-032 (PR #44): the Worker applies pending D1 migrations on request
+  (`POST /api/migrations`, Access + CLI header + typed phrase), recorded in
+  Wrangler's `d1_migrations`; `lce cloud migrate [--apply]`.
+- LCE-033: doctor treats an unconfigured schedule as a setup step; the private
+  workflow sends timezone/cadence with `lce cloud configure` (never the kill
+  switch or a token).
+
+**LCE-029 VERIFIED — authenticated production path end to end (lce-data
+`cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →
+Worker → D1 → cloud-sync → dashboard):**
+- doctor (before): `/api/health` 200 through Access; Access authenticated
+  (Worker JWT verification); migrations: none applied, 0001–0003 pending.
+- `lce cloud migrate --apply`: applied 0001_init, 0002_images, 0003_pipeline;
+  pending none (production D1 `lce`, existing database, no new one).
+- `lce cloud sync --verify`: D1 row sha256 `128e80321116…` equals the upload;
+  1 post and 2 research items read back; no local path, private remote or
+  credential in the stored snapshot.
+- doctor (after): migrations 0001–0003 applied; schema present; pipeline mirror
+  synced 2026-10-01T12:40:21Z; `/`, `/pipeline/` and its config load through
+  Access. Open owner steps: LinkedIn config + token; kill switch stays OFF.
+- Unauthenticated: every path refused by Access (302 login redirect).
+- Not checkable from GitHub: the D1 database ID (no Cloudflare API credential);
+  the binding resolves the database named `lce`.
+
+**Earlier authenticated attempt (LCE-029, lce-data `cloud-sync` on `bbd4380`, after the owner
 fixed the Access policies):** the service token now passes Cloudflare Access and
 the Worker answers **`/api/health` 200 through Access** (VERIFIED). The Worker then
 reports **"Cloudflare Access is not configured"**: `ACCESS_TEAM_DOMAIN` /
@@ -192,16 +219,17 @@ See GitHub; merged when green (no holds).
 
 ## Next unblocked work
 
-1. **Owner:** on the production Worker `linkedin-content-engine` → Settings →
-   Variables and Secrets, add as type **Secret**: `ACCESS_TEAM_DOMAIN` =
-   `small-wood-2de3.cloudflareaccess.com` and `ACCESS_AUD` = the "LinkedIn
-   Content Engine" application's AUD tag (starts with `2e41a088ef87`). (Or
-   `cd cloud && npx wrangler secret put ACCESS_TEAM_DOMAIN` / `ACCESS_AUD`.)
-2. Then any push to lce-data (or its daily run) re-runs smoke → doctor →
-   `sync --verify` → doctor; annotations show snapshot, schema 0001–0003,
-   dashboards and the D1 round trip.
-3. Migrations if doctor reports them missing; then the LinkedIn token and
-   [LIVE_TEST.md](LIVE_TEST.md).
+The cloud path is verified up to publishing. Remaining gates:
+
+1. **LinkedIn credential (owner):** LinkedIn developer app (Share on LinkedIn +
+   OpenID Connect), `config/linkedin.yaml` (api_version, person_urn via
+   `lce linkedin whoami`), and the Worker secret `LINKEDIN_TOKEN`
+   (`npx wrangler secret put LINKEDIN_TOKEN`). The private workflow then sends the
+   LinkedIn settings with `lce cloud configure` and doctor shows provider/token ✓.
+2. **First live post (live gate, 4D):** [LIVE_TEST.md](LIVE_TEST.md), only with the
+   owner's explicit approval.
+3. **Content:** PUBLIC stories for experience-based themes; drafting resumes on
+   the owner's go-ahead.
 
 ## Housekeeping
 
