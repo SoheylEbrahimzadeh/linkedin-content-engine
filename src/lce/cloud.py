@@ -503,6 +503,26 @@ def _check(name: str, status: str, detail: str, action: str = "") -> dict:
     return {"check": name, "status": status, "detail": detail, "action": action}
 
 
+def _migrations_check(transport: CloudTransport, base: str, credential) -> dict:
+    """D1 schema by migration name, read from the Worker (GET /api/migrations)."""
+    r = transport.request("GET", f"{base}/api/migrations",
+                          {**access_headers(credential), "x-lce-client": "cli"}, None)
+    if r.status != 200:
+        return _check("migrations", FAIL, f"/api/migrations HTTP {r.status} "
+                      f"{r.body.get('error') or r.body.get('_raw') or ''}".strip())
+    applied, pending = r.body.get("applied", []), r.body.get("pending", [])
+    detail = f"applied: {', '.join(applied) or 'none'}; pending: {', '.join(pending) or 'none'}"
+    return _check("migrations", ACTION if pending else OK, detail,
+                  "lce cloud migrate --apply (or wrangler d1 migrations apply lce --remote)"
+                  if pending else "")
+
+
+def migrate(client: CloudClient, apply: bool = False) -> dict:
+    if not apply:
+        return client.call("GET", "/migrations")
+    return client.call("POST", "/migrations", {"confirm": "APPLY MIGRATIONS"})
+
+
 def doctor(store: DataStore, transport: CloudTransport | None = None,
            token: Callable[[], str | dict[str, str]] | None = None,
            today: date | None = None, probe: StatusTransport | None = None) -> list[dict]:
@@ -566,11 +586,11 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
                              "the Access token does not match ACCESS_AUD / team; check both secrets")]
     if snap.status == 503 and "schema" in err:
         return out + [_check("access", OK, "authenticated"),
-                      _check("database", ACTION, err,
-                             "cd cloud && npx wrangler d1 migrations apply lce --remote")]
+                      _migrations_check(transport, base, credential)]
     if snap.status != 200:
         return out + [_check("snapshot", FAIL, f"HTTP {snap.status} {err}".strip())]
     out.append(_check("access", OK, "authenticated"))
+    out.append(_migrations_check(transport, base, credential))
     pipe = transport.request("GET", f"{base}/api/pipeline",
                              {**access_headers(credential), "x-lce-client": "cli"}, None)
     perr = str(pipe.body.get("error", ""))

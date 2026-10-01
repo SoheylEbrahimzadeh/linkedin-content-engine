@@ -850,6 +850,16 @@ def cmd_cloud(args):
                 print(f"{'✓' if c['status'] == cloud.OK else '✗'} {c['check']}: {c['detail']}")
             if any(c["status"] != cloud.OK for c in checks):
                 return 2
+    elif args.sub == "migrate":
+        out = cloud.migrate(client, apply=args.apply)
+        if args.apply:
+            print(f"✓ applied now: {', '.join(out.get('applied_now', [])) or 'nothing pending'}")
+        print(f"applied: {', '.join(out.get('applied', [])) or 'none'}")
+        print(f"pending: {', '.join(out.get('pending', [])) or 'none'}")
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            print(f"::notice title=lce cloud migrate::applied now: {out.get('applied_now', [])} | "
+                  f"applied: {out.get('applied', [])} | pending: {out.get('pending', [])}")
+        return 1 if out.get("pending") else 0
     elif args.sub == "pull":
         for c in cloud.pull(store, client):
             print(f"✓ {c['post_id']} → {c['state']} (mirrored)")
@@ -1135,6 +1145,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--api-base", help="Worker URL (default: $LCE_API_BASE, then config/cloud.yaml)")
     p.add_argument("--wait", type=int, default=0, help="seconds to wait for /api/health (deploys)")
     gcmd(g, "pull", cmd_cloud, "mirror cloud outcomes into local posts")
+    p = gcmd(g, "migrate", cmd_cloud, "D1 migration status; --apply applies pending migrations")
+    p.add_argument("--apply", action="store_true",
+                   help="apply pending migrations through the Worker (sends the typed phrase)")
     p = gcmd(g, "sync", cmd_cloud, "mirror the private pipeline to the cloud dashboard (read-only view)")
     p.add_argument("--verify", action="store_true",
                    help="read the mirror back: same sha256 and posts, no leaks")

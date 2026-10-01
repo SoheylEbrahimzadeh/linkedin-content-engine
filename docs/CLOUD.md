@@ -111,7 +111,15 @@ request is wall time, not CPU. Expected cost: €0/month.
 - Workers Builds runs `npx wrangler deploy` by default, which applies **no**
   D1 migrations. If they have not been applied, the cron reports
   `{"cron":"schema_missing"}` in the Worker logs and the API answers 503
-  "database schema missing". `wrangler.toml` has no `database_id`: Wrangler
+  "database schema missing". The Worker can also apply them itself (LCE-032):
+  `lce cloud migrate` shows applied/pending by name and `lce cloud migrate
+  --apply` sends `POST /api/migrations` (Access + CLI header + typed phrase
+  `APPLY MIGRATIONS`). It applies only pending files, each with its log row in
+  one D1 batch, records them in Wrangler's own `d1_migrations` table (so
+  `wrangler d1 migrations apply` later sees them as applied) and refuses with
+  409 when a table it would create already exists unrecorded. The private
+  repository's `cloud-sync` workflow runs it when doctor reports pending
+  migrations. `wrangler.toml` has no `database_id`: Wrangler
   resolves the existing database **by its name `lce`** in the account you are
   logged into (a placeholder id used to make `--remote` target a database that
   does not exist). Two ways to fix it (owner):
