@@ -32,6 +32,26 @@ class Worker:
         return CloudResponse(*(self.health if path == "/health" else self.snapshot))
 
 
+class Pages:
+    """Dashboard pages behind Access: 200 with the expected markers when credentials are sent."""
+
+    PAGES = {"/": b"<title>LCE Cloud Control Center</title>",
+             "/pipeline/": b"<title>LCE Control Center</title>",
+             "/pipeline/config.js": b'window.LCE_CONFIG = {"mode": "real", "snapshotUrl": "/api/pipeline"};'}
+
+    def __init__(self, code=200):
+        self.code, self.calls = code, []
+
+    def status(self, method, url, body=None, headers=None):
+        self.calls.append((url, dict(headers or {})))
+        return self.code, self.PAGES.get(url[len(BASE):], b"")
+
+
+@pytest.fixture(autouse=True)
+def fake_pages(monkeypatch):
+    monkeypatch.setattr(cloud, "StatusTransport", lambda: Pages())
+
+
 @pytest.fixture
 def configured(store):
     (store.root / "config" / "cloud.yaml").write_text(f"api_base: {BASE}\n")
@@ -212,3 +232,19 @@ def test_service_token_rejected_at_the_edge_names_the_policy(configured):
 
     by, _ = run(configured, Rejecting())
     assert by["worker"]["status"] == "fail" and "Service Auth policy" in by["worker"]["action"]
+
+
+def test_dashboard_pages_load_through_access(configured):
+    pages = Pages()
+    checks = cloud.doctor(configured, transport=Worker(), token=lambda: "fake.access.jwt",
+                          today=date(2026, 10, 1), probe=pages)
+    by = {c["check"]: c for c in checks}
+    assert by["dashboard"]["status"] == "ok"
+    assert {u for u, _ in pages.calls} == {f"{BASE}/", f"{BASE}/pipeline/", f"{BASE}/pipeline/config.js"}
+    assert all(h.get("cf-access-token") == "fake.access.jwt" for _, h in pages.calls)
+
+
+def test_dashboard_refused_behind_access_is_a_failure(configured):
+    checks = cloud.doctor(configured, transport=Worker(), token=lambda: "fake.access.jwt",
+                          today=date(2026, 10, 1), probe=Pages(code=403))
+    assert {c["check"]: c for c in checks}["dashboard"]["status"] == "fail"

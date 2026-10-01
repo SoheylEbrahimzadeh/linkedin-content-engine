@@ -303,3 +303,32 @@ def test_sync_refuses_a_snapshot_that_leaks_a_local_path(store, monkeypatch):
                         lambda s, **k: {**real(s, **k), "leak": str(s.root)})
     with pytest.raises(CloudError, match="local path"):
         cloud.sync_payload(store)
+
+
+@pytest.mark.parametrize("name", ["LCE_CF_ACCESS_CLIENT_SECRET", "GITHUB_TOKEN"])
+def test_sync_refuses_a_snapshot_containing_a_credential_value(store, monkeypatch, name):
+    from lce.dashboard import snapshot as snapmod
+
+    value = "s3cr3t-value-for-test-only"
+    monkeypatch.setenv(name, value)
+    real = snapmod.build_snapshot
+    monkeypatch.setattr(snapmod, "build_snapshot", lambda s, **k: {**real(s, **k), "x": value})
+    with pytest.raises(CloudError, match=name):
+        cloud.sync_payload(store)
+
+
+def test_sync_refuses_a_snapshot_containing_the_private_remote(store, monkeypatch):
+    from lce.dashboard import snapshot as snapmod
+
+    url = "https://github.com/example/private-data"
+    real = snapmod.build_snapshot
+
+    def fake(s, **k):
+        snap = real(s, **k)
+        snap["meta"]["data"]["git"] = {"remote": url + ".git", "head": "abc"}
+        snap["posts"] = [{"note": f"see {url}"}]
+        return snap
+
+    monkeypatch.setattr(snapmod, "build_snapshot", fake)
+    with pytest.raises(CloudError, match="private repository URL"):
+        cloud.sync_payload(store)
