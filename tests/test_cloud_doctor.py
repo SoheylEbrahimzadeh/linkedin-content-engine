@@ -255,10 +255,11 @@ GOOD_ID, GOOD_SECRET = "0" * 32 + ".access", "f" * 64
 
 @pytest.mark.parametrize("cid,secret,expected", [
     (GOOD_ID, GOOD_SECRET, "ok"),
-    ('"' + GOOD_ID + '"', GOOD_SECRET, "client id is not"),
-    ("CF-Access-Client-Id: " + GOOD_ID, GOOD_SECRET, "client id is not"),
+    ('"' + GOOD_ID + '"', GOOD_SECRET, "label or quotes were removed"),
+    ("CF-Access-Client-Id: " + GOOD_ID, GOOD_SECRET, "label or quotes were removed"),
+    ("Client ID: abc", GOOD_SECRET, "client id is not"),
     (GOOD_ID, GOOD_SECRET[:40], "client secret is not 64 hex"),
-    (GOOD_ID + "\n", GOOD_SECRET, "whitespace"),
+    (GOOD_ID + "\n", GOOD_SECRET, "ok"),
 ])
 def test_service_token_shape_is_checked_without_revealing_it(monkeypatch, cid, secret, expected):
     monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", cid)
@@ -292,3 +293,17 @@ def test_rejected_token_with_good_shape_points_at_the_policy(configured, monkeyp
     by = {c["check"]: c for c in checks}
     assert by["worker"]["status"] == "fail" and "Service Auth policy" in by["worker"]["action"]
     assert "login redirect" in by["worker"]["detail"] and GOOD_SECRET not in str(checks)
+
+
+def test_pasted_labels_are_removed_before_sending(monkeypatch):
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", "CF-Access-Client-Id: " + GOOD_ID)
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", "Client Secret: " + GOOD_SECRET)
+    assert cloud.default_access("https://x.example") == {
+        "CF-Access-Client-Id": GOOD_ID, "CF-Access-Client-Secret": GOOD_SECRET}
+
+
+def test_unrecognised_values_are_sent_unchanged(monkeypatch):
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", "something-else")
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", "label: not-hex")
+    assert cloud.default_access("https://x.example") == {
+        "CF-Access-Client-Id": "something-else", "CF-Access-Client-Secret": "label: not-hex"}

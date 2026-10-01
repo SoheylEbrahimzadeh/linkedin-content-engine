@@ -132,6 +132,32 @@ def access_token_from_cloudflared(api_base: str, runner=subprocess.run) -> str:
     return token
 
 
+_CLIENT_ID_RE = r"[0-9a-f]{32}\.access"
+_CLIENT_SECRET_RE = r"[0-9a-f]{64}"
+
+
+def _token_value(raw: str, pattern: str) -> tuple[str, bool]:
+    """The raw secret, or the value after a pasted label such as 'CF-Access-Client-Id: …'
+    or 'Client Secret: …' when that remainder has Cloudflare's exact format.
+    Returns (value, label_removed)."""
+    import re
+
+    value = raw.strip().strip("'\"").strip()
+    if re.fullmatch(pattern, value):
+        return value, value != raw.strip()
+    if ":" in value:
+        rest = value.rsplit(":", 1)[1].strip().strip("'\"").strip()
+        if re.fullmatch(pattern, rest):
+            return rest, True
+    return raw.strip(), False
+
+
+def _service_token() -> tuple[str, str]:
+    cid, _ = _token_value(os.environ.get("LCE_CF_ACCESS_CLIENT_ID", ""), _CLIENT_ID_RE)
+    secret, _ = _token_value(os.environ.get("LCE_CF_ACCESS_CLIENT_SECRET", ""), _CLIENT_SECRET_RE)
+    return cid, secret
+
+
 def default_access(api_base: str) -> str | dict[str, str]:
     """Credentials for Cloudflare Access, never stored by the engine.
 
@@ -140,8 +166,7 @@ def default_access(api_base: str) -> str | dict[str, str]:
     it at the edge and forwards a signed JWT to the Worker. Otherwise the
     owner's cloudflared login token is used.
     """
-    cid = os.environ.get("LCE_CF_ACCESS_CLIENT_ID", "").strip()
-    secret = os.environ.get("LCE_CF_ACCESS_CLIENT_SECRET", "").strip()
+    cid, secret = _service_token()
     if cid and secret:
         return {"CF-Access-Client-Id": cid, "CF-Access-Client-Secret": secret}
     if cid or secret:
@@ -158,18 +183,22 @@ def service_token_format() -> str | None:
     """
     import re
 
-    cid = os.environ.get("LCE_CF_ACCESS_CLIENT_ID", "")
-    secret = os.environ.get("LCE_CF_ACCESS_CLIENT_SECRET", "")
-    if not cid.strip() and not secret.strip():
+    raw_id = os.environ.get("LCE_CF_ACCESS_CLIENT_ID", "")
+    raw_secret = os.environ.get("LCE_CF_ACCESS_CLIENT_SECRET", "")
+    if not raw_id.strip() and not raw_secret.strip():
         return None
+    cid, id_label = _token_value(raw_id, _CLIENT_ID_RE)
+    secret, secret_label = _token_value(raw_secret, _CLIENT_SECRET_RE)
     problems = []
-    if not re.fullmatch(r"[0-9a-f]{32}\.access", cid.strip()):
-        problems.append(f"client id is not '<32 hex>.access' ({len(cid.strip())} chars)")
-    if not re.fullmatch(r"[0-9a-f]{64}", secret.strip()):
-        problems.append(f"client secret is not 64 hex characters ({len(secret.strip())} chars)")
-    if cid != cid.strip() or secret != secret.strip():
-        problems.append("surrounding whitespace (ignored when sent)")
-    return "; ".join(problems) or "ok"
+    if not re.fullmatch(_CLIENT_ID_RE, cid):
+        problems.append(f"client id is not '<32 hex>.access' ({len(cid)} chars)")
+    if not re.fullmatch(_CLIENT_SECRET_RE, secret):
+        problems.append(f"client secret is not 64 hex characters ({len(secret)} chars)")
+    if problems:
+        return "; ".join(problems)
+    if id_label or secret_label:
+        return "ok (a pasted label or quotes were removed before sending)"
+    return "ok"
 
 
 def access_headers(credential: str | dict[str, str]) -> dict[str, str]:
@@ -475,14 +504,14 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
         if health.status != 200 or health.body.get("ok") is not True:
             why = health.body.get("_raw") or f"HTTP {health.status}"
             shape = service_token_format()
-            if shape not in (None, "ok"):
+            if shape is not None and not shape.startswith("ok"):
                 return out + [_check("worker", FAIL, f"/api/health with credentials: {why}"),
                               _check("service token format", FAIL, shape,
                                      "re-enter both GitHub secrets: the raw Client ID and Client "
                                      "Secret values only, no quotes or header names")]
             hint = ("service token format ok, so Access does not accept it for this application: "
                     "check that the Service Auth policy includes this service token and is attached "
-                    "to the application that covers this hostname" if shape == "ok" else
+                    "to the application that covers this hostname" if shape and shape.startswith("ok") else
                     "Access did not let the credential through: for a service token check the "
                     "Service Auth policy on the Worker's Access application; for cloudflared run "
                     f"cloudflared access login {base} again")
