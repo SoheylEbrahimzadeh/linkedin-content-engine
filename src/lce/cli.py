@@ -779,7 +779,9 @@ def cmd_linkedin_whoami(args):
 def _annotate(tool: str, checks: list[dict]) -> None:
     """In GitHub Actions, one notice line with every result (readable via the checks API)."""
     if os.environ.get("GITHUB_ACTIONS") == "true":
-        summary = " | ".join(f"{c['status']}: {c['check']} ({c['detail']})" for c in checks)
+        summary = " | ".join(f"{c['status']}: {c['check']} ({c['detail']})"
+                             + (f" → {c['action']}" if c["status"] != "ok" and c["action"] else "")
+                             for c in checks)
         print(f"::notice title={tool}::{summary}")
 
 

@@ -60,12 +60,23 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _access_app(location: str) -> str:
+    """Which Access application answered: team host and the AUD tag (`kid`) from the
+    login redirect. Both are sent to every unauthenticated visitor; not secrets."""
+    from urllib.parse import parse_qs, urlparse
+
+    u = urlparse(location)
+    kid = (parse_qs(u.query).get("kid") or [""])[0]
+    team = u.hostname or "?"
+    return f" [application: {team}, AUD {kid[:12]}…]" if kid else f" [application: {team}]"
+
+
 def classify_refusal(status: int, body: bytes, location: str = "") -> str:
     """Short, credential-free reason for a refused request (Cloudflare edge vs Worker)."""
     import re
 
     if "cloudflareaccess.com" in location:
-        return "Cloudflare Access login redirect (credential not accepted)"
+        return "Cloudflare Access login redirect (credential not accepted)" + _access_app(location)
     text = body[:2048].decode("utf-8", "replace")
     m = re.search(r"error code:\s*(\d+)", text)
     if m:

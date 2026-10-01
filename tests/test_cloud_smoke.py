@@ -122,3 +122,11 @@ def test_the_json_transport_does_not_follow_redirects():
     t = cloud.UrllibCloudTransport()
     handler = next(h for h in t.opener.handlers if isinstance(h, urllib.request.HTTPRedirectHandler))
     assert handler.redirect_request(None, None, 302, "Found", {}, "https://login.example") is None
+
+
+def test_access_redirect_names_the_application():
+    loc = ("https://team.cloudflareaccess.com/cdn-cgi/access/login/x.workers.dev?kid="
+           + "ab" * 32 + "&redirect_url=%2Fapi%2Fhealth")
+    out = cloud.classify_refusal(302, b"", loc)
+    assert "team.cloudflareaccess.com" in out and "AUD abababababab…" in out
+    assert "ab" * 32 not in out
