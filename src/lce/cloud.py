@@ -47,19 +47,70 @@ class CloudTransport(Protocol):
                 body: bytes | None) -> CloudResponse: ...
 
 
+def _user_agent() -> str:
+    from lce import __version__
+
+    # An explicit agent: Cloudflare's Browser Integrity Check refuses the default
+    # "Python-urllib/x.y" with 403 (error 1010) before Access or the Worker see it.
+    return f"lce-cli/{__version__} (linkedin-content-engine)"
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        return None
+
+
+def classify_refusal(status: int, body: bytes, location: str = "") -> str:
+    """Short, credential-free reason for a refused request (Cloudflare edge vs Worker)."""
+    import re
+
+    if "cloudflareaccess.com" in location:
+        return "Cloudflare Access login redirect (credential not accepted)"
+    text = body[:2048].decode("utf-8", "replace")
+    m = re.search(r"error code:\s*(\d+)", text)
+    if m:
+        code = m.group(1)
+        return {"1010": "Cloudflare Browser Integrity Check refused the client (error 1010)",
+                "1020": "Cloudflare WAF rule blocked the request (error 1020)"}.get(
+            code, f"Cloudflare error {code}")
+    try:  # the Worker answers JSON; check it before any text marker
+        err = json.loads(text).get("error")
+        if err:
+            return f"Worker: {err}"
+    except (ValueError, AttributeError):
+        pass
+    if "cloudflareaccess" in text or "Cloudflare Access" in text:
+        return "Cloudflare Access refused the request"
+    snippet = " ".join(re.sub(r"<[^>]+>", " ", text).split())[:80]
+    return f"HTTP {status}" + (f": {snippet}" if snippet else "")
+
+
 class UrllibCloudTransport:
+    def __init__(self):
+        self.opener = urllib.request.build_opener(_NoRedirect())
+
     def request(self, method, url, headers, body):
         if not url.startswith("https://"):
             raise CloudError("the cloud API must use https")
-        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        req = urllib.request.Request(url, data=body, method=method,
+                                     headers={"User-Agent": _user_agent(), **headers})
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-                return CloudResponse(resp.status, json.loads(resp.read() or b"{}"))
+            with self.opener.open(req, timeout=30) as resp:  # noqa: S310
+                raw = resp.read()
+                try:
+                    return CloudResponse(resp.status, json.loads(raw or b"{}"))
+                except ValueError:
+                    return CloudResponse(resp.status, {"_raw": classify_refusal(resp.status, raw)})
         except urllib.error.HTTPError as exc:
+            raw = exc.read() or b""
             try:
-                data = json.loads(exc.read() or b"{}")
+                data = json.loads(raw or b"{}")
             except ValueError:
                 data = {}
+            if not isinstance(data, dict):
+                data = {}
+            if exc.code >= 300 and "error" not in data:
+                data["_raw"] = classify_refusal(exc.code, raw, exc.headers.get("Location", ""))
             return CloudResponse(exc.code, data)
         except OSError as exc:
             raise CloudError(f"cloud API unreachable: {type(exc).__name__}") from exc
@@ -399,7 +450,8 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
     if edge:
         health = transport.request("GET", f"{base}/api/health", access_headers(credential), None)
         if health.status != 200 or health.body.get("ok") is not True:
-            return out + [_check("worker", FAIL, f"/api/health with credentials: HTTP {health.status}",
+            why = health.body.get("_raw") or f"HTTP {health.status}"
+            return out + [_check("worker", FAIL, f"/api/health with credentials: {why}",
                                  "Access did not let the credential through: check the service "
                                  "token's Service Auth policy on the Worker's Access application")]
         out.append(_check("worker", OK, "/api/health 200 through Cloudflare Access"))
@@ -524,11 +576,6 @@ PROTECTED = [("GET", "/", None), ("GET", "/pipeline/", None), ("GET", "/api/snap
              ("POST", "/api/consents", {}), ("PUT", "/api/pipeline", {"schema": 1, "meta": {"mode": "real"}})]
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):  # noqa: ANN002, ANN003
-        return None
-
-
 class StatusTransport:
     """HTTPS status probe: no redirects, no credentials, body ignored."""
 
@@ -542,12 +589,15 @@ class StatusTransport:
             raise CloudError("the cloud API must use https")
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, method=method, headers={
-            "content-type": "application/json", "x-lce-client": "cli", **(headers or {})})
+            "User-Agent": _user_agent(), "content-type": "application/json", "x-lce-client": "cli",
+            **(headers or {})})
+        self.last_location = ""
         try:
             with self.opener.open(req, timeout=self.timeout) as resp:  # noqa: S310
                 return resp.status, resp.read(4096)
         except urllib.error.HTTPError as exc:
-            return exc.code, b""
+            self.last_location = exc.headers.get("Location", "")
+            return exc.code, exc.read(4096) or b""
         except OSError as exc:
             raise CloudError(f"cloud API unreachable: {type(exc).__name__}") from exc
 
@@ -581,7 +631,7 @@ def smoke(api_base: str, transport: StatusTransport | None = None, *, wait_secon
                        "check the Workers Builds deploy and the URL")]
     for method, path, payload in PROTECTED:
         try:
-            status, _ = t.status(method, f"{base}{path}", payload)
+            status, refused_body = t.status(method, f"{base}{path}", payload)
         except CloudError as exc:
             out.append(_check(f"{method} {path}", FAIL, str(exc)))
             continue
@@ -589,5 +639,6 @@ def smoke(api_base: str, transport: StatusTransport | None = None, *, wait_secon
             out.append(_check(f"{method} {path}", FAIL, f"HTTP {status} without credentials",
                               "the Worker must refuse unauthenticated requests: check Access"))
         else:
-            out.append(_check(f"{method} {path}", OK, f"refused without credentials ({status})"))
+            reason = classify_refusal(status, refused_body, getattr(t, "last_location", ""))
+            out.append(_check(f"{method} {path}", OK, f"refused without credentials ({status}; {reason})"))
     return out
