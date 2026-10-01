@@ -16,6 +16,8 @@ class Probe:
     def status(self, method, url, body=None):
         self.calls.append((method, url, body))
         path = url[len(BASE):]
+        if path == "/privacy" and (method, path) not in self.overrides:
+            return 200, b"<!doctype html><h1>Privacy Policy \xe2\x80\x94 LinkedIn Content Engine</h1>"
         if path == "/api/health":
             if self.fail_times:
                 self.fail_times -= 1
@@ -32,7 +34,7 @@ def by(checks):
 def test_fail_closed_worker_passes(protected):
     checks = cloud.smoke(BASE, Probe(protected=protected))
     assert all(c["status"] == "ok" for c in checks), checks
-    assert len(checks) == 1 + len(cloud.PROTECTED)
+    assert len(checks) == 2 + len(cloud.PROTECTED)
 
 
 def test_any_unauthenticated_2xx_is_a_failure():
@@ -131,3 +133,13 @@ def test_access_redirect_names_the_application():
     assert "team.cloudflareaccess.com" in out and f"AUD {'ab' * 32}" in out
     assert "redirect_url" not in out
     assert "AUD" not in cloud.classify_refusal(302, b"", loc.replace("ab" * 32, "not-hex"))
+
+
+def test_public_privacy_policy_states():
+    by_ok = by(cloud.smoke(BASE, Probe()))
+    assert by_ok["public privacy policy"]["status"] == "ok"
+    behind = by(cloud.smoke(BASE, Probe(overrides={("GET", "/privacy"): 302})))
+    assert behind["public privacy policy"]["status"] == "action"
+    assert "Bypass" in behind["public privacy policy"]["action"]
+    missing = by(cloud.smoke(BASE, Probe(overrides={("GET", "/privacy"): 404})))
+    assert missing["public privacy policy"]["status"] == "fail"

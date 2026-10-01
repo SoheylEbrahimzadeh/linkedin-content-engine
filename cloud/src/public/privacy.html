@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Privacy Policy — LinkedIn Content Engine</title>
+  <style>
+    body { font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 46rem; margin: 2rem auto;
+           padding: 0 1rem; color: #1b1f24; background: #fff; }
+    h1 { font-size: 1.6rem; } h2 { font-size: 1.15rem; margin-top: 2rem; }
+    code { font-size: .9em; } .muted { color: #57606a; }
+    @media (prefers-color-scheme: dark) { body { color: #e6edf3; background: #0d1117; } .muted { color: #8b949e; } }
+  </style>
+</head>
+<body>
+<h1>Privacy Policy — LinkedIn Content Engine</h1>
+<p class="muted">Last updated: 1 October 2026</p>
+
+<h2>1. What this application is</h2>
+<p>LinkedIn Content Engine is a personal, open-source tool
+(<a href="https://github.com/SoheylEbrahimzadeh/linkedin-content-engine">source code</a>) operated by a single
+owner, GitHub user <strong>SoheylEbrahimzadeh</strong>, to plan, review and publish posts on the owner's
+<em>own</em> LinkedIn member profile. It is not offered to other users, does not create accounts for anyone,
+and does not access other members' data.</p>
+
+<h2>2. LinkedIn data the application uses</h2>
+<ul>
+  <li><strong>OAuth access token.</strong> The owner creates a LinkedIn access token with the scopes
+    <code>openid</code>, <code>profile</code> and <code>w_member_social</code>. The token is used only to call
+    LinkedIn's official APIs on the owner's behalf. No refresh token is used. The token is stored only as an
+    encrypted Cloudflare Worker secret (or, when publishing from the owner's computer, in the macOS Keychain).
+    It is never written to the database, to logs, to source code or to any API response.</li>
+  <li><strong>Profile identifier.</strong> To publish as the owner, the application reads the OpenID Connect
+    <code>/v2/userinfo</code> endpoint once to obtain the owner's member identifier and derives the person URN
+    (<code>urn:li:person:…</code>). The URN is stored in the application's configuration. The name returned by
+    that endpoint is shown to the owner during the lookup and is not stored.</li>
+  <li><strong>Posts.</strong> The application sends the text of a post the owner has explicitly approved to
+    LinkedIn's Posts API, and records LinkedIn's response: the post identifier (URN), its URL when available,
+    the time and the outcome.</li>
+  <li><strong>Images.</strong> If an approved post has an image, the image file the owner approved is uploaded
+    through LinkedIn's Images API and referenced in the post.</li>
+</ul>
+<p>The application does not read the owner's feed, connections, messages, other members' profiles or
+posts, and does not use LinkedIn data for advertising, profiling or any purpose other than publishing the
+owner's own approved posts. Engagement figures, if recorded at all, are entered by the owner manually.</p>
+
+<h2>3. Where data is processed and stored</h2>
+<ul>
+  <li><strong>Cloudflare Workers and D1</strong> (this site). The Worker stores, in a Cloudflare D1 database:
+    scheduling settings (time zone, cadence, LinkedIn API version, person URN, token expiry date, the
+    publish switch), posts the owner approved and scheduled (text, approved image up to 1.5&nbsp;MB, alt
+    text, content hashes), scheduling consents, publication records, an audit log of actions with the
+    identity of the person or service that performed them, and a read-only copy of the owner's planning
+    dashboard (drafts, research notes with sources, calendar and quality checks).</li>
+  <li><strong>Cloudflare Access</strong> protects the dashboard and API: only the owner (and an automated
+    service credential of the owner) can use them. Cloudflare Access sets its own authentication cookie
+    for signed-in sessions; this application sets no cookies and uses no analytics or tracking.</li>
+  <li><strong>GitHub.</strong> The owner's private GitHub repository holds the owner's own planning data,
+    and GitHub Actions in that repository update the dashboard copy and run read-only health checks through
+    Cloudflare Access. The public repository contains source code and fictional example data only.</li>
+  <li><strong>LinkedIn</strong> receives the approved posts and images described above.</li>
+</ul>
+<p>No data is sold or shared with anyone else.</p>
+
+<h2>4. Human approval and safety</h2>
+<p>Nothing is published automatically because a draft was generated or a schedule fired. Every post must be
+approved by the owner against the exact approved text (and image); the cloud publisher only publishes a
+post the owner explicitly scheduled, only while the owner's publish switch is on, and refuses if the text
+or image changed after approval.</p>
+
+<h2>5. Retention and deletion</h2>
+<ul>
+  <li>Scheduling records, publication records and the audit log are kept in D1 until the owner deletes them.
+    The dashboard copy is a single record that is replaced on every update.</li>
+  <li>The LinkedIn access token expires after LinkedIn's validity period (60 days) and is not renewed
+    automatically. The owner can revoke the application's access at any time in LinkedIn's
+    <em>Settings &rarr; Data privacy &rarr; Permitted services</em>, and can delete the Worker secret and the
+    D1 data in Cloudflare.</li>
+  <li>Posts already published on LinkedIn are governed by LinkedIn's own policies and can be deleted on
+    LinkedIn.</li>
+</ul>
+
+<h2>6. Security</h2>
+<p>All traffic uses HTTPS. The dashboard and API refuse every request that does not carry a valid Cloudflare
+Access identity (fail-closed). Credentials are kept only in encrypted secret stores, never in the database
+or source code, and the source repository is scanned for secrets on every change.</p>
+
+<h2>7. Contact</h2>
+<p>Questions or requests about this policy: the application owner, GitHub user
+<a href="https://github.com/SoheylEbrahimzadeh">SoheylEbrahimzadeh</a>, through the project repository
+<a href="https://github.com/SoheylEbrahimzadeh/linkedin-content-engine">github.com/SoheylEbrahimzadeh/linkedin-content-engine</a>
+(security issues: the repository's private vulnerability reporting).</p>
+
+<h2>8. Changes</h2>
+<p>Changes to this policy are published on this page with a new date; its history is in the public
+repository.</p>
+</body>
+</html>

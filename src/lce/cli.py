@@ -794,8 +794,9 @@ def cmd_cloud(args):
             base = cloud.load_cloud_config(_store(args))["api_base"]
         checks = cloud.smoke(base, wait_seconds=args.wait)
         _annotate("lce cloud smoke", checks)
+        marks = {cloud.OK: "✓", cloud.ACTION: "→", cloud.FAIL: "✗"}
         for c in checks:
-            print(f"{'✓' if c['status'] == cloud.OK else '✗'} {c['check']}: {c['detail']}"
+            print(f"{marks[c['status']]} {c['check']}: {c['detail']}"
                   + (f"\n    {c['action']}" if c["action"] else ""))
         return 2 if any(c["status"] == cloud.FAIL for c in checks) else 0
     store = _store(args)

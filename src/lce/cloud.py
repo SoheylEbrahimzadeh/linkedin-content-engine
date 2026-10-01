@@ -792,6 +792,20 @@ def smoke(api_base: str, transport: StatusTransport | None = None, *, wait_secon
     else:
         return [_check("worker", FAIL, last_err or f"/api/health answered HTTP {code}",
                        "check the Workers Builds deploy and the URL")]
+    try:  # the one public page (LinkedIn Developer Portal must open it without a login)
+        code, page = t.status("GET", f"{base}/privacy")
+    except CloudError as exc:
+        code, page = 0, str(exc).encode()
+    if code == 200 and b"<h1>Privacy Policy" in page:
+        out.append(_check("public privacy policy", OK, f"{base}/privacy 200, policy served"))
+    elif code in (302, 401, 403):
+        out.append(_check("public privacy policy", ACTION,
+                          f"{base}/privacy is behind Cloudflare Access ({code}; "
+                          f"{classify_refusal(code, page, getattr(t, 'last_location', ''))})",
+                          "Zero Trust → Access → Applications: add an application for the path "
+                          "/privacy on this hostname with a Bypass policy (Include: Everyone)"))
+    else:
+        out.append(_check("public privacy policy", FAIL, f"{base}/privacy answered HTTP {code}"))
     for method, path, payload in PROTECTED:
         try:
             status, refused_body = t.status(method, f"{base}{path}", payload)
