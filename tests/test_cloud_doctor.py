@@ -332,7 +332,8 @@ NEW_SECRET = "cfast_" + "Ab3" * 16   # 2026-08-26 format: cfast_ + 40 alnum + 8 
 
 
 @pytest.mark.parametrize("raw", [NEW_SECRET, "CF-Access-Client-Secret: " + NEW_SECRET,
-                                 "Client Secret: " + NEW_SECRET + "\n"])
+                                 "Client Secret: " + NEW_SECRET + "\n"],
+                         ids=["bare", "header-label", "dashboard-label"])
 def test_new_cfast_secret_format_is_accepted(monkeypatch, raw):
     assert len(NEW_SECRET) == 54
     monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", "CF-Access-Client-Id: " + GOOD_ID)
