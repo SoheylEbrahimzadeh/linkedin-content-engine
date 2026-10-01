@@ -29,6 +29,9 @@ class Worker:
         path = url.split("/api", 1)[1]
         if path == "/pipeline":
             return CloudResponse(*self.pipeline)
+        if path == "/migrations":
+            return CloudResponse(*getattr(self, "migrations", (200, {
+                "applied": ["0001_init.sql", "0002_images.sql", "0003_pipeline.sql"], "pending": []})))
         return CloudResponse(*(self.health if path == "/health" else self.snapshot))
 
 
@@ -98,12 +101,12 @@ def test_rejected_access_token(configured):
 
 
 def test_missing_schema_names_the_migration_command(configured):
-    by, _ = run(configured, Worker(snapshot=(503, {"error": "database schema missing: apply "
-                                                             "cloud/migrations to D1"})))
+    w = Worker(snapshot=(503, {"error": "database schema missing: apply cloud/migrations to D1"}))
+    w.migrations = (200, {"applied": [], "pending": ["0001_init.sql"]})
+    by, _ = run(configured, w)
     assert by["access"]["status"] == "ok"
-    assert by["database"]["status"] == "action"
-    assert "migrations apply lce --remote" in by["database"]["action"]
-
+    assert by["migrations"]["status"] == "action"
+    assert "lce cloud migrate --apply" in by["migrations"]["action"]
 
 def test_fully_ready_cloud_passes_and_sends_no_mutation(configured):
     w = Worker()
@@ -342,3 +345,38 @@ def test_new_cfast_secret_format_is_accepted(monkeypatch, raw):
         "CF-Access-Client-Id": GOOD_ID, "CF-Access-Client-Secret": NEW_SECRET}
     assert cloud.service_token_format().startswith("ok")
     assert NEW_SECRET not in cloud.service_token_format()
+
+
+def test_migrations_are_reported_by_name(configured):
+    w = Worker(snapshot=(503, {"error": "database schema missing: apply cloud/migrations to D1"}))
+    every = ["0001_init.sql", "0002_images.sql", "0003_pipeline.sql"]
+    w.migrations = (200, {"applied": [], "pending": every})
+    by, _ = run(configured, w)
+    assert by["migrations"]["status"] == "action"
+    assert "pending: 0001_init.sql, 0002_images.sql, 0003_pipeline.sql" in by["migrations"]["detail"]
+    assert "lce cloud migrate --apply" in by["migrations"]["action"]
+    by, _ = run(configured, Worker())
+    assert by["migrations"]["status"] == "ok" and "pending: none" in by["migrations"]["detail"]
+
+
+def test_cli_migrate_status_and_apply(configured, monkeypatch, capsys):
+    from lce.cli import main
+
+    calls = []
+
+    class W(Worker):
+        def request(self, method, url, headers, body):
+            calls.append((method, url, body))
+            if method == "POST":
+                every = ["0001_init.sql", "0002_images.sql", "0003_pipeline.sql"]
+                return CloudResponse(200, {"applied_now": ["0003_pipeline.sql"], "pending": [],
+                                           "applied": every})
+            return CloudResponse(200, {"applied": ["0001_init.sql"], "pending": ["0002_images.sql"]})
+
+    monkeypatch.setenv("LCE_CF_ACCESS_TOKEN", "fake.access.jwt")
+    monkeypatch.setattr(cloud, "UrllibCloudTransport", lambda: W())
+    assert main(["--data-dir", str(configured.root), "cloud", "migrate"]) == 1
+    assert calls[-1][0] == "GET"
+    assert main(["--data-dir", str(configured.root), "cloud", "migrate", "--apply"]) == 0
+    assert calls[-1][0] == "POST" and b'"APPLY MIGRATIONS"' in calls[-1][2]
+    assert "applied now: 0003_pipeline.sql" in capsys.readouterr().out

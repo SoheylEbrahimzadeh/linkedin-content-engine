@@ -48,5 +48,5 @@ LCE_ACCESS_AUD = "2e41a088ef87997e12e9533d2c4860e95dfa8d5b329f6ac864657bef928ffe
 # Dashboard files are bundled as text and served by the Worker (no extra service).
 [[rules]]
 type = "Text"
-globs = ["**/*.html", "**/*.css", "**/*.txt"]
+globs = ["**/*.html", "**/*.css", "**/*.txt", "**/*.sql"]
 fallthrough = true

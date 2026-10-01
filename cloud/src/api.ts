@@ -5,6 +5,7 @@
 import { AuthError, verifyAccess, type CertsFetcher } from "./auth";
 import { event, isSchemaMissing, loadSettings, SETTING_KEYS, type ConsentRow, type Env, type PostRow } from "./db";
 import { isoUtc, loadSchedule, parseIsoUtc, ScheduleError, slotById, slotsBetween } from "./schedule";
+import { applyMigrations, MigrationConflict, migrationStatus } from "./migrations";
 import { contentHash, sha256Bytes } from "./text";
 
 const POST_ID_RE = /^\d{8}-[a-z0-9-]{1,56}$/;
@@ -71,6 +72,8 @@ export async function handleApi(request: Request, env: Env, now: number,
     let r: RegExpExecArray | null;
     if (request.method === "GET" && url.pathname === "/api/snapshot") return json(200, await snapshot(env, now));
     if (request.method === "GET" && url.pathname === "/api/pipeline") return await getPipeline(env);
+    if (request.method === "GET" && url.pathname === "/api/migrations") return json(200, await migrationStatus(env.DB));
+    if (request.method === "POST" && url.pathname === "/api/migrations") return json(200, await migrate(env, now, actor, await body(request)));
     if (request.method === "PUT" && url.pathname === "/api/pipeline") return json(200, await putPipeline(env, now, actor, request));
     if (request.method === "PUT" && (r = m(/^\/api\/posts\/([^/]+)$/))) return json(200, await pushPost(env, now, actor, r[1], await body(request)));
     if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/withdraw$/))) return json(200, await withdraw(env, now, actor, r[1], await body(request)));
@@ -84,6 +87,7 @@ export async function handleApi(request: Request, env: Env, now: number,
     if (err instanceof AuthError) return json(err.status, { error: err.message });
     if (err instanceof HttpError) return json(err.status, { error: err.message });
     if (err instanceof ScheduleError) return json(422, { error: err.message });
+    if (err instanceof MigrationConflict) return json(409, { error: err.message });
     if (isSchemaMissing(err)) return json(503, { error: "database schema missing: apply cloud/migrations to D1" });
     return json(500, { error: "internal error" });
   }
@@ -391,4 +395,15 @@ async function getPipeline(env: Env): Promise<Response> {
   snap.meta = { ...(snap.meta ?? {}), mirror: { received_at: row.received_at, received_by: row.received_by,
     sha256: row.sha256 } };
   return json(200, snap);
+}
+
+
+// ── LCE-032: apply pending D1 migrations (Access + CLI header + typed phrase) ──
+async function migrate(env: Env, now: number, actor: string, b: Record<string, unknown>) {
+  requirePhrase(b, "APPLY MIGRATIONS");
+  const applied = await applyMigrations(env.DB);
+  if (applied.length) {
+    await event(env.DB, now, "migrations.applied", actor, null, { applied }).run();
+  }
+  return { applied_now: applied, ...(await migrationStatus(env.DB)) };
 }
