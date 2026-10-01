@@ -62,13 +62,17 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def _access_app(location: str) -> str:
     """Which Access application answered: team host and the AUD tag (`kid`) from the
-    login redirect. Both are sent to every unauthenticated visitor; not secrets."""
+    login redirect. Cloudflare sends both to every unauthenticated visitor, so they
+    are public identifiers, not secrets; the Worker needs exactly these two values."""
+    import re
     from urllib.parse import parse_qs, urlparse
 
     u = urlparse(location)
     kid = (parse_qs(u.query).get("kid") or [""])[0]
     team = u.hostname or "?"
-    return f" [application: {team}, AUD {kid[:12]}…]" if kid else f" [application: {team}]"
+    if kid and re.fullmatch(r"[0-9a-f]{64}", kid):
+        return f" [application: {team}, AUD {kid}]"
+    return f" [application: {team}]"
 
 
 def classify_refusal(status: int, body: bytes, location: str = "") -> str:
