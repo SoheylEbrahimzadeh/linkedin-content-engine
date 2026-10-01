@@ -258,7 +258,7 @@ GOOD_ID, GOOD_SECRET = "0" * 32 + ".access", "f" * 64
     ('"' + GOOD_ID + '"', GOOD_SECRET, "label or quotes were removed"),
     ("CF-Access-Client-Id: " + GOOD_ID, GOOD_SECRET, "label or quotes were removed"),
     ("Client ID: abc", GOOD_SECRET, "client id is not"),
-    (GOOD_ID, GOOD_SECRET[:40], "client secret is not 64 hex"),
+    (GOOD_ID, GOOD_SECRET[:40], "client secret is neither"),
     (GOOD_ID + "\n", GOOD_SECRET, "ok"),
 ])
 def test_service_token_shape_is_checked_without_revealing_it(monkeypatch, cid, secret, expected):
@@ -324,5 +324,20 @@ def test_ambiguous_or_foreign_values_are_described_not_revealed(monkeypatch):
     monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", GOOD_ID)
     monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", GOOD_SECRET + " " + "e" * 64)
     shape = cloud.service_token_format()
-    assert "client secret is not 64 hex" in shape and "129 chars" in shape
+    assert "client secret is neither" in shape and "129 chars" in shape
     assert GOOD_SECRET not in shape and "e" * 20 not in shape
+
+
+NEW_SECRET = "cfast_" + "Ab3" * 16   # 2026-08-26 format: cfast_ + 40 alnum + 8 checksum
+
+
+@pytest.mark.parametrize("raw", [NEW_SECRET, "CF-Access-Client-Secret: " + NEW_SECRET,
+                                 "Client Secret: " + NEW_SECRET + "\n"])
+def test_new_cfast_secret_format_is_accepted(monkeypatch, raw):
+    assert len(NEW_SECRET) == 54
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", "CF-Access-Client-Id: " + GOOD_ID)
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", raw)
+    assert cloud.default_access("https://x.example") == {
+        "CF-Access-Client-Id": GOOD_ID, "CF-Access-Client-Secret": NEW_SECRET}
+    assert cloud.service_token_format().startswith("ok")
+    assert NEW_SECRET not in cloud.service_token_format()

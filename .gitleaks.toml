@@ -23,6 +23,12 @@ regex = '''\bapify_api_[A-Za-z0-9]{20,}\b'''
 tags = ["key", "apify"]
 
 [[rules]]
+id = "cloudflare-access-service-token-secret"
+description = "Cloudflare Access service token client secret (format since 2026-08-26)"
+regex = '''\bcfast_[A-Za-z0-9]{48}\b'''
+tags = ["key", "cloudflare"]
+
+[[rules]]
 id = "claude-oauth-token"
 description = "Claude subscription OAuth token"
 regex = '''\bsk-ant-oat\d{2}-[A-Za-z0-9_\-]{20,}\b'''

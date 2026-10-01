@@ -87,6 +87,7 @@ SECRET_RE = re.compile(
     r"|\bgithub_pat_[A-Za-z0-9_]{30,}|\bAKIA[0-9A-Z]{16}\b|\bpf_live_[A-Za-z0-9]{16,}"
     r"|\bapify_api_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----"
     r"|\b(?:AQ|AQV)[A-Za-z0-9_-]{60,}|\bBearer\s+[A-Za-z0-9._-]{20,}"
+    r"|\bcfast_[A-Za-z0-9]{48}\b"
 )
 CRED_URL_RE = re.compile(r"(https?://)[^/\s:@]+(?::[^/\s@]*)?@")
 
