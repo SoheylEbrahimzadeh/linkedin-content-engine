@@ -128,5 +128,6 @@ def test_access_redirect_names_the_application():
     loc = ("https://team.cloudflareaccess.com/cdn-cgi/access/login/x.workers.dev?kid="
            + "ab" * 32 + "&redirect_url=%2Fapi%2Fhealth")
     out = cloud.classify_refusal(302, b"", loc)
-    assert "team.cloudflareaccess.com" in out and "AUD abababababab…" in out
-    assert "ab" * 32 not in out
+    assert "team.cloudflareaccess.com" in out and f"AUD {'ab' * 32}" in out
+    assert "redirect_url" not in out
+    assert "AUD" not in cloud.classify_refusal(302, b"", loc.replace("ab" * 32, "not-hex"))
