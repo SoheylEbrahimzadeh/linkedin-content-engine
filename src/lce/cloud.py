@@ -552,8 +552,11 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
                              {**access_headers(credential), "x-lce-client": "cli"}, None)
     err = str(snap.body.get("error", ""))
     if snap.status == 503 and "Access" in err:
-        return out + [_check("access", ACTION, err, "set Worker secrets ACCESS_TEAM_DOMAIN and "
-                             "ACCESS_AUD (docs/CLOUD.md, current production state)")]
+        return out + [_check("access", ACTION, f"Worker: {err}",
+                             "the Worker has no ACCESS_TEAM_DOMAIN / ACCESS_AUD at runtime: add both "
+                             "on the production Worker (Settings → Variables and Secrets) as type "
+                             "Secret, or `npx wrangler secret put …` in cloud/; values are the Access "
+                             "team domain and the application's AUD tag")]
     if snap.status in (401, 403):
         return out + [_check("access", FAIL, f"HTTP {snap.status} {err}".strip(),
                              "the Access token does not match ACCESS_AUD / team; check both secrets")]

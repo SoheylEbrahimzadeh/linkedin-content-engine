@@ -128,5 +128,6 @@ def test_wrangler_config_has_no_account_identifiers_or_placeholders():
     body = "\n".join(line.split("#", 1)[0] for line in toml.splitlines())
     assert "database_id" not in body and "account_id" not in body
     assert 'database_name = "lce"' in body
+    assert "keep_vars = true" in body   # dashboard variables survive Workers Builds deploys
     assert "ACCESS_TEAM_DOMAIN" not in body and "ACCESS_AUD" not in body
     assert not re.search(r"\b[0-9a-f]{32}\b|[0-9a-f]{8}-[0-9a-f]{4}-", body)
