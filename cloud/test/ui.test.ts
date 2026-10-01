@@ -54,7 +54,7 @@ describe("remote dashboard", () => {
   });
 
   it("fails closed when Access is not configured", async () => {
-    const off = testEnv({ ACCESS_TEAM_DOMAIN: "", ACCESS_AUD: "" });
+    const off = testEnv({ ACCESS_TEAM_DOMAIN: "", ACCESS_AUD: "", LCE_ACCESS_TEAM_DOMAIN: "", LCE_ACCESS_AUD: "" });
     const r = await get("/", true, off);
     expect(r.status).toBe(503);
     expect(await r.text()).toContain("not configured");

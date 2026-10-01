@@ -34,10 +34,23 @@ description = "Claude subscription OAuth token"
 regex = '''\bsk-ant-oat\d{2}-[A-Za-z0-9_\-]{20,}\b'''
 tags = ["key", "anthropic"]
 
-[allowlist]
+[[allowlists]]
 description = "Placeholders in templates and docs"
 regexes = [
   '''sk_your_key_here''',
   '''pf_live_your_token_here''',
   '''apify_api_your_token_here''',
 ]
+
+# The Cloudflare Access application AUD of the production Worker is public (it is in
+# the login redirect sent to every visitor) and must be in wrangler.toml (LCE-031).
+# Exception scoped to the one rule that fires, that file AND that exact line shape.
+# (A global allowlist would skip the whole file: its paths ignore `condition`.)
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Public Cloudflare Access AUD in cloud/wrangler.toml"
+condition = "AND"
+paths = ['''cloud/wrangler\.toml''']
+regexTarget = "line"
+regexes = ['''LCE_ACCESS_AUD = "[0-9a-f]{64}"''']

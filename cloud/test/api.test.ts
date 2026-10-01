@@ -68,7 +68,8 @@ describe("authentication (Cloudflare Access)", () => {
     let fetched = false;
     const spy = async () => { fetched = true; return { keys: [jwk] }; };
     for (const bad of [{ ACCESS_TEAM_DOMAIN: "evil.example" }, { ACCESS_TEAM_DOMAIN: "x.cloudflareaccess.com/evil" },
-      { ACCESS_AUD: "not-a-64-hex-tag" }]) {
+      { ACCESS_AUD: "not-a-64-hex-tag" },
+      { ACCESS_TEAM_DOMAIN: "", ACCESS_AUD: "", LCE_ACCESS_TEAM_DOMAIN: "evil.example", LCE_ACCESS_AUD: "ab".repeat(32) }]) {
       const res = await handleApi(new Request("https://lce.example/api/snapshot",
         { headers: { "cf-access-jwt-assertion": await token() } }), testEnv(bad), NOW, spy);
       expect(res.status).toBe(503);
@@ -79,8 +80,20 @@ describe("authentication (Cloudflare Access)", () => {
     const env = testEnv({ ACCESS_TEAM_DOMAIN: ` ${TEAM}\n`, ACCESS_AUD: `${e.ACCESS_AUD!.toUpperCase()}\n` });
     expect((await call("GET", "/snapshot", undefined, undefined, env)).status).toBe(200);
   });
+  it("falls back to the public [vars] pair when the secrets are absent, never mixing them", async () => {
+    const vars = { ACCESS_TEAM_DOMAIN: "", ACCESS_AUD: "", LCE_ACCESS_TEAM_DOMAIN: TEAM, LCE_ACCESS_AUD: e.ACCESS_AUD! };
+    expect((await call("GET", "/snapshot", undefined, undefined, testEnv(vars))).status).toBe(200);
+    // only one secret set: the secret pair is incomplete, so the vars pair is used as a whole
+    const half = { ...vars, ACCESS_TEAM_DOMAIN: "other-team.cloudflareaccess.com" };
+    expect((await call("GET", "/snapshot", undefined, undefined, testEnv(half))).status).toBe(200);
+    // the secret pair wins when complete: a token for the vars pair is then refused
+    const secret = { ...vars, ACCESS_TEAM_DOMAIN: "other-team.cloudflareaccess.com", ACCESS_AUD: "cd".repeat(32) };
+    expect((await call("GET", "/snapshot", undefined, undefined, testEnv(secret))).status).toBe(401);
+    const none = { ...vars, LCE_ACCESS_TEAM_DOMAIN: "", LCE_ACCESS_AUD: "" };
+    expect((await call("GET", "/snapshot", undefined, undefined, testEnv(none))).status).toBe(503);
+  });
   it("fails closed without Access configuration", async () => {
-    const r = await call("GET", "/snapshot", undefined, undefined, testEnv({ ACCESS_AUD: "" }));
+    const r = await call("GET", "/snapshot", undefined, undefined, testEnv({ ACCESS_AUD: "", LCE_ACCESS_AUD: "" }));
     expect(r.status).toBe(503);
   });
   it.each([

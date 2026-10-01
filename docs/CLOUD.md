@@ -123,10 +123,15 @@ request is wall time, not CPU. Expected cost: €0/month.
     (`cloud/package.json`: applies pending migrations, then deploys). If the
     Builds token lacks D1 permission, that build fails visibly and nothing is
     deployed; fall back to the one-off command.
-- Cloudflare Access identifiers are **Worker secrets**, not `[vars]`. Wrangler
-  never deletes secrets on deploy; `keep_vars = true` (LCE-030) also keeps
-  dashboard plain-text variables, which earlier Builds deploys removed. Set them
-  once on the production Worker (owner), preferably as type *Secret*:
+- Cloudflare Access identifiers: the production application's team domain and
+  AUD are carried by every deploy as `[vars]` `LCE_ACCESS_TEAM_DOMAIN` /
+  `LCE_ACCESS_AUD` (LCE-031). Both are public: Cloudflare sends them to every
+  unauthenticated visitor in the login redirect. Dashboard variables were lost
+  twice, so the deploy now configures the Worker itself. The Worker still
+  verifies every request's Access JWT against them and fails closed (503) when
+  they are missing or malformed. To point the Worker at another application
+  without editing the file, set **both** Worker secrets (they take precedence;
+  Wrangler never deletes secrets on deploy):
   `npx wrangler secret put ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`)
   and `npx wrangler secret put ACCESS_AUD` (64-hex Application Audience tag),
   or add them as *Secret* variables in the Worker's dashboard settings. Missing
