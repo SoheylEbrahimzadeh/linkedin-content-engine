@@ -59,6 +59,7 @@ ALLOWED_EMAIL_DOMAINS = re.compile(
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 PHONE_RE = re.compile(r"(?<![\w.])\+\d{1,3}[\s-]?\(?\d{1,4}\)?(?:[\s-]?\d{2,4}){2,4}(?![\w.])")
 SECRET_SHAPES = re.compile(
+    r"\bcfast_[A-Za-z0-9]{48}\b|"
     r"sk-ant-[A-Za-z0-9_-]{10,}"
     r"|\bghp_[A-Za-z0-9]{30,}"
     r"|\bgithub_pat_[A-Za-z0-9_]{30,}"

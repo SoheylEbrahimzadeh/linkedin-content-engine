@@ -133,7 +133,9 @@ def access_token_from_cloudflared(api_base: str, runner=subprocess.run) -> str:
 
 
 _CLIENT_ID_RE = r"[0-9a-f]{32}\.access"
-_CLIENT_SECRET_RE = r"[0-9a-f]{64}"
+# Legacy secrets are 64 hex characters; secrets issued since 2026-08-26 are
+# "cfast_" + 40 alphanumeric characters + an 8-character checksum (54 in total).
+_CLIENT_SECRET_RE = r"(?:[0-9a-f]{64}|cfast_[A-Za-z0-9]{48})"
 
 
 def _token_value(raw: str, pattern: str) -> tuple[str, bool]:
@@ -146,7 +148,7 @@ def _token_value(raw: str, pattern: str) -> tuple[str, bool]:
     if re.fullmatch(pattern, value):
         return value, value != raw.strip()
     # Exactly one run with Cloudflare's format inside a pasted label or line.
-    found = re.findall(rf"(?<![0-9a-f.]){pattern}(?![0-9a-f])", value)
+    found = re.findall(rf"(?<![0-9A-Za-z_.]){pattern}(?![0-9A-Za-z_])", value)
     if len(found) == 1:
         return found[0], True
     return raw.strip(), False
@@ -191,9 +193,10 @@ def default_access(api_base: str) -> str | dict[str, str]:
 def service_token_format() -> str | None:
     """Shape check of the service token from the environment, never its value.
 
-    Cloudflare issues client IDs as `<32 hex>.access` and secrets as 64 hex
-    characters; anything else is usually a paste error (quotes, a header name,
-    whitespace). Returns None when no service token is configured.
+    Cloudflare issues client IDs as `<32 hex>.access` and secrets as
+    `cfast_<48 alphanumerics>` (since 2026-08-26) or 64 hex characters (older);
+    anything else is usually a paste error (quotes, a header name, whitespace).
+    Returns None when no service token is configured.
     """
     import re
 
@@ -207,7 +210,8 @@ def service_token_format() -> str | None:
     if not re.fullmatch(_CLIENT_ID_RE, cid):
         problems.append(f"client id is not '<32 hex>.access' ({_composition(raw_id)})")
     if not re.fullmatch(_CLIENT_SECRET_RE, secret):
-        problems.append(f"client secret is not 64 hex characters ({_composition(raw_secret)})")
+        problems.append("client secret is neither 'cfast_' + 48 alphanumerics nor 64 hex "
+                        f"({_composition(raw_secret)})")
     if problems:
         return "; ".join(problems)
     if id_label or secret_label:
