@@ -83,3 +83,42 @@ def test_cli_uses_api_base_and_exit_codes(monkeypatch, capsys):
     assert "✗ GET /: HTTP 200 without credentials" in capsys.readouterr().out
     monkeypatch.setattr(cloud, "StatusTransport", lambda: Probe())
     assert main(["cloud", "smoke", "--api-base", BASE]) == 0
+
+
+@pytest.mark.parametrize("body,location,expected", [
+    (b"error code: 1010", "", "Browser Integrity Check"),
+    (b"<html>error code: 1020</html>", "", "WAF"),
+    (b"", "https://team.cloudflareaccess.com/cdn-cgi/access/login/x", "Access login redirect"),
+    (b'{"error": "missing Cloudflare Access token"}', "", "Worker: missing Cloudflare Access token"),
+    (b"<html><title>Forbidden</title></html>", "", "HTTP 403: Forbidden"),
+])
+def test_refusals_are_classified(body, location, expected):
+    assert expected in cloud.classify_refusal(403, body, location)
+
+
+def test_requests_carry_an_explicit_user_agent():
+    import urllib.request
+
+    seen = {}
+
+    class Opener:
+        def open(self, req, timeout):
+            seen.update(req.header_items())
+            raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+
+    t = cloud.UrllibCloudTransport()
+    t.opener = Opener()
+    r = t.request("GET", "https://x.example/api/health", {"x-lce-client": "cli"}, None)
+    assert seen["User-agent"].startswith("lce-cli/") and r.status == 403
+    s = cloud.StatusTransport()
+    s.opener = Opener()
+    assert s.status("GET", "https://x.example/")[0] == 403
+    assert seen["User-agent"].startswith("lce-cli/")
+
+
+def test_the_json_transport_does_not_follow_redirects():
+    import urllib.request
+
+    t = cloud.UrllibCloudTransport()
+    handler = next(h for h in t.opener.handlers if isinstance(h, urllib.request.HTTPRedirectHandler))
+    assert handler.redirect_request(None, None, 302, "Found", {}, "https://login.example") is None
