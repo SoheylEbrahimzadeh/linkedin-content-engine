@@ -8,6 +8,10 @@ main = "src/index.ts"
 compatibility_date = "2026-08-22"
 workers_dev = true
 send_metrics = false          # no Wrangler usage telemetry
+# Keep variables set in the Cloudflare dashboard across deploys. Without this,
+# every Workers Builds deploy replaces dashboard plain-text variables with the
+# (empty) [vars] of this file. Secrets are always kept by Wrangler.
+keep_vars = true
 
 [triggers]
 # One cron trigger (Free plan allows 5). Cron runs in UTC; the Worker computes

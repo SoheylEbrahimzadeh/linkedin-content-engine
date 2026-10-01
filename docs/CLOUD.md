@@ -123,9 +123,10 @@ request is wall time, not CPU. Expected cost: €0/month.
     (`cloud/package.json`: applies pending migrations, then deploys). If the
     Builds token lacks D1 permission, that build fails visibly and nothing is
     deployed; fall back to the one-off command.
-- Cloudflare Access identifiers are **Worker secrets**, not `[vars]`:
-  `wrangler deploy` replaces plain variables on every Builds deploy but never
-  touches secrets. Set them once (owner):
+- Cloudflare Access identifiers are **Worker secrets**, not `[vars]`. Wrangler
+  never deletes secrets on deploy; `keep_vars = true` (LCE-030) also keeps
+  dashboard plain-text variables, which earlier Builds deploys removed. Set them
+  once on the production Worker (owner), preferably as type *Secret*:
   `npx wrangler secret put ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`)
   and `npx wrangler secret put ACCESS_AUD` (64-hex Application Audience tag),
   or add them as *Secret* variables in the Worker's dashboard settings. Missing

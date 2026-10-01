@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-10-01 (engine PRs #19–#38, lce-data PRs #1–#11; LCE-001…028)_
+_Last updated: 2026-10-01 (engine PRs #19–#41, lce-data PRs #1–#12; LCE-001…030)_
 
 ## Objective
 
@@ -135,7 +135,22 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 - LCE-028 (PR #38): smoke/doctor name the Access application that answers
   (team host, AUD prefix from the login redirect); actions in annotations.
 
-**Authenticated path (LCE-022, lce-data `cloud-sync` on `58f6db0`):** the request
+- LCE-029 (PR #40): `lce cloud sync --verify` reads the mirror back from
+  production (same sha256 and posts, no leaks).
+- LCE-030: `keep_vars = true`, so dashboard variables survive Workers Builds deploys.
+
+**Authenticated path (LCE-029, lce-data `cloud-sync` on `bbd4380`, after the owner
+fixed the Access policies):** the service token now passes Cloudflare Access and
+the Worker answers **`/api/health` 200 through Access** (VERIFIED). The Worker then
+reports **"Cloudflare Access is not configured"**: `ACCESS_TEAM_DOMAIN` /
+`ACCESS_AUD` are missing at runtime, so `/api/snapshot`, `/api/pipeline` and the
+sync answer 503 (fail-closed). Wrangler never deletes secrets on deploy, so the
+values were either plain-text variables removed by a deploy before LCE-030, or
+set on another Worker/environment. OWNER_ACTION: add both on the production
+Worker as type Secret (team `small-wood-2de3.cloudflareaccess.com`; AUD = the
+application's AUD tag, starting `2e41a088ef87`).
+
+**Earlier (LCE-022, lce-data `cloud-sync` on `58f6db0`):** the request
 now reaches Cloudflare Access with a well-formed service token, and Access answers
 with its login redirect from application `small-wood-2de3.cloudflareaccess.com`,
 AUD `2e41a088ef87…`: the token is not accepted by that application. BLOCKED on the
@@ -177,24 +192,16 @@ See GitHub; merged when green (no holds).
 
 ## Next unblocked work
 
-No engineering work is open; the next step is the owner's Access configuration
-(Zero Trust → Access → Applications):
-
-1. Open the application whose **Application Audience (AUD) tag starts with
-   `2e41a088ef87`** (team `small-wood-2de3`). If it is not "LinkedIn Content
-   Engine" (for example an application created automatically for the
-   `workers.dev` hostname), add the Service Auth policy there, or remove the
-   duplicate so one application covers the hostname.
-2. On that application, the policy with action **Service Auth** must *include*
-   the service token "LCE GitHub Actions".
-3. The Worker secret `ACCESS_AUD` must equal that application's AUD tag, and
-   `ACCESS_TEAM_DOMAIN` must be `small-wood-2de3.cloudflareaccess.com`.
-4. If all three are right, the stored secret no longer matches the token
-   (e.g. regenerated): store the raw Client Secret again in lce-data.
-
-Any push to lce-data (or its daily run) then re-runs smoke + doctor + sync; the
-annotations show the result. After that: migrations if doctor reports them,
-then the LinkedIn token and [LIVE_TEST.md](LIVE_TEST.md).
+1. **Owner:** on the production Worker `linkedin-content-engine` → Settings →
+   Variables and Secrets, add as type **Secret**: `ACCESS_TEAM_DOMAIN` =
+   `small-wood-2de3.cloudflareaccess.com` and `ACCESS_AUD` = the "LinkedIn
+   Content Engine" application's AUD tag (starts with `2e41a088ef87`). (Or
+   `cd cloud && npx wrangler secret put ACCESS_TEAM_DOMAIN` / `ACCESS_AUD`.)
+2. Then any push to lce-data (or its daily run) re-runs smoke → doctor →
+   `sync --verify` → doctor; annotations show snapshot, schema 0001–0003,
+   dashboards and the D1 round trip.
+3. Migrations if doctor reports them missing; then the LinkedIn token and
+   [LIVE_TEST.md](LIVE_TEST.md).
 
 ## Housekeeping
 
