@@ -380,3 +380,13 @@ def test_cli_migrate_status_and_apply(configured, monkeypatch, capsys):
     assert main(["--data-dir", str(configured.root), "cloud", "migrate", "--apply"]) == 0
     assert calls[-1][0] == "POST" and b'"APPLY MIGRATIONS"' in calls[-1][2]
     assert "applied now: 0003_pipeline.sql" in capsys.readouterr().out
+
+
+def test_unconfigured_schedule_is_a_setup_step_but_a_bad_one_is_broken(configured):
+    unset = {"settings": {"provider": "none", "token_present": False, "auto_publish": False},
+             "schedule_error": "timezone is not configured"}
+    by, _ = run(configured, Worker(snapshot=(200, unset)))
+    assert by["schedule"]["status"] == "action"
+    bad = {**READY, "schedule_error": "cadence has 9 slots"}
+    by, _ = run(configured, Worker(snapshot=(200, bad)))
+    assert by["schedule"]["status"] == "fail"

@@ -648,7 +648,10 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
                                            ", expiry unknown (lce cloud configure sends it)"),
                               "" if days is None or days > 7 else "renew the token soon"))
     if snap.body.get("schedule_error"):
-        out.append(_check("schedule", FAIL, snap.body["schedule_error"], "lce cloud configure"))
+        # Without timezone/cadence the schedule cannot load: an open setup step, not a fault.
+        unset = not s.get("timezone") or not s.get("cadence")
+        out.append(_check("schedule", ACTION if unset else FAIL, snap.body["schedule_error"],
+                          "lce cloud configure"))
     out.append(_check("kill switch", OK, "auto-publish ON" if s.get("auto_publish") else
                       "auto-publish OFF (nothing publishes until you enable it with its phrase)"))
     return out
