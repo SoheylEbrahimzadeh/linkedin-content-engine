@@ -145,11 +145,25 @@ def _token_value(raw: str, pattern: str) -> tuple[str, bool]:
     value = raw.strip().strip("'\"").strip()
     if re.fullmatch(pattern, value):
         return value, value != raw.strip()
-    if ":" in value:
-        rest = value.rsplit(":", 1)[1].strip().strip("'\"").strip()
-        if re.fullmatch(pattern, rest):
-            return rest, True
+    # Exactly one run with Cloudflare's format inside a pasted label or line.
+    found = re.findall(rf"(?<![0-9a-f.]){pattern}(?![0-9a-f])", value)
+    if len(found) == 1:
+        return found[0], True
     return raw.strip(), False
+
+
+def _composition(value: str) -> str:
+    """What a value is made of, never the value itself."""
+    import string
+
+    v = value.strip()
+    hexdig = sum(c in "0123456789abcdef" for c in v)
+    upper = sum(c in string.ascii_uppercase for c in v)
+    other_alpha = sum(c in string.ascii_lowercase and c not in "abcdef" for c in v)
+    space = sum(c.isspace() for c in v)
+    punct = sorted({c for c in v if c in string.punctuation})
+    return (f"{len(v)} chars: {hexdig} lowercase hex, {upper} uppercase, {other_alpha} other letters, "
+            f"{space} whitespace, punctuation {''.join(punct) or 'none'}")
 
 
 def _service_token() -> tuple[str, str]:
@@ -191,9 +205,9 @@ def service_token_format() -> str | None:
     secret, secret_label = _token_value(raw_secret, _CLIENT_SECRET_RE)
     problems = []
     if not re.fullmatch(_CLIENT_ID_RE, cid):
-        problems.append(f"client id is not '<32 hex>.access' ({len(cid)} chars)")
+        problems.append(f"client id is not '<32 hex>.access' ({_composition(raw_id)})")
     if not re.fullmatch(_CLIENT_SECRET_RE, secret):
-        problems.append(f"client secret is not 64 hex characters ({len(secret)} chars)")
+        problems.append(f"client secret is not 64 hex characters ({_composition(raw_secret)})")
     if problems:
         return "; ".join(problems)
     if id_label or secret_label:

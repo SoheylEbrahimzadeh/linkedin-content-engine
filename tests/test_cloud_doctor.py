@@ -307,3 +307,22 @@ def test_unrecognised_values_are_sent_unchanged(monkeypatch):
     monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", "label: not-hex")
     assert cloud.default_access("https://x.example") == {
         "CF-Access-Client-Id": "something-else", "CF-Access-Client-Secret": "label: not-hex"}
+
+
+@pytest.mark.parametrize("raw", [
+    "CF-Access-Client-Secret=" + GOOD_SECRET,
+    "Client Secret\n" + GOOD_SECRET + "\n(copy once)",
+    "secret: " + GOOD_SECRET + " ",
+])
+def test_one_secret_run_inside_any_label_is_used(monkeypatch, raw):
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", GOOD_ID)
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", raw)
+    assert cloud.default_access("https://x.example")["CF-Access-Client-Secret"] == GOOD_SECRET
+
+
+def test_ambiguous_or_foreign_values_are_described_not_revealed(monkeypatch):
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", GOOD_ID)
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", GOOD_SECRET + " " + "e" * 64)
+    shape = cloud.service_token_format()
+    assert "client secret is not 64 hex" in shape and "129 chars" in shape
+    assert GOOD_SECRET not in shape and "e" * 20 not in shape
