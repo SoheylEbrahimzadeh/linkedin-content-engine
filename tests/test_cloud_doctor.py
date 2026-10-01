@@ -248,3 +248,47 @@ def test_dashboard_refused_behind_access_is_a_failure(configured):
     checks = cloud.doctor(configured, transport=Worker(), token=lambda: "fake.access.jwt",
                           today=date(2026, 10, 1), probe=Pages(code=403))
     assert {c["check"]: c for c in checks}["dashboard"]["status"] == "fail"
+
+
+GOOD_ID, GOOD_SECRET = "0" * 32 + ".access", "f" * 64
+
+
+@pytest.mark.parametrize("cid,secret,expected", [
+    (GOOD_ID, GOOD_SECRET, "ok"),
+    ('"' + GOOD_ID + '"', GOOD_SECRET, "client id is not"),
+    ("CF-Access-Client-Id: " + GOOD_ID, GOOD_SECRET, "client id is not"),
+    (GOOD_ID, GOOD_SECRET[:40], "client secret is not 64 hex"),
+    (GOOD_ID + "\n", GOOD_SECRET, "whitespace"),
+])
+def test_service_token_shape_is_checked_without_revealing_it(monkeypatch, cid, secret, expected):
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", cid)
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", secret)
+    result = cloud.service_token_format()
+    assert expected in result
+    assert GOOD_SECRET[:40] not in result and "0" * 32 not in result
+
+
+def test_rejected_token_with_bad_shape_names_the_secrets(configured, monkeypatch):
+    class Rejecting(EdgeWorker):
+        def request(self, method, url, headers, body):
+            return CloudResponse(302, {"_raw": "Cloudflare Access login redirect (credential not accepted)"})
+
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", "not-a-client-id")
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", GOOD_SECRET)
+    checks = cloud.doctor(configured, transport=Rejecting(), today=date(2026, 10, 1))
+    by = {c["check"]: c for c in checks}
+    assert by["service token format"]["status"] == "fail"
+    assert GOOD_SECRET not in str(checks)
+
+
+def test_rejected_token_with_good_shape_points_at_the_policy(configured, monkeypatch):
+    class Rejecting(EdgeWorker):
+        def request(self, method, url, headers, body):
+            return CloudResponse(302, {"_raw": "Cloudflare Access login redirect (credential not accepted)"})
+
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_ID", GOOD_ID)
+    monkeypatch.setenv("LCE_CF_ACCESS_CLIENT_SECRET", GOOD_SECRET)
+    checks = cloud.doctor(configured, transport=Rejecting(), today=date(2026, 10, 1))
+    by = {c["check"]: c for c in checks}
+    assert by["worker"]["status"] == "fail" and "Service Auth policy" in by["worker"]["action"]
+    assert "login redirect" in by["worker"]["detail"] and GOOD_SECRET not in str(checks)
