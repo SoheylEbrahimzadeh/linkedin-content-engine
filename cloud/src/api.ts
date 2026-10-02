@@ -79,6 +79,10 @@ export async function handleApi(request: Request, env: Env, now: number,
     const m = (re: RegExp) => re.exec(url.pathname);
     let r: RegExpExecArray | null;
     if (request.method === "GET" && url.pathname === "/api/snapshot") return json(200, await snapshot(env, now));
+    if (request.method === "GET" && url.pathname === "/api/whoami") {
+      return json(200, { subject: who.subject, human: who.human, session_issued_at: who.iat, session_expires_at: who.exp,
+        server_now: Math.floor(now / 1000) });
+    }
     if (request.method === "GET" && url.pathname === "/api/pipeline") return await getPipeline(env);
     if (request.method === "GET" && url.pathname === "/api/linkedin/identity") {
       const report = await linkedinIdentity(env.LINKEDIN_TOKEN, await loadSettings(env.DB), fetchImpl);

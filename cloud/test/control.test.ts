@@ -126,6 +126,13 @@ describe("decision inbox", () => {
     await insertPost(e, AWAITING);
     expect((await call("POST", "/decisions", { action: "refresh", post_id: AWAITING })).status).toBe(409);
   });
+  it("whoami reports the Access session (subject, person or service, expiry) for the Control Center", async () => {
+    const r = await call("GET", "/whoami");
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ subject: "owner@example.com", human: true });
+    expect(typeof r.body!.session_expires_at).toBe("number");
+    expect((await call("GET", "/whoami", undefined, SERVICE)).body).toMatchObject({ human: false });
+  });
   it("refuses to refresh a published post", async () => {
     await awaitingMirror({ state: "PUBLISHED" });
     expect((await call("POST", "/decisions", { action: "refresh", post_id: AWAITING })).status).toBe(409);

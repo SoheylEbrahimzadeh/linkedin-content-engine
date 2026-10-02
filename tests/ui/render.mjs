@@ -74,12 +74,18 @@ snap.version_media = [{ post_id: "20261006-demo-a", version: 1, sha256: "1".repe
 const identity = { ok: true, status: "verified", person_urn: "urn:li:person:TestPerson1", configured_person_urn: "urn:li:person:TestPerson1", person_urn_matches: true, api_version: "202609", api_version_valid: true };
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const files = { "/": ["index.html", "text/html"], "/app.js": ["app.txt", "text/javascript"], "/lib.js": ["lib.txt", "text/javascript"], "/app.css": ["app.css", "text/css"] };
+let reauthed = false;
 const srv = http.createServer((req, res) => {
   const u = new URL(req.url, "http://x");
   const j = (o, s = 200) => { res.writeHead(s, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
+  if (u.pathname === "/" && u.searchParams.get("reauth") === "1") reauthed = true;     // the sign-in window
   if (files[u.pathname]) { const [f, t] = files[u.pathname]; res.writeHead(200, { "content-type": t, "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" }); return res.end(readFileSync(UI + f)); }
   // LCE-041: an expired Access session — the edge redirects API calls to its login page (another origin)
-  if (req.method === "POST" && u.pathname === "/api/decisions") { res.writeHead(302, { location: "https://access.example.invalid/login" }); return res.end(); }
+  if (req.method === "POST" && u.pathname === "/api/decisions") {
+    if (reauthed) { reauthed = false; return j({ decision_id: "d-retried", status: "pending" }, 201); }
+    res.writeHead(302, { location: "https://access.example.invalid/login" }); return res.end();
+  }
+  if (u.pathname === "/api/whoami") { const t = Math.floor(Date.now() / 1000); return j({ subject: "owner@example.com", human: true, session_issued_at: t - 600, session_expires_at: t - 60, server_now: t }); }
   if (u.pathname === "/api/snapshot") return j(snap);
   if (u.pathname === "/api/pipeline") return j(pipe);
   if (u.pathname === "/api/migrations") return j({ applied: ["0001", "0002", "0003", "0004"], pending: [] });
@@ -173,10 +179,18 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   await page.waitForTimeout(500);
   const banner = await page.locator("#session-banner").innerText().catch(() => "");
   const toastText = await page.locator("#toast").innerText().catch(() => "");
-  if (!banner.includes("nothing was recorded") || !banner.includes("Sign in again")) errors.push(`${name}: no session-expired banner (${banner})`);
-  if (toastText.includes("Failed to fetch") || !toastText.includes("expired")) errors.push(`${name}: unclear refusal: ${toastText}`);
+  for (const want of ["was not recorded", "session ended at", "session length 9 min", "Sign in and repeat the action"]) {
+    if (!banner.includes(want)) errors.push(`${name}: sign-in banner lacks "${want}" (${banner})`);
+  }
+  if (toastText.includes("Failed to fetch") || !toastText.includes("repeated automatically")) errors.push(`${name}: unclear refusal: ${toastText}`);
   if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-session-expired.png` });
-  await page.evaluate(() => document.getElementById("session-banner")?.remove());
+  // "Sign in and repeat the action": a sign-in window, then the refused action is repeated without losing the page
+  const [popup] = await Promise.all([page.waitForEvent("popup"), page.locator("#session-banner button").click()]);
+  await popup.waitForEvent("close", { timeout: 5000 }).catch(() => errors.push(`${name}: sign-in window did not close`));
+  await page.waitForTimeout(800);
+  const after = await page.locator("#toast").innerText().catch(() => "");
+  if (!after.includes("Refresh requested")) errors.push(`${name}: action not repeated after signing in (${after})`);
+  if (await page.locator("#session-banner").count()) errors.push(`${name}: banner still shown after signing in`);
   // a scheduled (cloud-queued) post has no Refresh; the requested one says so
   await page.goto(`http://127.0.0.1:${port}/#upcoming`);
   await page.waitForTimeout(400);
