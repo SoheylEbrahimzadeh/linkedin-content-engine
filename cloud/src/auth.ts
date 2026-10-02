@@ -3,7 +3,7 @@
 
 // human: a person signed in through Access (the JWT carries an email). Service
 // tokens (automation) carry common_name instead and are never "human".
-export type Identity = { subject: string; human: boolean };
+export type Identity = { subject: string; human: boolean; exp?: number | null; iat?: number | null };
 export type CertsFetcher = (teamDomain: string) => Promise<{ keys: JsonWebKey[] }>;
 
 let certsCache: { domain: string; at: number; keys: JsonWebKey[] } | null = null;
@@ -75,7 +75,10 @@ export async function verifyAccess(request: Request, env: AccessEnv,
   if (typeof payload.nbf === "number" && payload.nbf > now + 60) throw new AuthError("token not yet valid");
   const subject = String(payload.email ?? payload.common_name ?? payload.sub ?? "unknown");
   const human = typeof payload.email === "string" && payload.email.includes("@") && !payload.common_name;
-  return { subject, human };
+  // LCE-041: when this Access session ends (the token's own exp/iat), so the Control Center can show it.
+  const exp = typeof payload.exp === "number" ? payload.exp : null;
+  const iat = typeof payload.iat === "number" ? payload.iat : null;
+  return { subject, human, exp, iat };
 }
 
 export function resetCertsCache(): void {

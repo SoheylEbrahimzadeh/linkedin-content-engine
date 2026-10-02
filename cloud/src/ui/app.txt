@@ -54,12 +54,40 @@ function toast(text, tone) {
 
 // Cloudflare Access answers an expired session with a redirect to its login page (another origin).
 // fetch() would then fail with a bare "Failed to fetch"; with redirect: "manual" we can say what happened.
-const SESSION_EXPIRED = "Your Cloudflare Access sign-in has expired, so nothing was recorded. Sign in again and repeat the action.";
+const SESSION_EXPIRED = "Cloudflare Access sent this request to its sign-in page instead of the Control Center, so it was not recorded.";
+let retryAction = null;   // the action that hit the sign-in redirect; repeated after signing in again
+function sessionNote() {
+  const w = S.whoami;
+  if (!w?.session_expires_at) return "";
+  const end = new Date(w.session_expires_at * 1000).toISOString();
+  const mins = w.session_issued_at ? Math.round((w.session_expires_at - w.session_issued_at) / 60) : null;
+  return ` Your Access session ${w.session_expires_at * 1000 < Date.now() ? "ended" : "ends"} at ${localTime(end, tz())}` +
+    (mins !== null ? ` (session length ${mins} min, set in Cloudflare Access).` : ".");
+}
 function sessionExpired() {
-  if (document.getElementById("session-banner")) return;
+  document.getElementById("session-banner")?.remove();
   document.body.prepend(h("div", { id: "session-banner", class: "notice warn session-banner", role: "alert" },
-    h("strong", {}, "Signed out. "), SESSION_EXPIRED + " ",
-    h("button", { type: "button", class: "small primary", onclick: () => location.reload() }, "Sign in again")));
+    h("strong", {}, "Sign-in needed. "), SESSION_EXPIRED + sessionNote() + " ",
+    h("button", { type: "button", class: "small primary", onclick: reauth },
+      retryAction ? "Sign in and repeat the action" : "Sign in again")));
+}
+// Signs in again in a small window (a top-level page, which Cloudflare Access can redirect), keeps this page
+// and its state, then repeats the action that was refused.
+function reauth() {
+  const w = window.open("/?reauth=1", "lce-reauth", "width=520,height=680");
+  if (!w) { location.reload(); return; }
+  const onMsg = async (e) => {
+    if (e.origin !== location.origin || e.data !== "lce-reauth-ok") return;
+    window.removeEventListener("message", onMsg);
+    document.getElementById("session-banner")?.remove();
+    await refreshWhoami();
+    const again = retryAction; retryAction = null;
+    if (again) await again(); else await load();
+  };
+  window.addEventListener("message", onMsg);
+}
+async function refreshWhoami() {
+  try { S.whoami = await api("GET", "/whoami"); } catch { /* shown by the banner */ }
 }
 async function api(method, path, body) {
   let res;
@@ -72,10 +100,9 @@ async function api(method, path, body) {
   } catch (e) {
     throw new Error(`the Control Center could not be reached (${e?.message || e}); nothing was recorded. Check the connection and try again.`);
   }
-  if (res.type === "opaqueredirect" || res.status === 0 || res.status === 401) {
-    sessionExpired();
-    const err = new Error(SESSION_EXPIRED);
-    err.status = 401;
+  if (res.type === "opaqueredirect" || res.status === 0) {
+    const err = new Error(SESSION_EXPIRED + sessionNote());
+    err.status = 401; err.signin = true;
     throw err;
   }
   let data = {};
@@ -140,7 +167,13 @@ async function act(fn, ok = "Done.") {
     toast(ok, "ok");
     await load();
   } catch (err) {
-    toast("Refused: " + err.message, "err");
+    if (err.signin) {
+      retryAction = () => act(fn, ok);
+      sessionExpired();
+      toast("Not recorded yet: sign in again (button at the top) and the action is repeated automatically.", "err");
+      return;
+    }
+    toast("Refused: " + err.message + (err.status ? ` (HTTP ${err.status})` : ""), "err");
   }
 }
 
@@ -281,7 +314,7 @@ function postImage(postId, cls, img, version = null) {
     let why = "the browser could not load it";
     try {
       const r = await fetch(src, { credentials: "same-origin", cache: "no-store", redirect: "manual" });
-      if (r.type === "opaqueredirect" || r.status === 0) { sessionExpired(); why = "your Cloudflare Access sign-in has expired"; }
+      if (r.type === "opaqueredirect" || r.status === 0) { sessionExpired(); why = "Cloudflare Access asked to sign in again"; }
       else why = `HTTP ${r.status}, ${r.headers.get("content-type") || "no content type"}`;
     } catch (e) { why = String(e?.message || e); }
     el.replaceWith(h("div", { class: "media-note warn" }, "The image could not be displayed: ", why, ". Reload the page; if it persists, sign in to Cloudflare Access again."));
@@ -760,6 +793,8 @@ function viewSystem() {
       row("Person URN", s.person_urn ? "configured" : "missing", s.person_urn ? "ok" : "err", i?.ok ? (i.person_urn_matches ? "matches the token's member" : "does NOT match the token's member") : ""),
       row("API version", s.api_version || "not set", s.api_version ? "ok" : "err", "Linkedin-Version header"),
       row("Cloudflare Access", "protected", "ok", "this page and every API call require the Access login"),
+      row("Your sign-in", S.whoami?.human ? "signed in" : S.whoami ? "service token" : "unknown", S.whoami?.human ? "ok" : "warn",
+        S.whoami ? `${S.whoami.subject}${sessionNote()}` : "checking"),
       row("Worker", "healthy", "ok", `snapshot ${fmtWhen(S.snap.now)}`),
       row("Database", mig ? (mig.pending?.length ? "migrations pending" : "current") : "unknown", mig && !mig.pending?.length ? "ok" : "warn", mig ? (mig.applied ?? []).join(", ") : ""),
       row("Content plan sync", mirror ? "synced" : "none", mirror ? "ok" : "warn", mirror ? `last sync ${fmtWhen(mirror.received_at)}` : "run the private workflow"),
@@ -799,6 +834,13 @@ function render() {
 
 async function load() {
   const status = document.getElementById("status");
+  if (new URLSearchParams(location.search).get("reauth") === "1") {
+    // opened by "Sign in again": Access has signed us in by the time this page runs
+    if (window.opener) { window.opener.postMessage("lce-reauth-ok", location.origin); window.close(); }
+    main.replaceChildren(card("Signed in", h("p", {}, "You are signed in again. You can close this window.")));
+    return;
+  }
+  refreshWhoami();
   try {
     const [snap, pipe, mig] = await Promise.all([
       api("GET", "/snapshot"),
@@ -827,7 +869,7 @@ let lastPing = 0;
 window.addEventListener("focus", () => {
   if (Date.now() - lastPing < 60e3 || document.getElementById("session-banner")) return;
   lastPing = Date.now();
-  api("GET", "/migrations").catch(() => {});
+  api("GET", "/whoami").then((w) => { S.whoami = w; }).catch((e) => { if (e.signin) sessionExpired(); });
 });
 
 function shell() {
