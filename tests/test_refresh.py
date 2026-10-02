@@ -4,12 +4,13 @@ from datetime import date
 
 import pytest
 from conftest import GOOD_POST, awaiting_post
+from test_media_pipeline import SPEC
 
 from lce import cloud, images, refresh
 from lce.posts import current_text
 from lce.store import StoreError
 from lce.textutil import content_hash
-from lce.visuals import diagram
+from lce.visuals import concept
 
 DAY = date(2026, 10, 8)
 URL = "https://example.com/report"
@@ -142,33 +143,42 @@ ITEMS = [
 ]
 
 
-def test_image_is_re_evaluated_and_a_stale_diagram_blocks_approval(store):
+def legacy_text_dump(store, pid):
+    """An image.yaml as LCE-038 wrote it: a checklist diagram restating the post verbatim."""
+    from test_images import png
+
+    images.decide(
+        store, pid, kind="diagram", rationale="checklist made scannable",
+        source_file=str(png(store.root / "legacy.png")),
+        relation=f"restates the post's checklist verbatim: {TITLE} — " + "; ".join(ITEMS),
+        alt_text="Checklist diagram of the post's two points, written out in full",
+        provenance={"origin": "own_creation", "usage": "owned",
+                    "generation": {"method": "lce image diagram"}})
+    return images.load(store, pid)
+
+
+def test_text_dump_image_is_stale_and_blocks_approval_until_replaced(store):
+    """The Gartner case: a pre-LCE-041 verbatim diagram is rejected on refresh; a conceptual
+    visual replaces it and the new image hash is bound to the new approval."""
     from lce.approval import prepare
     from lce.dupcheck import run_dupcheck
     from lce.qa import run_qa
 
     pid = with_source(store, awaiting_post(store))
-    doc = diagram(store, pid, title=TITLE, items=ITEMS)
-    assert images.load(store, pid)["spec"]["items"] == ITEMS
+    doc = legacy_text_dump(store, pid)
+    rec = refresh.check(store, pid, as_of=DAY, fetch=page(CLAIM + "."))
+    assert rec["media"]["status"] == "stale" and "text dump" in rec["media"]["note"]
+    assert rec["status"] == "update_required"
     run_qa(store, pid, denylist=[])
     run_dupcheck(store, pid)
-    prepare(store, pid)  # noqa: E702
-    rec = refresh.check(store, pid, as_of=DAY, fetch=page(CLAIM + "."))
-    assert rec["media"]["status"] == "still_relevant" and rec["status"] == "current"
-    assert rec["image_sha256"] == doc["sha256"]
-    new = GOOD_POST.replace("Start with the boring rules. ", "Begin with simple keyword rules. ")
-    rec = refresh.apply_update(store, pid, as_of=DAY, text=new, reason="reworded", sources=[URL])
-    assert rec["media"]["status"] == "stale" and "lce refresh finish" in rec["next"]
-    assert store.load_post(pid)["state"] != "AWAITING_APPROVAL"  # no approval artifact on a stale image
-    new_doc = diagram(store, pid, title=TITLE, items=["Begin with simple keyword rules", ITEMS[1]])
+    with pytest.raises(StoreError, match="predates LCE-041"):
+        prepare(store, pid)  # a text dump never reaches approval
+    new_doc = concept(store, pid, SPEC)
     rec = refresh.finish(store, pid, as_of=DAY)
     post = store.load_post(pid)
-    assert rec["status"] == "update_awaiting_approval"
-    assert post["approval"]["image_hash"] == new_doc["sha256"]
-    assert new_doc["sha256"] != doc["sha256"]
-    # the finishing record shows the replaced version → the new one
+    assert rec["status"] == "update_awaiting_approval" and post["state"] == "AWAITING_APPROVAL"
+    assert post["approval"]["image_hash"] == new_doc["sha256"] != doc["sha256"]
     assert rec["image_sha256_before"] == doc["sha256"] and rec["image_sha256"] == new_doc["sha256"]
-    assert rec["content_hash_before"] != rec["content_hash"]
     assert rec["steps"]["media"] == "still_relevant"
 
 
@@ -178,7 +188,7 @@ def test_media_change_on_an_approved_post_discards_the_approval(store):
     post["approval"] = {**post["approval"], "state": "approved", "approved_hash": post["content_hash"]}
     post["state"] = "APPROVED"
     store.save_post(post)
-    diagram(store, pid, title=TITLE, items=ITEMS)
+    concept(store, pid, SPEC)
     assert store.load_post(pid)["state"] == "HUMANIZED" and "approval" not in store.load_post(pid)
 
 

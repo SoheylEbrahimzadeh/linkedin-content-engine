@@ -365,6 +365,68 @@
           }
         }
       }
+    },
+    "refresh_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_at"
+      ],
+      "description": "LCE-041: owner asked for a full refresh (new post package) from the Control Center; a writing session produces it.",
+      "properties": {
+        "requested_at": {
+          "type": "string"
+        },
+        "requested_by": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "decision_id": {
+          "type": "string"
+        }
+      }
+    },
+    "refresh": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "LCE-041: the last completed manual refresh (the previous version is kept in versions/).",
+      "properties": {
+        "completed_at": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "refreshed",
+            "kept"
+          ]
+        },
+        "previous_version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requested_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decision_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
     }
   }
 }

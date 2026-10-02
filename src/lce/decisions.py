@@ -212,8 +212,25 @@ def _duplicate(store, client, d) -> str:
     return f"copied to {post['post_id']} (HUMANIZED; edit it, then the checks run)"
 
 
+def _refresh(store, client, d) -> str:
+    """LCE-041: record the owner's request for a full refresh (new text, sources, media).
+    Nothing changes yet: the current version and its approval state stay as they are
+    until a writing session produces the new package (`lce refresh package`)."""
+    from lce import repackage
+
+    if _delegated(store, d["post_id"]):
+        raise Refused("the post is in the cloud publisher; unschedule and withdraw it there first")
+    try:
+        repackage.request(store, d["post_id"], by=f"cloud-access:{d['created_by']}",
+                          note=(d.get("payload") or {}).get("note", ""), decision_id=d["decision_id"])
+    except StoreError as exc:
+        raise Refused(str(exc)) from exc
+    return ("refresh requested; a writing session produces the new version (text, sources, media), "
+            "which then needs your approval")
+
+
 HANDLERS = {"approve": _approve, "reject": _reject, "edit": _edit, "regenerate": _regenerate,
-            "reschedule": _reschedule, "skip": _skip, "duplicate": _duplicate}
+            "reschedule": _reschedule, "skip": _skip, "duplicate": _duplicate, "refresh": _refresh}
 
 
 def pending(client: cloud.CloudClient) -> list[dict]:

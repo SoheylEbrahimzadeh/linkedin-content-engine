@@ -84,7 +84,7 @@ def file_sha256(p: Path) -> str:
 def decide(store: DataStore, post_id: str, *, kind: str, rationale: str,
            source_file: str | None = None, relation: str = "", alt_text: str = "",
            provenance: dict | None = None, decided_by: str = "agent",
-           text_only_reason: str | None = None) -> dict:
+           text_only_reason: str | None = None, relevance: dict | None = None) -> dict:
     """Record the decision; copies the image into the post folder as image.<ext>."""
     from lce.posts import reopen
     from lce.state import PostState as S
@@ -122,6 +122,14 @@ def decide(store: DataStore, post_id: str, *, kind: str, rationale: str,
         size = dimensions(dest.read_bytes(), ext)
         if size:
             doc["width"], doc["height"] = int(size[0]), int(size[1])
+        if relevance:
+            from lce import relevance as rel
+            from lce.posts import current_text
+
+            doc["media_relevance"] = rel.declared(
+                concept=relevance.get("concept", ""), visual_type=relevance.get("visual_type", ""),
+                reason=relevance.get("reason", ""), alt_text=doc["alt_text"],
+                post=store.load_post(post_id), text=current_text(store, post_id))
     store.write_doc(path(store, post_id), "image", doc)
     store.log_event("image", post_id=post_id, kind=kind)
     return doc
@@ -180,7 +188,44 @@ def check(store: DataStore, post_id: str) -> tuple[list[str], list[str]]:
             errors.append("a third-party image cannot be 'owned'")
     if origin == "generated" and not (prov.get("generation") or {}).get("method"):
         errors.append("generated images need generation.method")
+    rel = relevance_now(store, post_id, doc)
+    if rel is None:
+        errors.append("no media relevance record: state the concept, visual type and relevance reason "
+                      "(`lce image decide --concept --visual-type --relevance-reason`)")
+    elif rel.get("legacy"):
+        errors.append("this visual predates LCE-041 and restates the post's text; regenerate it as a "
+                      "conceptual visual (`lce image diagram --spec`) or choose text-only: "
+                      + "; ".join(rel["problems"]))
+    elif rel["media_decision"] != "accepted":
+        errors.append("media relevance rejected: " + "; ".join(rel["problems"]))
     return errors, warnings
+
+
+# LCE-041: visuals the engine draws itself must pass the semantic relevance check.
+GENERATED_KINDS = {"diagram", "chart"}
+
+
+def relevance_now(store: DataStore, post_id: str, doc: dict | None = None) -> dict | None:
+    """The media_relevance record re-evaluated against the CURRENT post text (the text
+    can change after the image was made). None when nothing can be evaluated."""
+    from lce import relevance
+    from lce.posts import current_text
+
+    doc = doc if doc is not None else load(store, post_id)
+    if not doc or doc.get("kind") == NO_IMAGE:
+        return None
+    spec = relevance.legacy_spec(doc)
+    if spec is None:
+        return doc.get("media_relevance")
+    try:
+        text = current_text(store, post_id)
+    except StoreError:
+        return doc.get("media_relevance")
+    rec = relevance.evaluate(spec, store.load_post(post_id), text, alt_text=doc.get("alt_text", ""),
+                             method=(doc.get("media_relevance") or {}).get("method", ""))
+    if doc.get("media_relevance") is None and doc.get("kind") in GENERATED_KINDS:
+        rec["legacy"] = True
+    return rec
 
 
 def approval_hash(store: DataStore, post_id: str) -> str:
@@ -223,4 +268,5 @@ def media_view(store: DataStore, post_id: str) -> dict:
             "width": doc.get("width"), "height": doc.get("height"), "alt_text": doc.get("alt_text"),
             "relation": doc.get("relation"), "rationale": doc.get("rationale"),
             "decided_by": doc.get("decided_by"), "decided_at": doc.get("decided_at"),
+            "media_relevance": relevance_now(store, post_id, doc),
             "errors": errors, "warnings": warnings}

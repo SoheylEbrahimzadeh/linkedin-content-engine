@@ -19,7 +19,7 @@ export class DecisionError extends Error {
   }
 }
 
-export const ACTIONS = ["approve", "reject", "edit", "regenerate", "reschedule", "skip", "duplicate"] as const;
+export const ACTIONS = ["approve", "reject", "edit", "regenerate", "reschedule", "skip", "duplicate", "refresh"] as const;
 type Action = typeof ACTIONS[number];
 const POST_ID_RE = /^\d{8}-[a-z0-9-]{1,56}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -120,6 +120,16 @@ export async function createDecision(env: Env, now: number, who: { subject: stri
       if (TERMINAL.has(p.state)) throw new DecisionError(409, `a ${p.state} post cannot be regenerated`);
       notDelegated();
       payload.reason = str(b.reason, 1000, "what should change");
+      break;
+    }
+    case "refresh": {
+      // LCE-041: regenerate the whole post package (text, sources, media). Only recorded here;
+      // a writing session produces the new version, which then needs the owner's approval.
+      const p = needPost();
+      if (TERMINAL.has(p.state)) throw new DecisionError(409, `a ${p.state} post is not refreshed`);
+      notDelegated();
+      payload.note = str(b.note, 500, "note", false);
+      payload.base_hash = p.actual_hash ?? null;
       break;
     }
     case "reschedule": {

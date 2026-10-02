@@ -41,6 +41,12 @@ lce cloud pull  ◄─────────────────  outcomes
   `current`, for the approved text hash; otherwise the run reports
   `freshness_pending` and sends nothing. `PUT /api/freshness/:id` is CLI-only
   and accepts only today's date. See [REFRESH.md](REFRESH.md).
+- **Refresh (LCE-041):** `refresh` is a recorded decision like the others
+  (person only, refused for queued or published posts); earlier versions'
+  images live in D1 `version_media` (migration 0007, which also rebuilds
+  `decisions` for the new action, keeping every row), uploaded by `lce cloud
+  sync` (`PUT /api/version-media/:id/:n`, CLI only) and served inline at
+  `GET /api/posts/:id/versions/:n/image`.
 
 ## Images
 

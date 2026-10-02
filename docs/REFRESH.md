@@ -1,3 +1,44 @@
+# Refresh (LCE-040 same-day check, LCE-041 manual Refresh)
+
+## Manual Refresh (LCE-041)
+
+On every unpublished post that is not in the cloud publish queue, the Control
+Center offers **Refresh** (next to Approve | Edit | Reschedule | Skip | Reject).
+It means: regenerate the whole post package (text, hook, sources, claims, image,
+alt text, metadata), not just the image.
+
+1. Click → confirmation ("Refresh this post? … the current version will be
+   preserved in History and the refreshed version will require your approval
+   again") with an optional note → a `refresh` decision in D1 (nothing else
+   changes; only a signed-in person can record it).
+2. The private `decisions` workflow (hourly, :17) records `refresh_request` on
+   the post. The current version and its approval state stay untouched.
+3. A Claude Code session (the scheduled Routine, or one started by hand) runs
+   the `lce-refresh` skill: `lce refresh pending` → research → new text →
+   media decision for that text → `lce refresh package <id> --file pkg.yaml`.
+   No LLM API is used; the Worker generates nothing.
+4. `lce refresh package` is atomic: it copies the current package to
+   `posts/<id>/versions/vN/` (text, post.yaml, image file and decision,
+   APPROVAL.md, QA and duplicate reports, `version.yaml` with hashes, hook,
+   media concept, approval state), replaces text/sources/claims, records the
+   humanization/voice check, decides the media (new conceptual visual, an
+   explicit text-only, or keeping the old image only if its relevance is
+   re-accepted for the new text and a reason is given), runs QA, the duplicate
+   check against the archive, the media checks, and writes a fresh approval
+   artifact bound to the new text and image hashes. Any failure restores the
+   previous version exactly.
+5. The post is AWAITING_APPROVAL; the Control Center shows "Refreshed ·
+   Awaiting approval", the new preview, and Versions: previous (with its
+   image) → current. Approve as usual; nothing is published by a refresh.
+6. `lce refresh keep <id> --reason` closes a request without a new version, only
+   when the current package is complete and valid.
+7. `lce versions list|restore` — earlier versions stay recoverable; a restore
+   keeps the current package as a new version and needs approval again.
+
+Interplay with the same-day check: a refreshed text has a new hash, so the
+Worker's publishing gate needs a new same-day `current` check for it, and the
+owner's approval (and a schedule) of that exact version.
+
 # Same-day content refresh (LCE-040)
 
 Every post planned or scheduled for a day gets a final freshness check on that

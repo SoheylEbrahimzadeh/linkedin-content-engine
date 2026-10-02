@@ -33,6 +33,10 @@ DIAGRAM = {"kind": "diagram", "rationale": "the flow is easier to see than to re
                           "generation": {"method": "diagram script"}}}
 
 
+RELEVANCE = {"concept": "keyword rules route tickets before any model is needed", "visual_type": "flow",
+             "reason": "shows how tickets move through the rules, which the text only describes"}
+
+
 def checked_post(store):
     pid = selected_post(store)
     save_draft(store, pid, GOOD_POST)
@@ -46,7 +50,8 @@ def decide_diagram(store, pid, tmp_path, **over):
     doc = {**DIAGRAM, **over}
     return images.decide(store, pid, kind=doc["kind"], rationale=doc["rationale"],
                          source_file=str(png(tmp_path / "d.png")), relation=doc["relation"],
-                         alt_text=doc["alt_text"], provenance=doc["provenance"])
+                         alt_text=doc["alt_text"], provenance=doc["provenance"],
+                         relevance=over.get("relevance", RELEVANCE))
 
 
 def test_no_decision_blocks_approval_and_none_is_valid(store):
@@ -130,6 +135,8 @@ def test_cli_decide_and_check(store, tmp_path, capsys):
     assert main([*args, "check", pid]) == 1
     assert main([*args, "decide", pid, "--kind", "chart", "--rationale", "one number matters",
                  "--file", str(png(tmp_path / "c.png")), "--relation", "plots triage minutes per day",
-                 "--alt", "Bar chart: 40 minutes before, 10 after", "--origin", "own_creation",
-                 "--usage", "owned", "--method", "chart script"]) == 0
+                 "--alt", "Bar chart comparing daily triage minutes before and after the rules",
+                 "--origin", "own_creation", "--usage", "owned", "--method", "chart script",
+                 "--concept", "the size of the triage time saving", "--visual-type", "chart",
+                 "--relevance-reason", "makes the before/after difference visible at a glance"]) == 0
     assert "image decision is complete" in capsys.readouterr().out

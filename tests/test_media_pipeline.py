@@ -14,11 +14,20 @@ from lce.dupcheck import run_dupcheck
 from lce.posts import current_text, save_draft, save_humanized
 from lce.qa import run_qa
 from lce.store import StoreError
-from lce.visuals import diagram
+from lce.visuals import concept, diagram
 
 ITEMS = ["Start with the boring rules",
          "They cover more than you expect, and they are easy to explain to the team"]
 TITLE = "Most small service teams do not need a model to sort tickets"
+# LCE-041: a conceptual visual of GOOD_POST's idea (its own short labels, not the post's sentences).
+SPEC = {"visual_type": "flow", "concept": "rules first; a model only when rules stop being enough",
+        "relevance_reason": "shows the order of decisions the post argues for, which the text only states",
+        "title": "Ticket triage: rules before models",
+        "nodes": [{"label": "Incoming tickets"}, {"label": "Keyword rules", "note": "simple, explainable"},
+                  {"label": "Routed queues"}],
+        "outcomes": ["Rules suffice", "Consider a model"],
+        "alt_text": "Flow diagram: incoming tickets pass keyword rules into routed queues, ending in two "
+                    "outcomes, rules suffice or consider a model."}
 
 
 def humanized(store):
@@ -62,31 +71,39 @@ def test_undecided_media_is_reported_as_such(store):
     assert images.media_view(store, pid)["media_status"] == "undecided"
 
 
-def test_diagram_is_a_real_asset_made_only_of_the_posts_words(store):
+def test_text_dump_diagram_is_rejected_and_nothing_is_attached(store):
     pid = humanized(store)
-    with pytest.raises(StoreError, match="not in the post"):
-        diagram(store, pid, title=TITLE, items=[*ITEMS[:1], "Buy our product today"])
-    doc = diagram(store, pid, title=TITLE, items=ITEMS)
+    with pytest.raises(StoreError, match="text dump") as e:
+        diagram(store, pid, title=TITLE, items=ITEMS)          # the post's own sentences
+    assert "label is a sentence" in str(e.value)
+    assert images.load(store, pid) is None                     # nothing attached
+
+
+def test_conceptual_diagram_is_a_real_asset_with_a_relevance_record(store):
+    pid = humanized(store)
+    doc = concept(store, pid, SPEC)
     f = store.post_dir(pid) / doc["file"]
     data = f.read_bytes()
     assert data.startswith(b"\x89PNG") and hashlib.sha256(data).hexdigest() == doc["sha256"]
     assert doc["kind"] == "diagram" and doc["mime"] == "image/png" and doc["bytes"] == len(data)
-    assert doc["width"] >= 1000 and doc["height"] >= 1000
+    assert doc["width"] == 1200 and doc["height"] == 1200
     assert doc["provenance"]["origin"] == "own_creation" and doc["provenance"]["usage"] == "owned"
-    assert "verbatim" in doc["provenance"]["generation"]["method"]
-    assert ITEMS[0] in doc["alt_text"]
+    rel = doc["media_relevance"]
+    assert rel["media_decision"] == "accepted" and rel["visual_type"] == "flow"
+    assert rel["concept"] == SPEC["concept"] and rel["relevance_reason"] == SPEC["relevance_reason"]
+    assert rel["copied_post_text_ratio"] < 0.35 and rel["factual_claims"] == []
+    assert doc["alt_text"] == SPEC["alt_text"] and doc["spec"]["nodes"][1]["note"] == "simple, explainable"
     errors, _ = images.check(store, pid)
     assert errors == []
     view = images.media_view(store, pid)
-    assert view["media_status"] == "attached" and view["media_required"] is True
-    assert view["width"] == doc["width"] and view["media_source"] == "own_creation"
+    assert view["media_status"] == "attached" and view["media_relevance"]["media_decision"] == "accepted"
 
 
 def test_media_change_discards_approval_and_rebinds_the_new_image_hash(store):
     pid = awaiting_post(store)
     text_hash = store.load_post(pid)["content_hash"]
     assert store.load_post(pid)["approval"]["image_hash"] == "none"
-    doc = diagram(store, pid, title=TITLE, items=ITEMS)
+    doc = concept(store, pid, SPEC)
     post = store.load_post(pid)
     assert post["state"] == "HUMANIZED" and "approval" not in post          # approval discarded
     assert run_qa(store, pid, denylist=[])["status"] == "passed"
@@ -130,8 +147,11 @@ def test_commons_image_with_reuse_licence_is_attached_with_rights_metadata(store
     fake = FakeCommons()
     doc = commons.attach(store, pid, "File:Example.png",
                          relation="shows the ticket routing board the post describes",
-                         alt_text="A ticket board", rationale="a real photo of the artefact",
-                         transport=fake)
+                         alt_text="Photo of a physical ticket routing board with colour-coded queues",
+                         rationale="a real photo of the artefact", transport=fake,
+                         relevance={"concept": "what a rule-based routing board looks like",
+                                    "visual_type": "photo",
+                                    "reason": "shows the physical artefact the post describes in words"})
     prov = doc["provenance"]
     assert prov == {"origin": "licensed_stock", "usage": "licensed", "license": "CC BY-SA 4.0",
                     "source_url": "https://commons.wikimedia.org/wiki/File:Example.png",
@@ -139,6 +159,8 @@ def test_commons_image_with_reuse_licence_is_attached_with_rights_metadata(store
                     "license_url": "https://creativecommons.org/licenses/by-sa/4.0"}
     assert (store.post_dir(pid) / doc["file"]).read_bytes() == fake.data
     assert images.check(store, pid)[0] == []
+    rel = doc["media_relevance"]
+    assert rel["text_checked"] is False and rel["media_decision"] == "accepted"
     hosts = ("https://commons.wikimedia.org/", "https://upload.wikimedia.org/")
     assert all(u.startswith(hosts) for u in fake.urls)
 
@@ -183,7 +205,7 @@ def test_cloud_sync_uploads_the_real_diagram_asset(store):
     import base64
 
     pid = humanized(store)
-    doc = diagram(store, pid, title=TITLE, items=ITEMS)
+    doc = concept(store, pid, SPEC)
     fake = MediaCloud()
     out = cloud.sync_preview_media(store, CloudClient("https://lce.example", lambda: "x", fake))
     assert out["uploaded"] == [pid]
@@ -196,7 +218,7 @@ def test_snapshot_carries_media_fields(store):
     from lce.dashboard.snapshot import build_snapshot
 
     pid = humanized(store)
-    doc = diagram(store, pid, title=TITLE, items=ITEMS)
+    doc = concept(store, pid, SPEC)
     view = next(p for p in build_snapshot(store, mode="real")["posts"] if p["post_id"] == pid)["image"]
     assert view["media_status"] == "attached" and view["width"] == doc["width"]
     assert view["mime"] == "image/png" and view["provenance"]["origin"] == "own_creation"

@@ -112,6 +112,24 @@ describe("decision inbox", () => {
     const r = await call("POST", "/decisions", { action: "edit", post_id: AWAITING, base_hash: h, text: "Changed fictional text." });
     expect(r.status).toBe(409);
   });
+  it("refresh (LCE-041) is only recorded: note optional, bound to the reviewed text; never for queued posts", async () => {
+    const h = await awaitingMirror();
+    const r = await call("POST", "/decisions", { action: "refresh", post_id: AWAITING, note: "the image repeats the text" });
+    expect(r.status).toBe(201);
+    const [d] = await rows<Record<string, string>>(e, "SELECT * FROM decisions");
+    expect(d).toMatchObject({ action: "refresh", status: "pending", created_by: "owner@example.com" });
+    expect(JSON.parse(d.payload)).toEqual({ note: "the image repeats the text", base_hash: h });
+    expect(await rows(e, "SELECT * FROM posts")).toEqual([]);           // nothing else changes
+    expect(await rows(e, "SELECT * FROM consents")).toEqual([]);
+    expect((await call("POST", "/decisions", { action: "refresh", post_id: AWAITING }, SERVICE)).status).toBe(403);
+    await awaitingMirror({ state: "READY_TO_PUBLISH" });
+    await insertPost(e, AWAITING);
+    expect((await call("POST", "/decisions", { action: "refresh", post_id: AWAITING })).status).toBe(409);
+  });
+  it("refuses to refresh a published post", async () => {
+    await awaitingMirror({ state: "PUBLISHED" });
+    expect((await call("POST", "/decisions", { action: "refresh", post_id: AWAITING })).status).toBe(409);
+  });
   it("only the CLI resolves; a person may cancel", async () => {
     await awaitingMirror();
     const { body } = await call("POST", "/decisions", { action: "regenerate", post_id: AWAITING, reason: "more concrete" });
@@ -258,6 +276,20 @@ describe("preview media (LCE-037)", () => {
     await call("PUT", `/preview-media/${READY}`, { data_base64: b64png, sha256: await sha(png), alt_text: "x" }, SERVICE, fakeFetch(), "cli");
     const img = await call("GET", `/posts/${READY}/image`);
     expect(img.res.headers.get("content-type")).toBe("image/jpeg");
+  });
+  it("earlier version images (LCE-041): CLI upload only, served inline per version", async () => {
+    const h = await sha(png);
+    const body = { data_base64: b64png, sha256: h, alt_text: "Previous version diagram" };
+    expect((await call("PUT", `/version-media/${AWAITING}/1`, body, SERVICE, fakeFetch(), "dashboard")).status).toBe(403);
+    expect((await call("PUT", `/version-media/${AWAITING}/0`, body, SERVICE, fakeFetch(), "cli")).status).toBe(400);
+    expect((await call("PUT", `/version-media/${AWAITING}/1`, body, SERVICE, fakeFetch(), "cli")).status).toBe(200);
+    expect((await call("GET", "/version-media", undefined, SERVICE)).body!.media).toMatchObject([{ post_id: AWAITING, version: 1, sha256: h }]);
+    const img = await call("GET", `/posts/${AWAITING}/versions/1/image`);
+    expect(img.status).toBe(200);
+    expect(img.res.headers.get("content-disposition")).toBe("inline");
+    expect(img.res.headers.get("etag")).toBe(`"${h}"`);
+    expect((await call("GET", `/posts/${AWAITING}/versions/2/image`)).status).toBe(404);
+    expect((await call("GET", "/snapshot")).body!.version_media).toHaveLength(1);
   });
   it("lists free publishing slots for the next 31 days", async () => {
     await enableAll(e);

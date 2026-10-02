@@ -60,6 +60,17 @@ pipe.posts[0].freshness = { latest: { checked_at: now, check_date: berlinToday, 
 pipe.posts[0].freshness.history = [{ ...pipe.posts[0].freshness.latest, mode: "check", decision: "update_required", status: "update_required" }, pipe.posts[0].freshness.latest];
 pipe.posts[1].freshness = { latest: { checked_at: day(-1), check_date: ymd(-1), mode: "check", by: "workflow", decision: "unchanged", status: "current", content_hash: "a".repeat(64), sources: [], claims: [], media: { status: "still_relevant" } }, history: [] };
 snap.freshness = [];
+// LCE-041: demo-a was refreshed (v1 kept, with its image); the old approved post has a pending refresh request;
+// demo-b's diagram carries an accepted relevance record.
+pipe.posts[0].refresh = { completed_at: day(0), by: "session", reason: "conceptual visual instead of a text checklist", outcome: "refreshed", previous_version: 1 };
+pipe.posts[0].versions = [{ version: 1, created_at: day(-1), by: "session", reason: "before refresh: conceptual visual", state: "AWAITING_APPROVAL",
+  content_hash: "0".repeat(64), hook: "An older fictional hook that the refresh replaced.", image_sha256: "1".repeat(64), image_file: "image.png",
+  media: { kind: "diagram", concept: null, visual_type: null, media_decision: null, alt_text: "Old checklist diagram" }, approval_state: "pending",
+  files: ["post.md", "image.png"], text: "An older fictional hook that the refresh replaced.\n\nOld body." }];
+pipe.posts[3].refresh_request = { requested_at: day(0), requested_by: "cloud-access:owner@example.com", note: "image repeats the text" };
+pipe.posts[1].image.media_relevance = { concept: "rules before models", visual_type: "flow", relevance_reason: "shows the decision order the post argues for",
+  copied_post_text_ratio: 0.05, factual_claims: [], source_requirements: [], media_decision: "accepted", problems: [] };
+snap.version_media = [{ post_id: "20261006-demo-a", version: 1, sha256: "1".repeat(64), bytes: 100, mime: "image/png" }];
 const identity = { ok: true, status: "verified", person_urn: "urn:li:person:TestPerson1", configured_person_urn: "urn:li:person:TestPerson1", person_urn_matches: true, api_version: "202609", api_version_valid: true };
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const files = { "/": ["index.html", "text/html"], "/app.js": ["app.txt", "text/javascript"], "/lib.js": ["lib.txt", "text/javascript"], "/app.css": ["app.css", "text/css"] };
@@ -137,6 +148,37 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
     if (!ftext.toLowerCase().includes(want.toLowerCase())) errors.push(`${name}: freshness card lacks "${want}"`);
   }
   if (process.env.OUT) await fc.screenshot({ path: `${process.env.OUT}/${name}-freshness.png` });
+  // LCE-041: Refresh — refreshed state, previous → current with the previous image, confirmation dialog
+  await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
+  await page.waitForTimeout(500);
+  const pa = await page.locator("main").innerText();
+  for (const want of ["Refreshed · Awaiting approval", "Versions", "Previous version · v1", "An older fictional hook", "Current version", "Compare with v1"]) {
+    if (!pa.toLowerCase().includes(want.toLowerCase())) errors.push(`${name}: refreshed post lacks "${want}"`);
+  }
+  const vimg = await page.locator("img.version-img").first().evaluate((i) => ({ w: i.naturalWidth, src: i.getAttribute("src") }));
+  if (!vimg.w || !vimg.src.includes("/versions/1/image")) errors.push(`${name}: previous version image not loaded ${JSON.stringify(vimg)}`);
+  if (process.env.OUT) await page.locator("section.card", { hasText: "Previous version" }).screenshot({ path: `${process.env.OUT}/${name}-versions.png` });
+  const ctl = await page.locator("section.card", { hasText: "Controls" }).innerText();
+  const corder = ["Approve", "Refresh", "Edit", "Reschedule", "Skip", "Reject"].map((b) => ctl.indexOf(b));
+  if (corder.some((x) => x < 0) || corder.some((x, k) => k && x < corder[k - 1])) errors.push(`${name}: controls not in order Approve | Refresh | Edit | Reschedule | Skip | Reject (${ctl})`);
+  await page.locator("section.card", { hasText: "Controls" }).getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.waitForTimeout(200);
+  const dlg = await page.locator("dialog[open]").innerText().catch(() => "");
+  if (!dlg.includes("Refresh this post?") || !dlg.includes("preserved in History") || !dlg.includes("require your approval again")) errors.push(`${name}: refresh dialog wrong: ${dlg.slice(0, 200)}`);
+  if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-refresh-dialog.png` });
+  await page.keyboard.press("Escape");
+  // a scheduled (cloud-queued) post has no Refresh; the requested one says so
+  await page.goto(`http://127.0.0.1:${port}/#upcoming`);
+  await page.waitForTimeout(400);
+  const upr = await page.locator("main").innerText();
+  if (!upr.includes("Refresh requested")) errors.push(`${name}: upcoming lacks the refresh request`);
+  const queuedRow = page.locator(".row.status-scheduled").first();
+  if (await queuedRow.getByRole("button", { name: "Refresh" }).count()) errors.push(`${name}: a scheduled post offers Refresh`);
+  // media relevance in the media card
+  await page.goto(`http://127.0.0.1:${port}/#post/20261008-demo-b`);
+  await page.waitForTimeout(400);
+  const mc = await page.locator("section.card", { hasText: "Visual concept" }).innerText().catch(() => "");
+  for (const want of ["Relevant to the post", "rules before models", "flow", "5%", "Image hash"]) if (!mc.includes(want)) errors.push(`${name}: media card lacks "${want}"`);
   // open a dialog
   await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
   await page.waitForTimeout(300);

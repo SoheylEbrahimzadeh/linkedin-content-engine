@@ -8,7 +8,7 @@
 
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
-  displayStatus, freshness, hashtags, hook, humanizationRows, initials, localDate, localTime, media, mediaRecord,
+  REFRESH_CONFIRM, canRefresh, displayStatus, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
   mediaSourceShort, parseHash, segments, timeline, weekday,
 } from "./lib.js";
 
@@ -156,6 +156,15 @@ const A = {
       { multiline: true, value: p.text ?? "", max: 3000 });
     if (text !== null) decide({ action: "edit", post_id: p.post_id, base_hash: p.actual_hash, text });
   },
+  async refresh(p) {
+    const note = h("textarea", { rows: 3, maxlength: 500, class: "short", placeholder: "Optional: what should change (e.g. the image only repeats the text)" });
+    const ok = await dialog("Refresh this post?", [h("p", {}, REFRESH_CONFIRM),
+      h("p", { class: "small muted" }, "Nothing is published. A writing session produces the new version (text, hook, sources, image, alt text); it then waits for your approval."),
+      h("label", { class: "small" }, "Note for the rewrite (optional)"), note],
+      [{ label: "Refresh", value: () => true }]);
+    if (ok) decide({ action: "refresh", post_id: p.post_id, note: note.value.trim() },
+      "Refresh requested. It reaches the repository within about an hour; the new version then appears here for your approval.");
+  },
   async regenerate(p) {
     const reason = await askText("Request regeneration", "What should change? The next drafting session rewrites it; nothing is regenerated automatically.");
     if (reason !== null) decide({ action: "regenerate", post_id: p.post_id, reason });
@@ -244,8 +253,8 @@ function publishingAs(compact) {
 
 // LCE-039: a real <img> (eager, with intrinsic size so layout reserves space). If the browser cannot
 // load it (e.g. the Access session expired), a visible diagnostic replaces it instead of bare alt text.
-function postImage(postId, cls, img) {
-  const src = `/api/posts/${encodeURIComponent(postId)}/image`;
+function postImage(postId, cls, img, version = null) {
+  const src = `/api/posts/${encodeURIComponent(postId)}/` + (version ? `versions/${version}/image` : "image");
   const el = h("img", { class: cls, src, alt: img?.alt || "Post image", width: img?.width || null, height: img?.height || null,
     decoding: "async", loading: "eager", "data-post": postId });
   el.addEventListener("error", async () => {
@@ -315,11 +324,13 @@ function planRow(i) {
         p && mediaSourceShort(p) ? h("span", { class: "small muted" }, mediaSourceShort(p)) : null,
         p && !p.image ? h("span", { class: "small muted" }, "no media decision") : null,
         i.objective ? h("span", { class: "small muted" }, objectiveLabel(i.objective)) : null,
-        i.note ? h("span", { class: "small muted" }, i.note) : null),
+        i.note ? h("span", { class: "small muted" }, i.note) : null,
+        refreshPill(p)),
       p && !["PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) ? freshLine(freshOf(p, cloudPost(p.post_id), activeConsent(p.post_id))) : null,
       h("div", { class: "row-actions" },
         href ? link(href, "Open", "btn small") : null,
         p?.state === "AWAITING_APPROVAL" ? h("button", { type: "button", class: "small primary", onclick: () => A.approve(p) }, "Approve") : null,
+        p && canRefresh(p, inCloud(p.post_id)) ? h("button", { type: "button", class: "small", onclick: () => A.refresh(p) }, "Refresh") : null,
         p && i.status !== "SCHEDULED" && i.status !== "PUBLISHED" && p.text && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.edit(p) }, "Edit") : null,
         p && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.reschedule(p) }, "Reschedule") : null,
         !i.post_id && i.status === "PLANNED" ? h("button", { type: "button", class: "small", onclick: () => A.skip(null, i.plan_date) }, "Skip") : null,
@@ -488,12 +499,12 @@ function viewPost(id) {
   const voice = S.pipe?.voice;
   const controls = [
     state === "AWAITING_APPROVAL" && !queued ? B("Approve", () => A.approve(p), "primary") : null,
+    p && canRefresh(p, queued) ? B("Refresh", () => A.refresh(p)) : null,
     editable && p.text ? B("Edit", () => A.edit(p)) : null,
-    editable ? B("Request regeneration", () => A.regenerate(p)) : null,
     editable ? B("Reschedule", () => A.reschedule(p)) : null,
     editable ? B("Skip", () => A.skip(p)) : null,
-    p?.text ? B("Duplicate", () => A.duplicate(p)) : null,
     editable ? B("Reject", () => A.reject(p), "danger") : null,
+    p?.text ? B("Duplicate", () => A.duplicate(p)) : null,
     queued && c.state === "READY_TO_PUBLISH" && !consent ? link(`#test/${id}`, "Controlled test publish", "btn") : null,
     queued && consent ? B("Unschedule", () => A.revoke(consent)) : null,
     queued && ["READY_TO_PUBLISH", "PUBLISH_FAILED"].includes(c.state) ? B("Withdraw", () => A.postAction(id, "withdraw", `Withdraw ${id}; it will not be published.`), "danger") : null,
@@ -506,9 +517,11 @@ function viewPost(id) {
   return [
     h("div", { class: "page-head" }, h("div", {}, link("#upcoming", "← Upcoming", "back"), h("h1", { class: "post-h1" }, hook(p?.text ?? c?.text, 90) ?? p?.topic ?? id))),
     d ? h("div", { class: "notice info" }, `Your ${d.action} decision is recorded (${fmtWhen(d.created_at)}). It is applied to the repository at the next private run, within about an hour. `, B("Cancel", () => A.cancel(d), "small")) : null,
+    refreshBanner(p, d),
     stepper(code),
     h("div", { class: "detail" },
-      h("div", { class: "detail-main" }, publishingAs(true), feedPreview(p, c), h("p", { class: "small muted" }, "Preview only. Opening or reviewing a post never publishes it.")),
+      h("div", { class: "detail-main" }, publishingAs(true), feedPreview(p, c), h("p", { class: "small muted" }, "Preview only. Opening or reviewing a post never publishes it."),
+        p?.versions?.length ? versionsCard(p) : null),
       h("div", { class: "side" },
         card("Plan", kv([
           ["Status", statusPill(code)],
@@ -531,15 +544,65 @@ function viewPost(id) {
   ];
 }
 
+// ── LCE-041: refresh state, versions (previous → refreshed) ─────────
+function refreshPill(p) {
+  const r = p ? refreshState(p, pendingFor(p.post_id)) : null;
+  return r ? h("span", { class: "pill " + r.tone }, r.label) : null;
+}
+
+function refreshBanner(p, pending) {
+  const r = p ? refreshState(p, pending) : null;
+  if (!r) return null;
+  return h("div", { class: "notice " + (r.key === "refreshed" ? "warn" : "info") }, h("strong", {}, r.label), r.note ? " — " + r.note : "",
+    r.key === "refreshed" && p.refresh?.previous_version ? [" ", link(`#history/${p.post_id}`, `Compare with v${p.refresh.previous_version}`)] : null);
+}
+
+function versionsCard(p) {
+  const cmp = versionCompare(p, S.snap?.version_media ?? []);
+  if (!cmp) return null;
+  const prev = cmp.previous, cur = cmp.current;
+  const thumb = (v) => v.image_available ? postImage(p.post_id, "version-img", { alt: v.media?.alt_text || `Image of version ${v.version}` }, v.version)
+    : h("div", { class: "media-note" }, v.media?.kind === "none" || !v.media ? "Text-only" : "Image kept in git (preview not uploaded)");
+  const col = (title, body) => h("div", { class: "version-col" }, h("div", { class: "small muted version-title" }, title), body);
+  return card("Versions",
+    h("div", { class: "version-cmp" },
+      col(`Previous version · v${prev.version} · ${fmtWhen(prev.created_at)}`, [
+        thumb(prev),
+        h("p", { class: "version-hook" }, prev.hook ?? "—"),
+        h("dl", { class: "kv small" }, [["Text hash", h("code", {}, short(prev.content_hash))], ["Image hash", prev.image_sha256 ? h("code", {}, short(prev.image_sha256)) : "none"],
+          ["Visual", prev.media?.concept ?? (prev.media?.kind ? `${prev.media.kind} (no concept recorded)` : "—")], ["Approval then", prev.approval_state ?? "none"]]
+          .map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
+        prev.text ? h("details", { class: "rules" }, h("summary", {}, "Full previous text"), h("div", { class: "version-text" }, prev.text)) : null,
+      ]),
+      h("div", { class: "version-arrow", "aria-hidden": "true" }, "→"),
+      col(`Current version${cur.refresh?.outcome === "refreshed" ? " · refreshed " + fmtWhen(cur.refresh.completed_at) : ""}`, [
+        p.image?.kind && p.image.kind !== "none" ? postImage(p.post_id, "version-img", { alt: p.image.alt_text }) : h("div", { class: "media-note" }, "Text-only"),
+        h("p", { class: "version-hook" }, cur.hook ?? "—"),
+        h("dl", { class: "kv small" }, [["Text hash", h("code", {}, short(cur.content_hash))], ["Image hash", cur.image_sha256 ? h("code", {}, short(cur.image_sha256)) : "none"],
+          ["Visual", cur.concept ?? "—"], ["Status", statusPill(displayStatus({ post: p }))]].map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
+        cur.refresh?.reason ? h("p", { class: "small muted" }, "Why: " + cur.refresh.reason) : null,
+      ])),
+    cmp.older.length ? h("details", { class: "rules" }, h("summary", {}, `Older versions (${cmp.older.length})`),
+      h("ul", { class: "list" }, cmp.older.map((v) => h("li", { class: "small" }, `v${v.version} · ${fmtWhen(v.created_at)} · ${v.reason} · text ${short(v.content_hash)}`)))) : null,
+    h("p", { class: "small muted" }, "Earlier versions are never overwritten: they stay in the private repository (versions/) and can be restored."));
+}
+
 function mediaCard(p, c) {
   const rec = mediaRecord(p ?? (c?.image ? { image: { kind: "source_image", media_status: "attached" } } : null));
   const m = media(p ?? c, S.snap);
   const tone = { attached: "ok", text_only: "muted", needs_review: "warn", invalid: "err", undecided: "warn" }[rec.status] ?? "muted";
+  const rel = relevanceRows(p?.image);
+  const relTone = { accepted: "ok", rejected: "err", missing: "warn" }[rel.decision] ?? "muted";
+  const relLabel = rel.legacy ? "Not relevant: restates the post's text" : { accepted: "Relevant to the post", rejected: "Not relevant — regenerate", missing: "Relevance not recorded" }[rel.decision];
   return card("Media",
     h("div", { class: "media-head" }, typeChip(m.type), h("span", { class: "pill " + tone }, rec.statusLabel),
+      rel.decision ? h("span", { class: "pill " + relTone }, relLabel) : null,
       m.type.key === "image" ? h("span", { class: "small muted" }, m.preview === "available" ? "thumbnail loaded from the real asset" : "preview not uploaded yet") : null),
     m.preview === "available" ? postImage((p ?? c).post_id, "media-thumb", { alt: m.alt, ...(p?.image ?? {}) }) : null,
-    rec.rows.length ? h("dl", { class: "kv" }, rec.rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v && v.href ? ext(v.href, v.href.replace(/^https?:\/\//, "")) : v)])) : null,
+    rel.rows.length ? h("dl", { class: "kv" }, rel.rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])) : null,
+    (rel.problems ?? []).length && rel.decision !== "accepted" ? h("ul", { class: "list small err" }, rel.problems.map((x) => h("li", {}, x))) : null,
+    rec.rows.length ? h("dl", { class: "kv" }, [...rec.rows, ...(p?.image?.sha256 ? [["Image hash", h("code", {}, short(p.image.sha256, 16))]] : [])]
+      .map(([k, v]) => [h("dt", {}, k), h("dd", {}, v && v.href ? ext(v.href, v.href.replace(/^https?:\/\//, "")) : v)])) : null,
     rec.note ? h("p", { class: "small muted" }, rec.note) : null,
     (rec.errors ?? []).map((e) => h("p", { class: "err small" }, e)),
     (rec.warnings ?? []).map((w) => h("p", { class: "small muted" }, "Note: " + w)));
@@ -646,6 +709,7 @@ function viewHistory(postId) {
   const decisions = (S.snap.decisions ?? []).filter((d) => !postId || d.post_id === postId);
   return [
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "History"), h("p", { class: "muted" }, postId ? hook(pipePost(postId)?.text, 80) ?? postId : "All posts")), postId ? link("#history", "All posts", "btn") : null),
+    postId && pipePost(postId)?.versions?.length ? versionsCard(pipePost(postId)) : null,
     card("Your decisions", decisions.length ? h("div", { class: "table-wrap" }, h("table", {},
       h("thead", {}, h("tr", {}, ["When", "Decision", "Post", "Status", "Result", "ID"].map((x) => h("th", {}, x)))),
       h("tbody", {}, decisions.map((d) => h("tr", {}, h("td", {}, fmtWhen(d.created_at)), h("td", {}, d.action),

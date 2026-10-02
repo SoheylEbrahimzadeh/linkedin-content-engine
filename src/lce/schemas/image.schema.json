@@ -150,7 +150,7 @@
     "spec": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Verbatim strings of a generated diagram (LCE-040 relevance re-check).",
+      "description": "What a generated visual draws (LCE-040/041): the relevance check re-evaluates it against the current text.",
       "properties": {
         "title": {
           "type": "string"
@@ -163,6 +163,109 @@
         },
         "footer": {
           "type": "string"
+        },
+        "visual_type": {
+          "type": "string"
+        },
+        "concept": {
+          "type": "string"
+        },
+        "relevance_reason": {
+          "type": "string"
+        },
+        "center": {
+          "type": "string"
+        },
+        "decision_label": {
+          "type": "string"
+        },
+        "source_line": {
+          "type": "string"
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "label"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "media_relevance": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "LCE-041 semantic relevance record of the visual (machine-checked).",
+      "required": [
+        "visual_type",
+        "copied_post_text_ratio",
+        "factual_claims",
+        "source_requirements",
+        "media_decision"
+      ],
+      "properties": {
+        "concept": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visual_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "relevance_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "copied_post_text_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "factual_claims": {
+          "type": "array"
+        },
+        "source_requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "media_decision": {
+          "enum": [
+            "accepted",
+            "rejected"
+          ]
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     }

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/version.schema.json",
+  "title": "Post version",
+  "description": "LCE-041: a preserved earlier version of a post package (posts/<id>/versions/vN/version.yaml). Never overwritten.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "created_at",
+    "reason",
+    "content_hash",
+    "state",
+    "files"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "by": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hook": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "image_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "image_file": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "media": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "approval_state": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approval_artifact_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sources": {
+      "type": "array"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "superseded_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}
