@@ -92,6 +92,11 @@ export async function handleApi(request: Request, env: Env, now: number,
     }
     if (request.method === "DELETE" && (r = m(/^\/api\/decisions\/(d-[0-9a-f-]{36})$/))) return json(200, await cancelDecision(env, now, who, r[1]));
     if (request.method === "GET" && (r = m(/^\/api\/posts\/([^/]+)\/image$/))) return await postImage(env, r[1]);
+    if (request.method === "GET" && url.pathname === "/api/preview-media") return json(200, await previewMediaList(env));
+    if (request.method === "PUT" && (r = m(/^\/api\/preview-media\/([^/]+)$/))) {
+      if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "preview media is uploaded by lce cloud sync");
+      return json(200, await putPreviewMedia(env, now, actor, r[1], await body(request)));
+    }
     if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/publish-now$/))) {
       human();
       const id = requirePostId(r[1]);
@@ -386,7 +391,7 @@ export async function snapshot(env: Env, now: number) {
     "SELECT post_id, sha256, bytes FROM post_images")).map((r) => [r.post_id, { sha256: r.sha256, bytes: r.bytes }]));
   let upcoming: unknown[] = [], scheduleError: string | null = null;
   try {
-    upcoming = slotsBetween(loadSchedule(settings as unknown as Record<string, unknown>), now, now + 14 * 86400e3);
+    upcoming = slotsBetween(loadSchedule(settings as unknown as Record<string, unknown>), now, now + 31 * 86400e3);
   } catch (err) {
     scheduleError = (err as Error).message;
   }
@@ -402,13 +407,37 @@ export async function snapshot(env: Env, now: number) {
     publications: publications.map((p) => ({ ...p, attempts: JSON.parse(String(p.attempts ?? "[]")) })),
     events,
     decisions: (await listDecisions(env, null)).decisions.slice(0, 100),
+    preview_media: (await previewMediaList(env)).media,
   };
+}
+
+async function previewMediaList(env: Env) {
+  const rows = (await env.DB.prepare("SELECT post_id, sha256, bytes, mime, alt_text, updated_at FROM preview_media ORDER BY post_id")
+    .all<Record<string, unknown>>()).results;
+  return { media: rows };
+}
+
+async function putPreviewMedia(env: Env, now: number, actor: string, rawId: string, b: Record<string, unknown>) {
+  const id = requirePostId(rawId);
+  const img = await parseImage({ data_base64: b.data_base64, sha256: b.sha256, alt_text: String(b.alt_text ?? "").trim() || "image" });
+  if (!img) throw new HttpError(400, "image is required");
+  const type = MAGIC.find(([mg]) => mg.every((x, i) => img.data[i] === x))![1];
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO preview_media (post_id, data, sha256, bytes, mime, alt_text, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(post_id) DO UPDATE SET data = excluded.data, sha256 = excluded.sha256, bytes = excluded.bytes,
+        mime = excluded.mime, alt_text = excluded.alt_text, updated_at = excluded.updated_at`)
+      .bind(id, img.data, img.sha256, img.data.length, `image/${type}`, String(b.alt_text ?? ""), isoUtc(now)),
+    event(env.DB, now, "preview_media.stored", actor, id, { sha256: img.sha256 }),
+  ]);
+  return { post_id: id, sha256: img.sha256, bytes: img.data.length };
 }
 
 // Image of a pushed post (D1), for the Control Center preview. Access-protected like every API route.
 async function postImage(env: Env, rawId: string): Promise<Response> {
   const id = requirePostId(rawId);
-  const row = await env.DB.prepare("SELECT data FROM post_images WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer }>();
+  // The approved image in the publish queue wins; otherwise the pipeline's preview copy (LCE-037).
+  const row = await env.DB.prepare("SELECT data FROM post_images WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer }>()
+    ?? await env.DB.prepare("SELECT data FROM preview_media WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer }>();
   if (!row) return json(404, { error: "no image in the cloud for this post" });
   const data = new Uint8Array(row.data);
   const type = MAGIC.find(([m]) => m.every((x, i) => data[i] === x))?.[1];

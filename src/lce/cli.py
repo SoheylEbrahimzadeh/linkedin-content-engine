@@ -374,7 +374,8 @@ def cmd_select_pick(args):
         raise StoreError("give --date or --job")
     post = select(store, candidate_id=args.candidate, pillar=args.pillar, angle=args.angle,
                   fmt=args.format, plan_date=plan_date, topic=args.topic, stories=args.story,
-                  theme=args.theme, evidence=args.evidence, chapter=args.chapter)
+                  theme=args.theme, evidence=args.evidence, chapter=args.chapter,
+                  objective=args.objective)
     print(f"✓ {post['post_id']} → {post['state']}")
     if args.job:
         from lce.scheduler import link_post
@@ -417,6 +418,13 @@ def cmd_humanize_check(args):
                           profile=store.profile(), post=post, stories=store.stories(),
                           denylist=load_denylist(), brand=store.brand())
     _print_findings(findings)
+    from lce import voice
+
+    items = voice.checklist(store, post, findings)
+    print("Voice profile checklist (profile/voice.yaml, profile.yaml, brand.yaml):")
+    marks = {"passed": "✓", "failed": "✗", "review": "?"}
+    for i in items:
+        print(f"  {marks[i['status']]} {i['label']}" + (f" — {i['detail']}" if i["detail"] else ""))
     errors = sum(1 for f in findings if f.severity == ERROR)
     print(f"{errors} error(s), {len(findings) - errors} warning(s) — preview only, state unchanged")
     return 1 if errors else 0
@@ -503,6 +511,14 @@ def cmd_post_show(args):
     text = store.post_text(args.post, "post.md") or store.post_text(args.post, "draft.md")
     if text:
         print("---\n" + text)
+    return 0
+
+
+def cmd_post_objective(args):
+    from lce.posts import set_objective
+
+    post = set_objective(_store(args), args.post, args.objective)
+    print(f"✓ {post['post_id']} objective: {post['objective']}")
     return 0
 
 
@@ -1039,6 +1055,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--chapter", default=None, help="narrative chapter id")
     p.add_argument("--evidence", choices=["personal", "external"], default=None,
                    help="personal needs a PUBLIC story; default follows the theme")
+    p.add_argument("--objective", default=None, help="content objective id (voice.yaml objectives)")
 
     g = group("brand", "personal brand strategy")
     p = gcmd(g, "status", cmd_brand_status, "pillar balance, themes, evidence, problems")
@@ -1121,6 +1138,9 @@ def build_parser() -> argparse.ArgumentParser:
     g = group("post", "posts")
     gcmd(g, "list", cmd_post_list, "list posts")
     gcmd(g, "show", cmd_post_show, "show a post").add_argument("post")
+    p = gcmd(g, "objective", cmd_post_objective, "record the content objective (voice.yaml objectives)")
+    p.add_argument("post")
+    p.add_argument("objective")
     p = gcmd(g, "reopen", cmd_post_reopen, "reopen for editing (discards approval)")
     p.add_argument("post")
     p.add_argument("--reason", required=True)

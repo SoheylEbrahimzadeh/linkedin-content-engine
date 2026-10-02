@@ -282,8 +282,9 @@ def test_sync_uploads_a_real_snapshot_without_local_paths_or_remote(store):
             self.calls = []
 
         def request(self, method, url, headers, body):
-            self.calls.append((method, url, json.loads(body)))
-            return CloudResponse(200, {"stored": True, "bytes": len(body), "sha256": "ab" * 32})
+            self.calls.append((method, url, json.loads(body) if body else None))
+            return CloudResponse(200, {"stored": True, "bytes": len(body or b""), "media": [],
+                                       "sha256": "ab" * 32})
 
     sink = Sink()
     client = CloudClient("https://lce.example", lambda: ACCESS, sink)

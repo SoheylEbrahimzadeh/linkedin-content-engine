@@ -205,6 +205,8 @@ def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[d
         "has_metrics": (folder / "metrics.yaml").exists(),
         "candidate_id": meta.get("candidate_id"),
         "history": meta.get("history", []),
+        "objective": meta.get("objective"),
+        "humanization": meta.get("humanization"),
         "text": text,
         "draft": draft,
         "has_approval_artifact": (folder / "APPROVAL.md").exists(),
@@ -593,6 +595,13 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
     posts = [_post_view(store, pid, calendar_by_ref, events, pillar_names)
              for pid in store.post_ids()]
     posts.sort(key=lambda p: (p.get("plan_date") or "", p["post_id"]))
+    from lce import voice
+
+    current = voice.profile_hashes(store)
+    for p in posts:   # LCE-037: was the text written against the current profile files?
+        hz = p.get("humanization")
+        if hz:
+            p["humanization"] = {**hz, "profile_current": all(hz.get(k) == v for k, v in current.items())}
     states = {p["post_id"]: p["state"] for p in posts}
     calendar = [{**e, "post_state": states.get(e.get("draft_ref"))} for e in plan]
     calendar.sort(key=lambda e: str(e.get("date", "")))
@@ -638,6 +647,7 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
         "automation": automation,
         "brand": brand_view(store, posts, mode),
         "analytics": analytics_view(store),
+        "voice": voice.view(store),
     }
     return redact(snapshot)
 

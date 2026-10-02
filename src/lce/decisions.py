@@ -114,7 +114,8 @@ def _edit(store, client, d) -> str:
         reopen(store, pid, "edited in the Control Center")
     elif state == S.SELECTED:
         save_draft(store, pid, d["payload"]["text"])
-    save_humanized(store, pid, d["payload"]["text"])
+    save_humanized(store, pid, d["payload"]["text"], source="owner_edit",
+                   by=f"cloud-access:{d['created_by']}")
     return "text replaced; " + _checks(store, pid)
 
 
@@ -189,7 +190,7 @@ def _duplicate(store, client, d) -> str:
     text = current_text(store, src["post_id"])
     when = date.fromisoformat(d["plan_date"])
     keep = ("language", "topic", "pillar", "format", "angle", "candidate_id", "sources", "claims",
-            "stories_used", "brand")
+            "stories_used", "brand", "objective")
     post = {k: src[k] for k in keep if k in src}
     post.update({"post_id": _new_post_id(store, when, src.get("topic") or src["post_id"]),
                  "created_at": now_iso(), "plan_date": when.isoformat(), "state": S.SELECTED.value,
@@ -207,7 +208,7 @@ def _duplicate(store, client, d) -> str:
     plan["entries"].sort(key=lambda e: str(e.get("date", "")))
     store.write_doc(store.plan_path, "plan", plan)
     save_draft(store, post["post_id"], text)
-    save_humanized(store, post["post_id"], text)
+    save_humanized(store, post["post_id"], text, source="owner_edit", by=f"cloud-access:{d['created_by']}")
     return f"copied to {post['post_id']} (HUMANIZED; edit it, then the checks run)"
 
 
