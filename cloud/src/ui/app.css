@@ -263,4 +263,4 @@ th { color: var(--muted); font-weight: 600; border-top: 0; font-size: 12.5px; }
 
 /* LCE-038 media card */
 .media-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
-.media-thumb { display: block; width: 100%; height: auto; max-height: 240px; object-fit: contain; border-radius: 8px; border: 1px solid var(--line); background: var(--raised); margin-bottom: 12px; }
+.media-thumb { display: block; width: 100%; max-width: 360px; height: auto; aspect-ratio: 1 / 1; object-fit: contain; border-radius: 8px; border: 1px solid var(--line); background: var(--raised); margin-bottom: 12px; }
