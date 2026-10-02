@@ -42,7 +42,8 @@ pipe.voice = { version: 2, tone: ["Natural", "Practical", "Direct"], point_of_vi
 pipe.posts[0].objective = "demonstrate-expertise";
 pipe.posts[0].humanization = { at: day(-2), by: "pipeline session", source: "session", voice_version: 2, profile_current: true, checklist: { passed: 10, failed: 0, review: 2 } };
 pipe.posts[0].duplicate = { status: "passed" };
-pipe.posts.push({ post_id: "20260929-old-approved", state: "APPROVED", text: "An approved fictional post whose date passed.\n\nBody.", actual_hash: "9".repeat(64), plan_date: ymd(-3), topic: "Old", image: { kind: "none" } });
+pipe.posts.push({ post_id: "20260929-old-approved", state: "APPROVED", text: "An approved fictional post whose date passed.\n\nBody.", actual_hash: "9".repeat(64), plan_date: ymd(-3), topic: "Old", image: null, sources: [{ url: "https://example.com" }], qa: { status: "passed" }, duplicate: { status: "passed" } });
+pipe.meta.engine = { version: "0.1.0", commit: "abcdef1234" };
 pipe.calendar.unshift({ date: ymd(-3), topic: "Old", status: "approved", draft_ref: "20260929-old-approved" });
 snap.preview_media = [{ post_id: "20261008-demo-b", sha256: "e", bytes: 100, mime: "image/png" }];
 pipe.posts[1].image = { kind: "diagram", media_status: "attached", file: "image.png", sha256: "e", width: 1200, height: 1200, bytes: 61440, mime: "image/png",
@@ -78,6 +79,14 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     if (overflow) errors.push(`${name} ${view}: horizontal overflow`);
     if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-${view.replace("/", "_")}.png`, fullPage: true });
+  }
+  // technical details of an old post (no humanization/media records) must be informative
+  await page.goto(`http://127.0.0.1:${port}/#post/20260929-old-approved`);
+  await page.waitForTimeout(300);
+  await page.locator("details.tech summary").click();
+  const tech = await page.locator("details.tech").innerText();
+  for (const want of ["Content hash", "Pipeline", "Voice profile", "Humanization", "no record", "Media", "No media decision recorded", "Sources", "QA", "Duplicate check"]) {
+    if (!tech.includes(want)) errors.push(`${name}: technical details lack ${want}`);
   }
   // open a dialog
   await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);

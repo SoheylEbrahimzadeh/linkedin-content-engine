@@ -196,6 +196,15 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   commons` (Commons API, reuse licences only, SHA-1 checked), `lce image show`;
   dimensions/mime recorded; dashboard media card (type, status, real thumbnail,
   source, rights, size, alt) and a useful Technical details section.
+  **VERIFIED in production** (engine `596e74c`, Workers version `c31c4d88`;
+  lce-data `b8f938d`): the Gartner post carries a real 1200×1200 PNG checklist
+  diagram (own creation, verbatim post text, sha256 `6c1a4eeb63a3…`); cloud-sync
+  uploaded it (`preview_media=1`); the production Control Center loaded the
+  real image (naturalWidth 1200) on desktop and phone with source, rights, size
+  and alt text; post still AWAITING_APPROVAL; auto-publish OFF. The 2026-09-29
+  post is unchanged (no media decision: it predates the media stage). Commons
+  sourcing is tested with recorded API responses only (Commons is blocked from
+  the build container).
 
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →
