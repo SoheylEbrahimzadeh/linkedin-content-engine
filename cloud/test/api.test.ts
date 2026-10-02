@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { handleApi } from "../src/api";
 import { resetCertsCache } from "../src/auth";
-import { SYNTH, insertPost, reset, rows, setSettings, TEXT, testEnv } from "./helpers";
+import { SYNTH, fakeFetch, insertPost, reset, rows, setSettings, TEXT, testEnv } from "./helpers";
 import { contentHash } from "../src/text";
 
 const TEAM = "test-team.cloudflareaccess.com";
@@ -272,5 +272,42 @@ describe("pipeline mirror (LCE-013)", () => {
   it("refuses oversized snapshots", async () => {
     const r = await call("PUT", "/pipeline", snap({ blob: "x".repeat(1_500_001) }));
     expect(r.status).toBe(413);
+  });
+});
+
+describe("GET /api/linkedin/identity", () => {
+  const get = async (env = e, jwt?: string | null, f = fakeFetch(new Response(JSON.stringify({ sub: "TestPerson1" }), { status: 200 }))) => {
+    const headers: Record<string, string> = {};
+    if (jwt !== null) headers["cf-access-jwt-assertion"] = jwt ?? await token();
+    const res = await handleApi(new Request("https://lce.example/api/linkedin/identity", { headers }), env, NOW, certs, f.fn);
+    return { status: res.status, body: await res.json() as Record<string, unknown>, calls: f.calls };
+  };
+  it("requires Cloudflare Access and calls nothing without it", async () => {
+    const r = await get(e, null);
+    expect(r.status).toBe(401);
+    expect(r.calls).toHaveLength(0);
+  });
+  it("verifies, compares with settings and writes nothing", async () => {
+    await setSettings(e, { person_urn: "urn:li:person:TestPerson1", api_version: "202609" });
+    const before = await rows(e, "SELECT * FROM events");
+    const settingsBefore = await rows(e, "SELECT key, value FROM settings ORDER BY key");
+    const r = await get();
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, person_urn: "urn:li:person:TestPerson1", person_urn_matches: true });
+    expect(JSON.stringify(r.body)).not.toContain("fake.cloud.test.token");
+    expect(await rows(e, "SELECT * FROM events")).toEqual(before);
+    expect(await rows(e, "SELECT key, value FROM settings ORDER BY key")).toEqual(settingsBefore);
+  });
+  it("answers 503 without a token and 502 when LinkedIn refuses it", async () => {
+    expect((await get(testEnv({ LINKEDIN_TOKEN: undefined }))).body).toMatchObject({ status: "token_missing" });
+    expect((await get(testEnv({ LINKEDIN_TOKEN: undefined }))).status).toBe(503);
+    const r = await get(e, undefined, fakeFetch(new Response("{}", { status: 401 })));
+    expect(r.status).toBe(502);
+    expect(r.body).toMatchObject({ status: "token_rejected", http_status: 401 });
+  });
+  it("only GET: other methods are not routed", async () => {
+    const res = await handleApi(new Request("https://lce.example/api/linkedin/identity", { method: "POST",
+      headers: { "cf-access-jwt-assertion": await token(), "x-lce-client": "cli" } }), e, NOW, certs, fakeFetch().fn);
+    expect(res.status).toBe(404);
   });
 });

@@ -13,6 +13,9 @@ READY = {"settings": {"timezone": "Europe/Berlin", "cadence": {"posts_per_week":
                       "provider": "linkedin_api", "token_present": True,
                       "token_expires_at": "2026-11-20T00:00:00+00:00", "auto_publish": False},
          "schedule_error": None}
+VERIFIED = {"ok": True, "status": "verified", "http_status": 200, "person_urn": "urn:li:person:TestPerson1",
+            "configured_person_urn": "urn:li:person:TestPerson1", "person_urn_matches": True,
+            "api_version": "202609", "api_version_valid": True}
 
 
 class Worker:
@@ -29,6 +32,8 @@ class Worker:
         path = url.split("/api", 1)[1]
         if path == "/pipeline":
             return CloudResponse(*self.pipeline)
+        if path == "/linkedin/identity":
+            return CloudResponse(*getattr(self, "identity", (200, VERIFIED)))
         if path == "/migrations":
             return CloudResponse(*getattr(self, "migrations", (200, {
                 "applied": ["0001_init.sql", "0002_images.sql", "0003_pipeline.sql"], "pending": []})))
@@ -390,3 +395,92 @@ def test_unconfigured_schedule_is_a_setup_step_but_a_bad_one_is_broken(configure
     bad = {**READY, "schedule_error": "cadence has 9 slots"}
     by, _ = run(configured, Worker(snapshot=(200, bad)))
     assert by["schedule"]["status"] == "fail"
+
+
+# ── LinkedIn identity (LCE-035): Worker's read-only userinfo check ──────
+def test_verified_identity_matching_settings_is_ok(configured):
+    w = Worker()
+    by, _ = run(configured, w)
+    assert by["linkedin identity"]["status"] == "ok"
+    assert "urn:li:person:TestPerson1 matches" in by["linkedin identity"]["detail"]
+    assert all(m == "GET" for m, _, _ in w.calls)
+
+
+def test_verified_identity_without_person_urn_tells_what_to_record(configured):
+    snap = {**READY, "settings": {**READY["settings"], "person_urn": None, "provider": "none"}}
+    w = Worker(snapshot=(200, snap))
+    w.identity = (200, {**VERIFIED, "configured_person_urn": None, "person_urn_matches": None})
+    by, _ = run(configured, w)
+    c = by["linkedin identity"]
+    assert c["status"] == "action" and "urn:li:person:TestPerson1" in c["action"]
+    assert "lce cloud identity --write" in c["action"]
+
+
+def test_person_urn_of_another_member_is_broken(configured):
+    snap = {**READY, "settings": {**READY["settings"], "person_urn": "urn:li:person:SomeoneElse"}}
+    w = Worker(snapshot=(200, snap))
+    w.identity = (200, {**VERIFIED, "configured_person_urn": "urn:li:person:SomeoneElse",
+                        "person_urn_matches": False})
+    assert run(configured, w)[0]["linkedin identity"]["status"] == "fail"
+
+
+@pytest.mark.parametrize("code,body,hint", [
+    (502, {"ok": False, "status": "token_rejected", "http_status": 401, "reason": "rejected"}, "new"),
+    (502, {"ok": False, "status": "forbidden", "http_status": 403, "reason": "scope"}, "openid"),
+    (502, {"ok": False, "status": "malformed_response", "http_status": 200, "reason": "no sub"}, "retry"),
+    (504, {"ok": False, "status": "timeout", "reason": "slow"}, "retry"),
+])
+def test_identity_failures_are_reported_with_the_fix(configured, code, body, hint):
+    w = Worker()
+    w.identity = (code, body)
+    c = run(configured, w)[0]["linkedin identity"]
+    assert c["status"] == "fail" and body["status"] in c["detail"] and hint in c["action"]
+
+
+def test_old_worker_without_identity_route_is_a_deploy_step(configured):
+    w = Worker()
+    w.identity = (404, {"error": "not found"})
+    assert run(configured, w)[0]["linkedin identity"]["status"] == "action"
+
+
+def test_identity_not_checked_without_a_token(configured):
+    snap = {**READY, "settings": {**READY["settings"], "token_present": False}}
+    w = Worker(snapshot=(200, snap))
+    by, _ = run(configured, w)
+    assert "linkedin identity" not in by
+    assert not any(u.endswith("/api/linkedin/identity") for _, u, _ in w.calls)
+
+
+def test_cli_identity_writes_person_urn_only(configured, monkeypatch, capsys):
+    from lce import cli
+
+    w = Worker()
+    w.identity = (200, {**VERIFIED, "configured_person_urn": None, "person_urn_matches": None})
+    monkeypatch.setattr(cloud, "UrllibCloudTransport", lambda: w)
+    monkeypatch.setattr(cloud, "default_access", lambda base: "fake.access.jwt")
+    monkeypatch.setenv("LCE_DATA_DIR", str(configured.root))
+    li = configured.root / "config" / "linkedin.yaml"
+    assert cli.main(["cloud", "identity", "--write"]) == 1      # no api_version yet: refuse
+    assert not li.exists()
+    assert cli.main(["cloud", "identity", "--write", "--api-version", "202609"]) == 0
+    doc = configured.read_doc(li)
+    assert doc == {"api_version": "202609", "person_urn": "urn:li:person:TestPerson1", "visibility": "PUBLIC"}
+    li.write_text("api_version: '202609'\nperson_urn: urn:li:person:Old\nvisibility: CONNECTIONS\n")
+    assert cli.main(["cloud", "identity", "--write"]) == 0
+    assert configured.read_doc(li)["visibility"] == "CONNECTIONS"
+    assert configured.read_doc(li)["person_urn"] == "urn:li:person:TestPerson1"
+    out = capsys.readouterr().out
+    assert "fake.access.jwt" not in out
+
+
+def test_cli_identity_failure_exit_code(configured, monkeypatch, capsys):
+    from lce import cli
+
+    w = Worker()
+    w.identity = (502, {"ok": False, "status": "token_rejected", "http_status": 401, "reason": "rejected"})
+    monkeypatch.setattr(cloud, "UrllibCloudTransport", lambda: w)
+    monkeypatch.setattr(cloud, "default_access", lambda base: "fake.access.jwt")
+    monkeypatch.setenv("LCE_DATA_DIR", str(configured.root))
+    assert cli.main(["cloud", "identity", "--write"]) == 2
+    assert "token_rejected" in capsys.readouterr().out
+    assert not (configured.root / "config" / "linkedin.yaml").exists()

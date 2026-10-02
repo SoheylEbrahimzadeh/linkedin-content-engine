@@ -15,7 +15,7 @@
 </head>
 <body>
 <h1>Privacy Policy — LinkedIn Content Engine</h1>
-<p class="muted">Last updated: 1 October 2026</p>
+<p class="muted">Last updated: 2 October 2026</p>
 
 <h2>1. What this application is</h2>
 <p>LinkedIn Content Engine is a personal, open-source tool
@@ -32,9 +32,11 @@ and does not access other members' data.</p>
     encrypted Cloudflare Worker secret (or, when publishing from the owner's computer, in the macOS Keychain).
     It is never written to the database, to logs, to source code or to any API response.</li>
   <li><strong>Profile identifier.</strong> To publish as the owner, the application reads the OpenID Connect
-    <code>/v2/userinfo</code> endpoint once to obtain the owner's member identifier and derives the person URN
-    (<code>urn:li:person:…</code>). The URN is stored in the application's configuration. The name returned by
-    that endpoint is shown to the owner during the lookup and is not stored.</li>
+    <code>/v2/userinfo</code> endpoint to obtain the owner's member identifier and derives the person URN
+    (<code>urn:li:person:…</code>). The URN is stored in the application's configuration. The owner's health
+    checks repeat this read-only call to confirm the token still works and still belongs to the configured
+    member. Only the identifier is used: the name and picture returned by that endpoint are not stored, and
+    the cloud service does not pass them on at all.</li>
   <li><strong>Posts.</strong> The application sends the text of a post the owner has explicitly approved to
     LinkedIn's Posts API, and records LinkedIn's response: the post identifier (URN), its URL when available,
     the time and the outcome.</li>
