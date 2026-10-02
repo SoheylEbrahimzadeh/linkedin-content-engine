@@ -228,6 +228,32 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   day (first one: 2026-10-08 03:41 UTC) and the gate releasing a scheduled
   publication (nothing is scheduled; auto-publish OFF).
 
+- LCE-041: manual post Refresh + semantically relevant media ([REFRESH.md](REFRESH.md),
+  [MEDIA.md](MEDIA.md)). `media_relevance` record (concept, visual type, reason,
+  copied-post-text ratio, factual claims, source requirements, decision) checked
+  on every image check; text dumps rejected; `lce image diagram --spec` draws
+  conceptual visuals. Control Center Refresh (Approve | Refresh | Edit |
+  Reschedule | Skip | Reject) → `refresh` decision → `refresh_request` → a
+  Claude Code session runs `lce refresh package` — the Routine
+  `trig_01734Ek3cKiMV4Vzdyykj6ws` (every 2 h, 07:37–23:37 Berlin) fires into the
+  dedicated worker session `session_01BzwBhNwT5QU5DNK3Scv7pz` (started with
+  lce-data as its repository: a fresh-session Routine has no access to the
+  private repo — tried, failed safely, replaced), or a session started by hand: new text, sources,
+  claims, media, humanization, QA, archive duplicate check, relevance, fresh
+  approval artifact; the previous version kept in `versions/vN` (exact rollback on
+  failure, `lce versions restore`). Engine `afb3d64`, Workers version `68df9644`,
+  migration 0007 applied by cloud-sync (lce-data PRs #40–#43).
+  **VERIFIED in production**: the Control Center shows Refresh for the unpublished
+  Gartner post, its media card reports the old image as "Not relevant: restates the
+  post's text" (100% copied post text; approval blocked until replaced), a service
+  token gets 403 for approve and refresh, auto-publish OFF. The whole package
+  chain ran on a temporary copy of the real data (conceptual decision tree
+  accepted, QA and duplicate check passed, new image hash bound). The Routine
+  fired into the worker session: lce-data pulled, engine `afb3d64` installed,
+  `refresh pending` → "No refresh requested." NOT YET
+  VERIFIED: the owner's own Refresh click end to end (Dashboard → decision →
+  Routine session → new version in the Control Center) — waiting for the owner.
+
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →
 Worker → D1 → cloud-sync → dashboard):**
