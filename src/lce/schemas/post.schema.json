@@ -385,6 +385,12 @@
         },
         "decision_id": {
           "type": "string"
+        },
+        "rejected_version": {
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       }
     },

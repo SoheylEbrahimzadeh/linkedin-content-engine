@@ -84,6 +84,14 @@
         "string",
         "null"
       ]
+    },
+    "status": {
+      "enum": [
+        "rejected",
+        "replaced",
+        "kept_before_restore"
+      ],
+      "description": "why this version stopped being active (LCE-042)"
     }
   }
 }

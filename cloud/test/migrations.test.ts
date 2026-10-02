@@ -98,9 +98,11 @@ describe("D1 migrations through the Worker (LCE-032)", () => {
       VALUES ('d-old', '20261006-demo', 'approve', '{}', 'applied', '2026-10-01T10:00:00+00:00', 'owner@example.com')`).run();
     await expect(e.DB.prepare(`INSERT INTO decisions (decision_id, action, status, created_at, created_by)
       VALUES ('d-x', 'refresh', 'pending', 'now', 'o')`).run()).rejects.toThrow();
-    await e.DB.prepare("DELETE FROM d1_migrations WHERE name = '0007_refresh.sql'").run();
-    expect((await migrationStatus(e.DB)).pending).toEqual(["0007_refresh.sql"]);
-    expect(await applyMigrations(e.DB)).toEqual(["0007_refresh.sql"]);
+    await e.DB.prepare("DROP TABLE IF EXISTS access_sessions").run();
+    await e.DB.prepare("DROP TABLE IF EXISTS client_reports").run();
+    await e.DB.prepare("DELETE FROM d1_migrations WHERE name IN ('0007_refresh.sql', '0008_reliability.sql')").run();
+    expect((await migrationStatus(e.DB)).pending).toEqual(["0007_refresh.sql", "0008_reliability.sql"]);
+    expect(await applyMigrations(e.DB)).toEqual(["0007_refresh.sql", "0008_reliability.sql"]);
     const rows = (await e.DB.prepare("SELECT decision_id, action, status FROM decisions").all()).results;
     expect(rows).toEqual([{ decision_id: "d-old", action: "approve", status: "applied" }]);
     await e.DB.prepare(`INSERT INTO decisions (decision_id, action, status, created_at, created_by)

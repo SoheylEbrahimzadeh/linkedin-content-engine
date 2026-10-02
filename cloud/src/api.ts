@@ -76,6 +76,7 @@ export async function handleApi(request: Request, env: Env, now: number,
       if (!who.human) throw new HttpError(403, "this action needs a person signed in through Cloudflare Access, not a service token");
     };
     if (request.method !== "GET") requireSameOriginClient(request, url);
+    if (who.human) await observeSession(env, now, who, request.method);
     const m = (re: RegExp) => re.exec(url.pathname);
     let r: RegExpExecArray | null;
     if (request.method === "GET" && url.pathname === "/api/snapshot") return json(200, await snapshot(env, now));
@@ -89,7 +90,13 @@ export async function handleApi(request: Request, env: Env, now: number,
       return json(IDENTITY_HTTP[report.status], report);
     }
     if (request.method === "GET" && url.pathname === "/api/decisions") return json(200, await listDecisions(env, url.searchParams.get("status")));
-    if (request.method === "POST" && url.pathname === "/api/decisions") return json(201, await createDecision(env, now, who, await body(request)));
+    if (request.method === "POST" && url.pathname === "/api/decisions") {
+      const d = await createDecision(env, now, who, await body(request));
+      return json((d as { replayed?: boolean }).replayed ? 200 : 201, d);
+    }
+    if (request.method === "POST" && url.pathname === "/api/client-report") {
+      return json(201, await putClientReport(env, now, who.subject, await body(request)));
+    }
     if (request.method === "POST" && (r = m(/^\/api\/decisions\/(d-[0-9a-f-]{36})\/resolve$/))) {
       if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "decisions are resolved by the private workflow (CLI)");
       return json(200, await resolveDecision(env, now, actor, r[1], await body(request)));
@@ -425,6 +432,7 @@ export async function snapshot(env: Env, now: number) {
     decisions: (await listDecisions(env, null)).decisions.slice(0, 100),
     preview_media: (await previewMediaList(env)).media,
     // LCE-041: tolerated until migration 0007 is applied (cloud-sync applies it after a deploy).
+    ...(await evidence(env)),
     version_media: await versionMediaList(env).then((r) => r.media, (e) => { if (isSchemaMissing(e)) return []; throw e; }),
     freshness: (await env.DB.prepare("SELECT * FROM freshness").all<Record<string, unknown>>()).results,
   };
@@ -475,6 +483,50 @@ async function putPreviewMedia(env: Env, now: number, actor: string, rawId: stri
     event(env.DB, now, "preview_media.stored", actor, id, { sha256: img.sha256 }),
   ]);
   return { post_id: id, sha256: img.sha256, bytes: img.data.length };
+}
+
+// ── LCE-042: evidence for Access failures (which sessions reach the Worker, what the browser saw) ──
+async function observeSession(env: Env, now: number, who: { subject: string; iat?: number | null; exp?: number | null }, method: string) {
+  if (!who.iat || !who.exp) return;
+  const at = isoUtc(now);
+  const mutation = method !== "GET" && method !== "HEAD";
+  try {
+    await env.DB.prepare(`INSERT INTO access_sessions (subject, issued_at, expires_at, first_seen, last_seen, last_get, last_mutation, requests)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      ON CONFLICT(subject, issued_at) DO UPDATE SET last_seen = excluded.last_seen, requests = requests + 1,
+        last_get = COALESCE(excluded.last_get, last_get), last_mutation = COALESCE(excluded.last_mutation, last_mutation)`)
+      .bind(who.subject, who.iat, who.exp, at, at, mutation ? null : at, mutation ? at : null).run();
+  } catch (e) {
+    if (!isSchemaMissing(e)) throw e;   // until migration 0008 is applied
+  }
+}
+
+const REPORT_KINDS = ["access_redirect", "network_error", "action_failed", "retry_succeeded", "retry_failed"];
+
+async function putClientReport(env: Env, now: number, subject: string, b: Record<string, unknown>) {
+  const kind = String(b.kind ?? "");
+  if (!REPORT_KINDS.includes(kind)) throw new HttpError(400, "unknown report kind");
+  const detail = JSON.stringify(b.detail ?? {});
+  if (detail.length > 4000) throw new HttpError(413, "report too large");
+  if (/(eyJ[A-Za-z0-9_-]{10,}\.|CF_Authorization|Bearer )/.test(detail)) throw new HttpError(400, "reports never carry tokens or cookies");
+  const id = `r-${crypto.randomUUID()}`;
+  await env.DB.prepare("INSERT INTO client_reports (report_id, at, subject, kind, detail) VALUES (?, ?, ?, ?, ?)")
+    .bind(id, isoUtc(now), subject, kind, detail).run();
+  return { report_id: id };
+}
+
+async function evidence(env: Env) {
+  const q = async (sql: string) => (await env.DB.prepare(sql).all<Record<string, unknown>>()).results;
+  try {
+    return {
+      access_sessions: await q("SELECT subject, issued_at, expires_at, first_seen, last_seen, last_get, last_mutation, requests FROM access_sessions ORDER BY last_seen DESC LIMIT 10"),
+      client_reports: (await q("SELECT report_id, at, subject, kind, detail FROM client_reports ORDER BY at DESC LIMIT 20"))
+        .map((r) => ({ ...r, detail: JSON.parse(String(r.detail || "{}")) })),
+    };
+  } catch (e) {
+    if (isSchemaMissing(e)) return { access_sessions: [], client_reports: [] };
+    throw e;
+  }
 }
 
 // ── LCE-041: images of earlier versions (previous → refreshed in the Control Center) ──

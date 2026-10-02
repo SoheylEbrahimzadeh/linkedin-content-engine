@@ -258,7 +258,8 @@ test("refresh (LCE-041): who may refresh and what state is shown", () => {
   assert.equal(done.label, "Refreshed · Awaiting approval");
   assert.equal(refreshState({ ...p, state: "APPROVED", refresh: { outcome: "refreshed" } }).label, "Refreshed");
   assert.match(REFRESH_CONFIRM, /preserved in History/);
-  assert.match(REFRESH_CONFIRM, /require your approval again/);
+  assert.match(REFRESH_CONFIRM, /rejects the current version/);
+  assert.match(REFRESH_CONFIRM, /require your approval/);
 });
 
 test("relevance rows show the recorded media relevance, never invent it", () => {
@@ -292,4 +293,20 @@ test("version compare: previous → current, images only when uploaded", () => {
   assert.equal(c.current.concept, "decision flow");
   assert.deepEqual(c.older.map((v) => v.version), [1]);
   assert.equal(versionCompare(post, []).previous.image_available, false);
+});
+
+test("LCE-042: Refresh rejects the version (replacement pending), Skip is distinct", () => {
+  const { displayStatus, canRefresh, refreshState, SKIP_CONFIRM, STATUSES } = lib;
+  const rejected = { post_id: "p1", state: "NEEDS_REVISION", text: "x", refresh_request: { requested_at: "t", rejected_version: 2 } };
+  assert.equal(displayStatus({ post: rejected }), "REPLACEMENT_PENDING");
+  assert.equal(STATUSES.REPLACEMENT_PENDING.label, "Rejected · replacement being written");
+  assert.equal(canRefresh(rejected, false), false);                      // already being replaced
+  assert.match(refreshState(rejected).note, /kept as v2/);
+  const skipped = { post_id: "p2", state: "REJECTED", approval: { state: "rejected", reason: "skipped: not this week" } };
+  assert.equal(displayStatus({ post: skipped }), "SKIPPED");
+  assert.equal(STATUSES.SKIPPED.label, "Skipped · slot released");
+  assert.equal(displayStatus({ post: { ...skipped, approval: { state: "rejected", reason: "off-topic" } } }), "REJECTED");
+  assert.match(SKIP_CONFIRM, /No replacement is generated/);
+  // after a replacement exists, Refresh is possible again (v3, v4, …)
+  assert.equal(canRefresh({ post_id: "p1", state: "AWAITING_APPROVAL", text: "y", refresh: { outcome: "refreshed" } }, false), true);
 });

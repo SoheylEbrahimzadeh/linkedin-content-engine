@@ -75,16 +75,23 @@ const identity = { ok: true, status: "verified", person_urn: "urn:li:person:Test
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const files = { "/": ["index.html", "text/html"], "/app.js": ["app.txt", "text/javascript"], "/lib.js": ["lib.txt", "text/javascript"], "/app.css": ["app.css", "text/css"] };
 let reauthed = false;
-const srv = http.createServer((req, res) => {
+let redirectMode = "once";       // "once": Access refuses until the sign-in window ran; "always": the retry fails too
+const attempts = [];             // request_ids of every decision POST that arrived (incl. refused ones)
+const reports = [];              // client-report bodies
+const readBody = (req) => new Promise((r) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => r(b)); });
+const srv = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   const j = (o, s = 200) => { res.writeHead(s, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
   if (u.pathname === "/" && u.searchParams.get("reauth") === "1") reauthed = true;     // the sign-in window
   if (files[u.pathname]) { const [f, t] = files[u.pathname]; res.writeHead(200, { "content-type": t, "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" }); return res.end(readFileSync(UI + f)); }
   // LCE-041: an expired Access session — the edge redirects API calls to its login page (another origin)
   if (req.method === "POST" && u.pathname === "/api/decisions") {
-    if (reauthed) { reauthed = false; return j({ decision_id: "d-retried", status: "pending" }, 201); }
+    const b = JSON.parse((await readBody(req)) || "{}");
+    attempts.push(b.request_id);
+    if (reauthed && redirectMode === "once") { reauthed = false; return j({ decision_id: "d-retried", status: "pending" }, 201); }
     res.writeHead(302, { location: "https://access.example.invalid/login" }); return res.end();
   }
+  if (req.method === "POST" && u.pathname === "/api/client-report") { reports.push(JSON.parse(await readBody(req))); return j({ report_id: "r-1" }, 201); }
   if (u.pathname === "/api/whoami") { const t = Math.floor(Date.now() / 1000); return j({ subject: "owner@example.com", human: true, session_issued_at: t - 600, session_expires_at: t - 60, server_now: t }); }
   if (u.pathname === "/api/snapshot") return j(snap);
   if (u.pathname === "/api/pipeline") return j(pipe);
@@ -109,7 +116,9 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
     if (await page.locator("main a img").count()) errors.push(`${name} ${view}: an image is wrapped in a link`);
     if (text.includes("/api/posts/")) errors.push(`${name} ${view}: image URL rendered as text`);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-    if (overflow) errors.push(`${name} ${view}: horizontal overflow`);
+    if (overflow) errors.push(`${name} ${view}: horizontal overflow ` + JSON.stringify(await page.evaluate(() => [...document.querySelectorAll("main *")]
+      .filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).slice(-3)
+      .map((e) => `${e.tagName}.${e.className} ${Math.round(e.getBoundingClientRect().right)} ${(e.innerText || "").slice(0, 50)}`))));
     if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-${view.replace("/", "_")}.png`, fullPage: true });
   }
   // technical details of an old post (no humanization/media records) must be informative
@@ -172,25 +181,42 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   await page.locator("section.card", { hasText: "Controls" }).getByRole("button", { name: "Refresh", exact: true }).click();
   await page.waitForTimeout(200);
   const dlg = await page.locator("dialog[open]").innerText().catch(() => "");
-  if (!dlg.includes("Refresh this post?") || !dlg.includes("preserved in History") || !dlg.includes("require your approval again")) errors.push(`${name}: refresh dialog wrong: ${dlg.slice(0, 200)}`);
+  if (!dlg.includes("Refresh this post?") || !dlg.includes("rejects the current version") || !dlg.includes("preserved in History")) errors.push(`${name}: refresh dialog wrong: ${dlg.slice(0, 200)}`);
   if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-refresh-dialog.png` });
-  // confirming while the Access session has expired: a clear banner, never a bare "Failed to fetch"
-  await page.locator("dialog[open]").getByRole("button", { name: "Refresh", exact: true }).click();
-  await page.waitForTimeout(500);
-  const banner = await page.locator("#session-banner").innerText().catch(() => "");
-  const toastText = await page.locator("#toast").innerText().catch(() => "");
-  for (const want of ["was not recorded", "session ended at", "session length 9 min", "Sign in and repeat the action"]) {
-    if (!banner.includes(want)) errors.push(`${name}: sign-in banner lacks "${want}" (${banner})`);
-  }
-  if (toastText.includes("Failed to fetch") || !toastText.includes("repeated automatically")) errors.push(`${name}: unclear refusal: ${toastText}`);
-  if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-session-expired.png` });
-  // "Sign in and repeat the action": a sign-in window, then the refused action is repeated without losing the page
-  const [popup] = await Promise.all([page.waitForEvent("popup"), page.locator("#session-banner button").click()]);
-  await popup.waitForEvent("close", { timeout: 5000 }).catch(() => errors.push(`${name}: sign-in window did not close`));
-  await page.waitForTimeout(800);
-  const after = await page.locator("#toast").innerText().catch(() => "");
-  if (!after.includes("Refresh requested")) errors.push(`${name}: action not repeated after signing in (${after})`);
-  if (await page.locator("#session-banner").count()) errors.push(`${name}: banner still shown after signing in`);
+  // LCE-042: confirming while Access refuses the POST: the action is kept, the sign-in window opens by itself,
+  // and the SAME action (same request_id) is sent exactly once more — then "recorded", never ambiguous
+  attempts.length = 0; reports.length = 0; redirectMode = "once"; reauthed = false;
+  const popupP = page.waitForEvent("popup", { timeout: 5000 }).catch(() => null);
+  await page.locator("dialog[open]").getByRole("button", { name: "Reject and refresh", exact: true }).click();
+  const popup = await popupP;
+  if (!popup) errors.push(`${name}: no sign-in window opened`);
+  else await popup.waitForEvent("close", { timeout: 5000 }).catch(() => errors.push(`${name}: sign-in window did not close`));
+  await page.waitForTimeout(900);
+  const recorded = await page.locator("main").innerText();
+  if (!recorded.includes("Refresh requested — recorded")) errors.push(`${name}: no "recorded" outcome after signing in`);
+  if (attempts.length !== 2 || attempts[0] !== attempts[1] || !String(attempts[0]).startsWith("req-")) errors.push(`${name}: retry not exactly once with the same request_id ${JSON.stringify(attempts)}`);
+  const kinds = reports.map((r) => `${r.kind}:${r.detail.stage ?? r.detail.result ?? ""}`);
+  if (!kinds.includes("access_redirect:action") || !kinds.includes("retry_succeeded:ok")) errors.push(`${name}: evidence not reported ${JSON.stringify(kinds)}`);
+  const ev = reports.find((r) => r.kind === "access_redirect");
+  if (ev && (ev.detail.preflight !== "ok" || typeof ev.detail.ms_after_preflight_ok !== "number" || !ev.detail.last_ok_get_at)) errors.push(`${name}: evidence lacks timing ${JSON.stringify(ev.detail)}`);
+  if (JSON.stringify(reports).match(/eyJ|CF_Authorization/)) errors.push(`${name}: a report carries a token`);
+  if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-refresh-recorded.png` });
+  // and when even the retry is refused: an explicit failure with "Try again", never a silent loss
+  attempts.length = 0; redirectMode = "always";
+  await page.locator("section.card", { hasText: "Controls" }).getByRole("button", { name: "Skip", exact: true }).click();
+  await page.waitForTimeout(200);
+  const sdlg = await page.locator("dialog[open]").innerText().catch(() => "");
+  if (!sdlg.includes("slot is released") || !sdlg.includes("No replacement is generated")) errors.push(`${name}: skip dialog unclear: ${sdlg.slice(0, 200)}`);
+  const pop2 = page.waitForEvent("popup", { timeout: 5000 }).catch(() => null);
+  await page.locator("dialog[open]").getByRole("button", { name: "Skip and release the slot" }).click();
+  const p2 = await pop2;
+  if (p2) await p2.waitForEvent("close", { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(900);
+  const fail = await page.locator("main").innerText();
+  if (!fail.includes("Skip failed — the request was not recorded") || !(await page.getByRole("button", { name: "Try again" }).count())) errors.push(`${name}: failed action not shown as not recorded`);
+  if (attempts.length !== 2) errors.push(`${name}: expected one retry, got ${attempts.length} attempts`);
+  if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-skip-not-recorded.png` });
+  redirectMode = "once";
   // a scheduled (cloud-queued) post has no Refresh; the requested one says so
   await page.goto(`http://127.0.0.1:${port}/#upcoming`);
   await page.waitForTimeout(400);

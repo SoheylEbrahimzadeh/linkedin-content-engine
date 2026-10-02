@@ -224,7 +224,8 @@ export const STATUSES = {
   PUBLISHED: { label: "Published", tone: "ok" },
   REJECTED: { label: "Rejected", tone: "muted" },
   NEEDS_REGENERATION: { label: "Needs regeneration", tone: "warn" },
-  SKIPPED: { label: "Skipped", tone: "muted" },
+  REPLACEMENT_PENDING: { label: "Rejected · replacement being written", tone: "warn" },
+  SKIPPED: { label: "Skipped · slot released", tone: "muted" },
   FAILED: { label: "Failed", tone: "err" },
   NEEDS_RECONCILE: { label: "Needs reconcile", tone: "err" },
 };
@@ -233,7 +234,7 @@ export const FILTERS = [
   { id: "needs_approval", label: "Needs approval", match: ["AWAITING_APPROVAL"] },
   { id: "approved", label: "Approved", match: ["APPROVED"] },
   { id: "scheduled", label: "Scheduled", match: ["SCHEDULED"] },
-  { id: "needs_regeneration", label: "Needs regeneration", match: ["NEEDS_REGENERATION"] },
+  { id: "needs_regeneration", label: "Being rewritten", match: ["NEEDS_REGENERATION", "REPLACEMENT_PENDING"] },
   { id: "published", label: "Published", match: ["PUBLISHED"] },
 ];
 export const PIPELINE_STEPS = ["PLANNED", "AWAITING_APPROVAL", "APPROVED", "SCHEDULED", "PUBLISHED"];
@@ -248,13 +249,16 @@ export function displayStatus({ post = null, cloudPost = null, consent = null, p
   if (consent) return "SCHEDULED";
   if (planStatus === "skipped") return "SKIPPED";
   const st = post?.state;
-  if (st === "REJECTED") return "REJECTED";
+  if (st === "REJECTED") return /^skipped/i.test(post?.approval?.reason ?? lastNote(post)) ? "SKIPPED" : "REJECTED";
+  if (post?.refresh_request) return "REPLACEMENT_PENDING";     // LCE-042: rejected by Refresh, replacement coming
   if (st === "NEEDS_REVISION" || post?.regeneration) return "NEEDS_REGENERATION";
   if (cs === "READY_TO_PUBLISH" || st === "APPROVED" || st === "READY_TO_PUBLISH") return "APPROVED";
   if (st === "PUBLISH_FAILED") return "FAILED";
   if (st === "AWAITING_APPROVAL") return "AWAITING_APPROVAL";
   return "PLANNED";
 }
+
+const lastNote = (post) => String((post?.history ?? []).at(-1)?.note ?? "");
 
 export function draftingNote(post) {
   if (!post) return "No post written yet";
@@ -474,13 +478,16 @@ export function freshness(post, { today, cloudRow = null, cloudPost = null, slot
 }
 
 // ── LCE-041: manual refresh of the whole post package ──
-export const REFRESH_CONFIRM = "This will generate a new version of the text and its associated media. The current version " +
-  "will be preserved in History and the refreshed version will require your approval again.";
+export const REFRESH_CONFIRM = "This rejects the current version and generates a completely new replacement for the same slot: " +
+  "new text, sources and a new image. The current version will be preserved in History and the replacement will require " +
+  "your approval.";
+export const SKIP_CONFIRM = "This post will not be published and its slot is released. No replacement is generated " +
+  "(use Refresh for a replacement).";
 const UNPUBLISHED_CLOSED = new Set(["PUBLISHED", "PUBLISHING", "PUBLISH_FAILED", "NEEDS_RECONCILE", "REJECTED"]);
 
 /** Can the owner ask for a refresh? Only unpublished posts that are not in the cloud publish queue. */
 export function canRefresh(post, inCloud) {
-  return Boolean(post && post.text && !inCloud && !UNPUBLISHED_CLOSED.has(post.state));
+  return Boolean(post && post.text && !inCloud && !post.refresh_request && !UNPUBLISHED_CLOSED.has(post.state));
 }
 
 /** Where a refresh stands for this post (from the recorded request/outcome only). */
@@ -490,8 +497,9 @@ export function refreshState(post, pending = null) {
       note: "Recorded in the cloud; the private workflow adds it to the repository within about an hour." };
   }
   if (post?.refresh_request) {
-    return { key: "requested", label: "Refresh requested", tone: "info",
-      note: "Waiting for a writing session (the scheduled Routine or a manual session) to produce the new version." };
+    const v = post.refresh_request.rejected_version;
+    return { key: "requested", label: "Refresh requested · writing a replacement", tone: "info",
+      note: `${v ? `The rejected version is kept as v${v}. ` : ""}A writing session (the scheduled Routine, every 2 hours, or a manual session) is producing a new replacement; it will need your approval.` };
   }
   const r = post?.refresh;
   if (r?.outcome === "refreshed" && post.state === "AWAITING_APPROVAL") {

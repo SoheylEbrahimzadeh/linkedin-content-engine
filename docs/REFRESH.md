@@ -1,6 +1,30 @@
 # Refresh (LCE-040 same-day check, LCE-041 manual Refresh)
 
-## Manual Refresh (LCE-041)
+## Manual Refresh (LCE-041, semantics LCE-042)
+
+**LCE-042 — Refresh rejects; Skip releases.** Refresh means "I reject this
+version — write another publishable candidate for the same slot". When the
+decision is applied, the current package is archived at once (`versions/vN`,
+status `rejected`), its approval is discarded and the post waits in
+NEEDS_REVISION ("Rejected · replacement being written"): it cannot be approved or
+published. The replacement must be new: a hook no earlier version had, a text
+that is not a rewording of an earlier one (≤ 50% of its words in shared 4-word
+runs), a new image (never an earlier version's), sources re-checked at refresh
+time; keeping the old image or the old post is not possible (`lce refresh keep`
+was removed). Every click adds a version (v1 → v2 → v3 …). Skip releases the slot
+(REJECTED, plan entry skipped, "Skipped · slot released") and generates nothing.
+
+**Reliable actions.** Every Control Center change goes through one path: a
+client `request_id` (the Worker returns the first decision for a repeated id, so
+a retry never duplicates), a session check (GET /api/whoami) right before the
+action, and, if Cloudflare Access redirects the request to its sign-in page, a
+sign-in window that keeps the page, then the same action sent exactly once more.
+The post shows "… requested — recorded" or "… failed — the request was not
+recorded" with Try again; never an ambiguous state. What the browser saw (stage,
+timing, the session's issue/expiry time, whether the GET just before succeeded)
+is reported to D1 `client_reports`; D1 `access_sessions` records which Access
+sessions reached the Worker with GETs and with changes. The dashboard check prints
+both, which is the production evidence for why a POST was refused.
 
 On every unpublished post that is not in the cloud publish queue, the Control
 Center offers **Refresh** (next to Approve | Edit | Reschedule | Skip | Reject).
@@ -21,18 +45,15 @@ alt text, metadata), not just the image.
    `posts/<id>/versions/vN/` (text, post.yaml, image file and decision,
    APPROVAL.md, QA and duplicate reports, `version.yaml` with hashes, hook,
    media concept, approval state), replaces text/sources/claims, records the
-   humanization/voice check, decides the media (new conceptual visual, an
-   explicit text-only, or keeping the old image only if its relevance is
-   re-accepted for the new text and a reason is given), runs QA, the duplicate
+   humanization/voice check, decides the media (a new conceptual visual or an
+   explicit text-only; never the old image), runs QA, the duplicate
    check against the archive, the media checks, and writes a fresh approval
    artifact bound to the new text and image hashes. Any failure restores the
    previous version exactly.
 5. The post is AWAITING_APPROVAL; the Control Center shows "Refreshed ·
    Awaiting approval", the new preview, and Versions: previous (with its
    image) → current. Approve as usual; nothing is published by a refresh.
-6. `lce refresh keep <id> --reason` closes a request without a new version, only
-   when the current package is complete and valid.
-7. `lce versions list|restore` — earlier versions stay recoverable; a restore
+6. `lce versions list|restore` — earlier versions stay recoverable; a restore
    keeps the current package as a new version and needs approval again.
 
 Interplay with the same-day check: a refreshed text has a new hash, so the

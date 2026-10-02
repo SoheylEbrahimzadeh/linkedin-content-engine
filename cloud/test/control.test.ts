@@ -133,6 +133,37 @@ describe("decision inbox", () => {
     expect(typeof r.body!.session_expires_at).toBe("number");
     expect((await call("GET", "/whoami", undefined, SERVICE)).body).toMatchObject({ human: false });
   });
+  it("a retried action with the same request_id returns the first decision, never a second one (LCE-042)", async () => {
+    await awaitingMirror();
+    const body = { action: "refresh", post_id: AWAITING, note: "x", request_id: "req-0123456789" };
+    const first = await call("POST", "/decisions", body);
+    expect(first.status).toBe(201);
+    const again = await call("POST", "/decisions", body);
+    expect(again.status).toBe(200);
+    expect(again.body).toMatchObject({ decision_id: first.body!.decision_id, replayed: true, status: "pending" });
+    expect(await rows(e, "SELECT * FROM decisions")).toHaveLength(1);
+    expect((await call("POST", "/decisions", { ...body, request_id: "bad id!" })).status).toBe(400);
+    expect((await call("POST", "/decisions", body, { email: "other@example.com" })).status).toBe(409);
+  });
+  it("records which Access sessions reach the Worker and what the browser reports (LCE-042)", async () => {
+    await awaitingMirror();
+    const iat = Math.floor(NOW / 1000) - 300;
+    const who = { email: "owner@example.com", iat };
+    await call("GET", "/whoami", undefined, who);
+    await call("POST", "/decisions", { action: "refresh", post_id: AWAITING }, who);
+    const [sess] = await rows<Record<string, unknown>>(e, "SELECT * FROM access_sessions");
+    expect(sess).toMatchObject({ subject: "owner@example.com", issued_at: iat, expires_at: Math.floor(NOW / 1000) + 600, requests: 2 });
+    expect(sess.last_get).toBeTruthy();
+    expect(sess.last_mutation).toBeTruthy();
+    const ok = await call("POST", "/client-report", { kind: "access_redirect", detail: { method: "POST", path: "/api/decisions", status: 0 } });
+    expect(ok.status).toBe(201);
+    expect((await call("POST", "/client-report", { kind: "whatever", detail: {} })).status).toBe(400);
+    expect((await call("POST", "/client-report", { kind: "access_redirect", detail: { c: "CF_Authorization=abc" } })).status).toBe(400);
+    const snap = await call("GET", "/snapshot");
+    expect(snap.body!.client_reports).toMatchObject([{ kind: "access_redirect", detail: { method: "POST", status: 0 } }]);
+    expect(snap.body!.access_sessions[0]).toMatchObject({ subject: "owner@example.com", issued_at: iat });
+    expect((await rows(e, "SELECT * FROM access_sessions WHERE subject LIKE '%.access'"))).toEqual([]);   // service tokens not recorded
+  });
   it("refuses to refresh a published post", async () => {
     await awaitingMirror({ state: "PUBLISHED" });
     expect((await call("POST", "/decisions", { action: "refresh", post_id: AWAITING })).status).toBe(409);

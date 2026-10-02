@@ -38,8 +38,10 @@ def _hook(text: str) -> str | None:
     return line[:200] if line else None
 
 
-def snapshot(store: DataStore, post_id: str, *, reason: str, by: str) -> dict:
-    """Copy the current package into versions/vN and return its manifest."""
+def snapshot(store: DataStore, post_id: str, *, reason: str, by: str, status: str = "replaced") -> dict:
+    """Copy the current package into versions/vN and return its manifest. `status`
+    says why it stopped being the active version (rejected by the owner's Refresh,
+    replaced, or kept before a restore)."""
     src = store.post_dir(post_id)
     text_path = src / "post.md"
     if not text_path.exists():
@@ -67,6 +69,7 @@ def snapshot(store: DataStore, post_id: str, *, reason: str, by: str) -> dict:
         "created_at": now_iso(),
         "by": by,
         "reason": reason,
+        "status": status,
         "state": post["state"],
         "content_hash": content_hash(text),
         "hook": _hook(text),
@@ -133,7 +136,7 @@ def restore(store: DataStore, post_id: str, version: int, *, by: str) -> dict:
     if not (src / "version.yaml").exists():
         raise StoreError(f"no version {version} for {post_id}")
     manifest = store.read_doc(src / "version.yaml")
-    snapshot(store, post_id, reason=f"before restoring v{version}", by=by)
+    snapshot(store, post_id, reason=f"before restoring v{version}", by=by, status="kept_before_restore")
     post = store.load_post(post_id)
     if S(post["state"]) in {S.AWAITING_APPROVAL, S.APPROVED, S.READY_TO_PUBLISH}:
         reopen(store, post_id, f"restoring v{version}")
@@ -147,3 +150,31 @@ def restore(store: DataStore, post_id: str, version: int, *, by: str) -> dict:
     save_humanized(store, post_id, text, source="session", by=by)
     store.log_event("post.version_restored", post_id=post_id, version=version)
     return manifest
+
+
+# ── LCE-042: a temporary backup for rolling back a failed refresh (history untouched) ──
+def backup(store: DataStore, post_id: str, dest: Path) -> None:
+    src = store.post_dir(post_id)
+    for p in src.iterdir():
+        if p.is_file():
+            shutil.copy2(p, dest / p.name)
+
+
+def restore_backup(store: DataStore, post_id: str, saved: Path) -> None:
+    from lce.posts import sync_plan
+
+    dst = store.post_dir(post_id)
+    for p in dst.iterdir():
+        if p.is_file():
+            p.unlink()
+    for p in saved.iterdir():
+        shutil.copy2(p, dst / p.name)
+    sync_plan(store, store.load_post(post_id))
+    store.log_event("post.refresh_rolled_back", post_id=post_id)
+
+
+def drop_after(store: DataStore, post_id: str, version: int) -> None:
+    """Remove versions newer than `version` (only used to undo a failed refresh's own archive)."""
+    for v in listing(store, post_id):
+        if v["version"] > version:
+            shutil.rmtree(folder(store, post_id) / f"v{v['version']}")
