@@ -279,6 +279,83 @@ def cmd_image_decide(args):
     return cmd_image_check(args)
 
 
+# ── same-day refresh (LCE-040) ───────────────────────────────────────
+def _as_of(store, value):
+    from lce import refresh
+
+    return date.fromisoformat(value) if value else refresh.today_local(store)
+
+
+def _print_refresh(pid, rec):
+    mark = {"current": "✓", "needs_review": "?", "update_required": "!", "update_awaiting_approval": "↻",
+            "update_in_progress": "…"}[rec["status"]]
+    print(f"{mark} {pid}: {rec['decision']} → {rec['status']} ({rec['reason']})")
+    for src in rec.get("sources", []):
+        http = f" (HTTP {src['http']})" if src.get("http") else ""
+        print(f"    source {src.get('status')}: {src['url']}{http}")
+    for c in rec.get("claims", []):
+        print(f"    claim {c['status']}: {c['text'][:90]}")
+    m = rec.get("media") or {}
+    print(f"    media {m.get('status')}: {m.get('note', '')}")
+    print(f"    content {rec['content_hash'][:12]}…  approval {rec.get('approval')} "
+          f"({rec.get('approval_effect')})")
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"::notice title=refresh {pid}::{rec['decision']} → {rec['status']}: {rec['reason']} | media "
+              f"{m.get('status')} | approval {rec.get('approval')} ({rec.get('approval_effect')})")
+
+
+def _push_freshness(client, rows):
+    for row in rows:
+        client.call("PUT", f"/freshness/{row['post_id']}", row)
+    print(f"✓ {len(rows)} same-day freshness record(s) sent to the cloud (test-mode records are never sent)")
+
+
+def cmd_refresh(args):
+    from lce import refresh
+
+    store = _store(args)
+    as_of = _as_of(store, getattr(args, "as_of", None))
+    if args.sub == "run":
+        extra = set(args.post or [])
+        client = None
+        if args.push:
+            from lce import cloud
+
+            client = cloud.make_client(store)
+            for c in client.call("GET", "/snapshot").get("consents", []):
+                if c.get("status") == "active" and refresh.localdate(store, c["slot_utc"]) == as_of:
+                    extra.add(c["post_id"])
+        pids = sorted(set(args.post)) if args.post and args.only else refresh.due_posts(store, as_of, extra)
+        if not pids:
+            print(f"no post planned or scheduled for {as_of}")
+        for pid in pids:
+            _print_refresh(pid, refresh.check(store, pid, as_of=as_of, dry_run=args.dry_run, by=args.by))
+        if client and pids and not args.dry_run:
+            _push_freshness(client, refresh.cloud_rows(store, pids))
+        return 0
+    if args.sub == "push":
+        from lce import cloud
+
+        client = cloud.make_client(store)
+        extra = {c["post_id"] for c in client.call("GET", "/snapshot").get("consents", [])
+                 if c.get("status") == "active" and refresh.localdate(store, c["slot_utc"]) == as_of}
+        _push_freshness(client, refresh.cloud_rows(store, refresh.due_posts(store, as_of, extra)))
+        return 0
+    if args.sub == "research":
+        rec = refresh.research(store, args.post, as_of=as_of, sources=args.source, note=args.note,
+                               material=args.material == "yes", by=args.by)
+    elif args.sub == "apply":
+        rec = refresh.apply_update(store, args.post, as_of=as_of, text=_read_file(args.file),
+                                   reason=args.reason, sources=args.source, by=args.by)
+    elif args.sub == "finish":
+        rec = refresh.finish(store, args.post, as_of=as_of, by=args.by)
+    else:
+        print(json.dumps(refresh.history(store, args.post), indent=2, ensure_ascii=False))
+        return 0
+    _print_refresh(args.post, rec)
+    return 0
+
+
 def cmd_image_diagram(args):
     from lce.visuals import diagram
 
@@ -1140,6 +1217,39 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--claim", type=int, action="append", default=[],
                    help="0-based index of a recorded claim to include (repeatable)")
     p = gcmd(g, "check", cmd_image_check, "verify the image decision")
+    p.add_argument("post")
+
+    g = group("refresh", "same-day freshness check before publication (never publishes)")
+    p = gcmd(g, "run", cmd_refresh, "check every post planned/scheduled for the day (sources, claims, media)")
+    p.add_argument("--as-of", dest="as_of", default=None,
+                   help="publication day (default: today, local time zone)")
+    p.add_argument("--post", action="append", default=[], help="also check this post (repeatable)")
+    p.add_argument("--only", action="store_true", help="check only the --post ids")
+    p.add_argument("--dry-run", action="store_true", help="print the record, write nothing")
+    p.add_argument("--push", action="store_true", help="include cloud-scheduled posts and send the results")
+    p.add_argument("--by", default="workflow")
+    p = gcmd(g, "research", cmd_refresh, "record a session's fresh research result")
+    p.add_argument("post")
+    p.add_argument("--source", action="append", default=[], required=True)
+    p.add_argument("--note", required=True)
+    p.add_argument("--material", choices=["yes", "no"], required=True)
+    p.add_argument("--as-of", dest="as_of", default=None)
+    p.add_argument("--by", default="session")
+    p = gcmd(g, "apply", cmd_refresh,
+             "material change: new text through the full pipeline (approval discarded)")
+    p.add_argument("post")
+    p.add_argument("--file", required=True)
+    p.add_argument("--reason", required=True)
+    p.add_argument("--source", action="append", default=[], required=True)
+    p.add_argument("--as-of", dest="as_of", default=None)
+    p.add_argument("--by", default="session")
+    p = gcmd(g, "finish", cmd_refresh, "after a new media decision: QA, duplicate check, approval artifact")
+    p.add_argument("post")
+    p.add_argument("--as-of", dest="as_of", default=None)
+    p.add_argument("--by", default="session")
+    p = gcmd(g, "push", cmd_refresh, "send today's latest freshness records to the cloud gate")
+    p.add_argument("--as-of", dest="as_of", default=None)
+    p = gcmd(g, "show", cmd_refresh, "the post's freshness history")
     p.add_argument("post")
 
     g = group("analytics", "metrics of published posts and what they teach")

@@ -420,3 +420,55 @@ export function mediaSourceShort(post) {
   if (prov.origin === "licensed_stock") return prov.license ? `${prov.license}` : "licensed";
   return ORIGIN_LABEL[prov.origin] ?? null;
 }
+
+// ── LCE-040: same-day freshness (from posts/<id>/freshness.yaml via the mirror) ──
+export const FRESHNESS = {
+  not_checked: { label: "Not checked", tone: "muted" },
+  checked_today: { label: "Checked today", tone: "warn" },
+  no_changes: { label: "No changes needed", tone: "ok" },
+  update_needed: { label: "Update needed", tone: "err" },
+  updated_today: { label: "Updated today", tone: "info" },
+  update_requires_approval: { label: "Update requires approval", tone: "warn" },
+};
+
+/**
+ * Freshness of one post for `today` (local date): the latest refresh record,
+ * whether it applies to the CURRENT text, and whether approval is still valid.
+ * Nothing is assumed: no record (or one for another day or text) is "Not checked".
+ */
+export function freshness(post, { today, cloudRow = null, cloudPost = null, slotDate = null } = {}) {
+  const latest = post?.freshness?.latest ?? null;
+  const current = post?.actual_hash ?? null;
+  const ap = post?.approval ?? {};
+  let approval = "not approved";
+  if (ap.state === "approved") approval = ap.approved_hash && current && ap.approved_hash !== current ? "invalid (text changed)" : "valid";
+  else if (cloudPost?.approved_hash && cloudPost.state !== "WITHDRAWN") approval = "valid";
+  else if (post?.state === "AWAITING_APPROVAL") approval = "awaiting approval";
+  let key = "not_checked";
+  let note = latest ? `last check ${latest.check_date}` : "no same-day check recorded";
+  const forToday = latest && latest.check_date === today && !latest.test_mode;
+  const sameText = latest && (!current || latest.content_hash === current);
+  if (latest?.test_mode) {
+    note = `test run as of ${latest.check_date} (not a same-day check)`;
+  } else if (forToday && !sameText) {
+    note = "checked an earlier version of the text";
+  } else if (forToday) {
+    note = latest.reason || null;
+    if (latest.decision === "updated") key = latest.status === "update_awaiting_approval" ? "update_requires_approval" : "updated_today";
+    else if (latest.decision === "update_required" || latest.status === "update_required") key = "update_needed";
+    else if (latest.status === "current") key = "no_changes";
+    else key = "checked_today";
+  }
+  if (latest?.approval_effect === "invalidated" && forToday) approval = post?.state === "AWAITING_APPROVAL" ? "invalidated by refresh — approve the new version" : "invalidated by refresh";
+  // What the Worker's scheduled-publish gate sees (D1 freshness row, LCE-040).
+  let gate = null;
+  if (slotDate) {
+    const hash = cloudPost?.approved_hash ?? null;
+    if (!cloudRow) gate = { ok: false, why: "no fresh check received" };
+    else if (cloudRow.check_date !== slotDate) gate = { ok: false, why: `last check ${cloudRow.check_date}, not the publishing day` };
+    else if (cloudRow.status !== "current") gate = { ok: false, why: `check status ${cloudRow.status}` };
+    else if (hash && cloudRow.content_hash !== hash) gate = { ok: false, why: "check was for another text version" };
+    else gate = { ok: true, why: "same-day check accepted" };
+  }
+  return { key, ...FRESHNESS[key], note, approval, latest, history: post?.freshness?.history ?? [], gate };
+}

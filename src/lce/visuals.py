@@ -183,7 +183,7 @@ def diagram(store: DataStore, post_id: str, *, title: str, items: list[str], foo
     with tempfile.TemporaryDirectory() as tmp:
         f = Path(tmp) / "diagram.png"
         render_diagram(title, items, shown_footer, f, accent)
-        return images.decide(
+        doc = images.decide(
             store, post_id, kind="diagram",
             rationale="the post's core is a short checklist; the diagram makes it scannable in the feed",
             source_file=str(f),
@@ -194,3 +194,7 @@ def diagram(store: DataStore, post_id: str, *, title: str, items: list[str], foo
                         "generation": {"method": f"lce image diagram (matplotlib {matplotlib.__version__}); "
                                                  "text taken verbatim from the post"}},
             decided_by="agent")
+    # LCE-040: keep the verbatim strings so a later refresh can re-check relevance.
+    doc["spec"] = {"title": title, "items": list(items), **({"footer": footer} if footer else {})}
+    store.write_doc(images.path(store, post_id), "image", doc)
+    return doc

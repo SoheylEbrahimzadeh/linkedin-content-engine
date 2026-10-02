@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-10-01 (engine PRs #19–#45, lce-data PRs #1–#17; LCE-001…033)_
+_Last updated: 2026-10-02 (engine PRs #19–#45, lce-data PRs #1–#17; LCE-001…033)_
 
 ## Objective
 
@@ -205,6 +205,14 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   post is unchanged (no media decision: it predates the media stage). Commons
   sourcing is tested with recorded API responses only (Commons is blocked from
   the build container).
+
+- LCE-040: same-day content refresh ([REFRESH.md](REFRESH.md)): `lce refresh
+  run/research/apply/finish/push/show`, `posts/<id>/freshness.yaml`, skill
+  `lce-refresh`, D1 `freshness` (migration 0006), CLI-only `PUT
+  /api/freshness/:id` (today only), scheduled-publish gate
+  (`freshness_pending`), Control Center freshness state + evidence. Test-mode
+  (`--as-of` another day) records are never sent or counted. Production
+  verification: see the LCE-040 report.
 
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →

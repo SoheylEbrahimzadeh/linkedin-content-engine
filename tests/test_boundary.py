@@ -102,13 +102,13 @@ def test_ready_output_says_nothing_published(store, capsys):
 def test_skills_sync_copies_generic_skills_only(store):
     assert main(["--data-dir", str(store.root), "skills", "sync"]) == 0
     skills = sorted(p.parent.name for p in (store.root / ".claude" / "skills").glob("*/SKILL.md"))
-    assert skills == ["lce-create-post", "lce-interview", "lce-research", "lce-run-jobs"]
+    assert skills == ["lce-create-post", "lce-interview", "lce-refresh", "lce-research", "lce-run-jobs"]
     for p in (store.root / ".claude" / "skills").glob("*/SKILL.md"):
         text = p.read_text()
         assert "never" in text.lower()
 
 
-@pytest.mark.parametrize("skill", ["lce-create-post", "lce-interview", "lce-research",
+@pytest.mark.parametrize("skill", ["lce-create-post", "lce-interview", "lce-refresh", "lce-research",
                                    "lce-run-jobs"])
 def test_skills_never_instruct_approval_or_publishing(skill):
     text = (ROOT / "src" / "lce" / "claude_skills" / skill / "SKILL.md").read_text()

@@ -50,6 +50,16 @@ pipe.posts[1].image = { kind: "diagram", media_status: "attached", file: "image.
   alt_text: "A fictional checklist diagram", relation: "restates the post's checklist", provenance: { origin: "own_creation", usage: "owned", generation: { method: "lce image diagram" } },
   decided_by: "agent", decided_at: day(-1) };
 pipe.posts[0].image = { kind: "none", media_status: "text_only", text_only_reason: "text_carries_point", rationale: "One figure carries it." };
+// LCE-040: today's refresh updated demo-a (approval reopened); demo-b has only an old check and no cloud row.
+const berlinToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(new Date());
+pipe.posts[0].freshness = { latest: { checked_at: now, check_date: berlinToday, mode: "update", by: "session", decision: "updated",
+  status: "update_awaiting_approval", material_change: true, reason: "source revised its figure", approval_effect: "invalidated",
+  content_hash: "d".repeat(64), content_hash_before: "0".repeat(64), image_sha256: null, image_sha256_before: null,
+  sources: [{ url: "https://example.com/report", status: "checked_by_session" }], claims: [],
+  media: { status: "text_only", note: "text_carries_point" }, steps: { humanization: { passed: 10, failed: 0, review: 2 }, qa: "passed", duplicate: { status: "passed", compared_against: 12, exact: 0, near: 0 } } }, history: [] };
+pipe.posts[0].freshness.history = [{ ...pipe.posts[0].freshness.latest, mode: "check", decision: "update_required", status: "update_required" }, pipe.posts[0].freshness.latest];
+pipe.posts[1].freshness = { latest: { checked_at: day(-1), check_date: ymd(-1), mode: "check", by: "workflow", decision: "unchanged", status: "current", content_hash: "a".repeat(64), sources: [], claims: [], media: { status: "still_relevant" } }, history: [] };
+snap.freshness = [];
 const identity = { ok: true, status: "verified", person_urn: "urn:li:person:TestPerson1", configured_person_urn: "urn:li:person:TestPerson1", person_urn_matches: true, api_version: "202609", api_version_valid: true };
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const files = { "/": ["index.html", "text/html"], "/app.js": ["app.txt", "text/javascript"], "/lib.js": ["lib.txt", "text/javascript"], "/app.css": ["app.css", "text/css"] };
@@ -111,6 +121,22 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   const inLink = await page.locator("a .media-thumb, a img.media").count();
   if (!box || box.width < 150 || box.height < 150) errors.push(`${name}: media thumbnail not visible (${JSON.stringify(box)})`);
   if (inLink) errors.push(`${name}: post-page image wrapped in a link`);
+  // LCE-040: freshness state, approval consequence, evidence and the publish gate are visible
+  await page.goto(`http://127.0.0.1:${port}/#upcoming`);
+  await page.waitForTimeout(400);
+  const up = await page.locator("main").innerText();
+  for (const want of ["Freshness: Update requires approval", "Freshness: Not checked", "Publish gate: no fresh check received", "invalidated by refresh"]) {
+    if (!up.includes(want)) errors.push(`${name}: upcoming lacks "${want}"`);
+  }
+  await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
+  await page.waitForTimeout(300);
+  const fc = page.locator("section.card", { hasText: "Same-day freshness" });
+  await fc.locator("summary", { hasText: "Evidence" }).click();
+  const ftext = await fc.innerText();
+  for (const want of ["Update requires approval", "invalidated", "Sources checked", "example.com/report", "Image re-evaluation", "Re-run after update", "Recent checks (2)"]) {
+    if (!ftext.toLowerCase().includes(want.toLowerCase())) errors.push(`${name}: freshness card lacks "${want}"`);
+  }
+  if (process.env.OUT) await fc.screenshot({ path: `${process.env.OUT}/${name}-freshness.png` });
   // open a dialog
   await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
   await page.waitForTimeout(300);

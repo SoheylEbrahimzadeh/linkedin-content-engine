@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import type { Env } from "../src/db";
 import { contentHash } from "../src/text";
+import { localDate } from "../src/runner";
 
 export const TEXT = "A fictional approved post (demo).\n\nIt uses [brackets] and #Hashtags.\n";
 // Synthetic schedule only; never the owner's configuration.
@@ -15,7 +16,7 @@ export function testEnv(overrides: Partial<Env> = {}): Env {
 }
 
 export async function reset(e: Env): Promise<void> {
-  await e.DB.batch(["events", "publications", "jobs", "consents", "post_images", "posts", "settings", "pipeline_snapshot", "decisions", "preview_media"]
+  await e.DB.batch(["events", "publications", "jobs", "consents", "post_images", "posts", "settings", "pipeline_snapshot", "decisions", "preview_media", "freshness"]
     .map((t) => e.DB.prepare(`DELETE FROM ${t}`)));
   await e.DB.prepare(`INSERT INTO settings (key, value, updated_at) VALUES
     ('auto_publish','false','1970-01-01T00:00:00+00:00'), ('provider','none','1970-01-01T00:00:00+00:00'),
@@ -44,7 +45,16 @@ export async function insertPost(e: Env, id = "20261006-demo-post", text = TEXT,
 }
 
 export async function insertConsent(e: Env, postId: string, slotId: string, slotUtc: string, hash: string,
-                                    id = "consent-1"): Promise<void> {
+                                    id = "consent-1", fresh = true): Promise<void> {
+  // LCE-040: by default the post had its same-day freshness check (status current, same text).
+  if (fresh) {
+    const tz = (await e.DB.prepare("SELECT value FROM settings WHERE key = 'timezone'").first<{ value: string }>())?.value
+      ?? SYNTH.timezone;
+    await e.DB.prepare(`INSERT INTO freshness (post_id, check_date, checked_at, status, decision, content_hash, image_sha256,
+      reason, received_at, received_by) VALUES (?, ?, ?, 'current', 'unchanged', ?, NULL, 'test', ?, 'test')
+      ON CONFLICT(post_id) DO UPDATE SET check_date = excluded.check_date, status = 'current', content_hash = excluded.content_hash`)
+      .bind(postId, localDate(slotUtc, tz), slotUtc, hash, slotUtc).run();
+  }
   await e.DB.batch([
     e.DB.prepare(`INSERT INTO consents (consent_id, post_id, slot_id, slot_utc, approved_hash, status, created_at, created_by)
       VALUES (?, ?, ?, ?, ?, 'active', '2026-09-30T10:00:00+00:00', 'test')`).bind(id, postId, slotId, slotUtc, hash),

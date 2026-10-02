@@ -65,9 +65,34 @@ export async function runScheduled(env: Env, now: number, fetchImpl: FetchLike):
     // Emergency stop and kill switch: nothing is written; the consent expires if they stay on/off.
     if (settings.emergency_stop) return { status: "emergency_stop", consent_id: c.consent_id };
     if (!settings.auto_publish) return { status: "kill_switch_off", consent_id: c.consent_id };
+    // LCE-040: a scheduled post needs a same-day `current` freshness check of exactly the approved text.
+    // Without it nothing is written; the consent waits (and expires as missed if no check arrives).
+    const fresh = await freshFor(env, c, settings);
+    if (!fresh.ok) return { status: "freshness_pending", consent_id: c.consent_id, post_id: c.post_id, detail: fresh.why };
     return await publishOne(env, now, c, settings, fetchImpl);
   }
   return { status: "missed" };
+}
+
+export function localDate(iso: string, tz: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(new Date(iso));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+export async function freshFor(env: Env, c: ConsentRow, settings: Settings): Promise<{ ok: boolean; why: string }> {
+  const row = await env.DB.prepare("SELECT * FROM freshness WHERE post_id = ?").bind(c.post_id)
+    .first<{ check_date: string; status: string; content_hash: string; received_at: string }>();
+  if (!row) return { ok: false, why: "no same-day freshness check" };
+  const day = localDate(c.slot_utc, settings.timezone || "UTC");
+  if (row.check_date !== day) return { ok: false, why: `last freshness check is for ${row.check_date}, not ${day}` };
+  if (!row.received_at || localDate(row.received_at, settings.timezone || "UTC") !== day) {
+    return { ok: false, why: "freshness check was not received on the publishing day" };
+  }
+  if (row.status !== "current") return { ok: false, why: `freshness status ${row.status}` };
+  if (row.content_hash !== c.approved_hash) return { ok: false, why: "freshness check was for another text version" };
+  return { ok: true, why: "" };
 }
 
 async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settings,

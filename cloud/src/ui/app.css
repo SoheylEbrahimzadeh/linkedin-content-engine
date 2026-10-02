@@ -269,3 +269,8 @@ th { color: var(--muted); font-weight: 600; border-top: 0; font-size: 12.5px; }
 /* LCE-038 media card */
 .media-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .media-thumb { display: block; width: 100%; max-width: 360px; height: auto; aspect-ratio: 1 / 1; object-fit: contain; border-radius: 8px; border: 1px solid var(--line); background: var(--raised); margin-bottom: 12px; }
+
+/* LCE-040: same-day freshness */
+.fresh-line { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 6px; }
+.warn-text { color: var(--warn); }
+.card h3.small { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
