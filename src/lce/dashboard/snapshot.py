@@ -157,7 +157,8 @@ def _image_view(store: DataStore, pid: str) -> dict | None:
             "provenance": doc.get("provenance"), "errors": errors, "warnings": warnings,
             "media_status": view["media_status"], "text_only_reason": doc.get("text_only_reason"),
             "width": doc.get("width"), "height": doc.get("height"), "bytes": doc.get("bytes"),
-            "mime": doc.get("mime"), "decided_by": doc.get("decided_by"), "decided_at": doc.get("decided_at")}
+            "mime": doc.get("mime"), "decided_by": doc.get("decided_by"), "decided_at": doc.get("decided_at"),
+            "media_relevance": view.get("media_relevance"), "spec": doc.get("spec")}
 
 
 def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[dict],
@@ -210,6 +211,9 @@ def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[d
         "candidate_id": meta.get("candidate_id"),
         "history": meta.get("history", []),
         "freshness": _freshness_view(store, pid),
+        "versions": _versions_view(store, pid),
+        "refresh_request": meta.get("refresh_request"),
+        "refresh": meta.get("refresh"),
         "objective": meta.get("objective"),
         "humanization": meta.get("humanization"),
         "text": text,
@@ -217,6 +221,18 @@ def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[d
         "has_approval_artifact": (folder / "APPROVAL.md").exists(),
         "calendar_entry": entry,
     }
+
+
+def _versions_view(store: DataStore, pid: str) -> list[dict]:
+    """LCE-041: earlier versions (newest last) with their text, so the dashboard can show
+    previous → refreshed. Image bytes are uploaded separately (cloud sync)."""
+    from lce import versions
+
+    out = []
+    for v in versions.listing(store, pid)[-5:]:
+        f = versions.folder(store, pid) / f"v{v['version']}" / "post.md"
+        out.append({**v, "text": f.read_text(encoding="utf-8") if f.exists() else None})
+    return out
 
 
 def _freshness_view(store: DataStore, pid: str) -> dict | None:

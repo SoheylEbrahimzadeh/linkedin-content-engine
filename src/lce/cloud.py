@@ -808,6 +808,38 @@ def sync_preview_media(store: DataStore, client: CloudClient) -> dict:
     return {"uploaded": sent, "skipped": skipped}
 
 
+def sync_version_media(store: DataStore, client: CloudClient) -> dict:
+    """LCE-041: upload the images of earlier versions (versions/vN), so the Control
+    Center shows previous → refreshed side by side. Sha-checked; owner-only behind Access."""
+    import base64
+
+    from lce import versions
+
+    listed = client.call("GET", "/version-media").get("media", [])
+    have = {(m["post_id"], m["version"]): m["sha256"] for m in listed}
+    sent, skipped = [], []
+    for pid in store.post_ids():
+        for v in versions.listing(store, pid):
+            if not v.get("image_file"):
+                continue
+            f = versions.folder(store, pid) / f"v{v['version']}" / v["image_file"]
+            if not f.exists():
+                skipped.append((pid, v["version"], "file missing"))
+                continue
+            data = f.read_bytes()
+            sha = hashlib.sha256(data).hexdigest()
+            if have.get((pid, v["version"])) == sha:
+                continue
+            if len(data) > MAX_PREVIEW_BYTES:
+                skipped.append((pid, v["version"], f"larger than {MAX_PREVIEW_BYTES} bytes"))
+                continue
+            client.call("PUT", f"/version-media/{pid}/{v['version']}",
+                        {"data_base64": base64.b64encode(data).decode(), "sha256": sha,
+                         "alt_text": (v.get("media") or {}).get("alt_text") or ""})
+            sent.append(f"{pid}/v{v['version']}")
+    return {"uploaded": sent, "skipped": skipped}
+
+
 def sync(store: DataStore, client: CloudClient, verify: bool = False) -> dict:
     snap = sync_payload(store)
     out = client.call("PUT", "/pipeline", snap)
@@ -815,6 +847,10 @@ def sync(store: DataStore, client: CloudClient, verify: bool = False) -> dict:
         out["media"] = sync_preview_media(store, client)
     except CloudError as exc:   # an older Worker without the route: the mirror still syncs
         out["media"] = {"uploaded": [], "skipped": [], "error": str(exc)}
+    try:
+        out["version_media"] = sync_version_media(store, client)
+    except CloudError as exc:   # Worker without migration 0007 yet
+        out["version_media"] = {"uploaded": [], "skipped": [], "error": str(exc)}
     store.log_event("cloud.synced", bytes=out.get("bytes"), sha256=out.get("sha256"))
     if verify:
         out["checks"] = verify_sync(store, client, snap, out)

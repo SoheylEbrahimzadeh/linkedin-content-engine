@@ -472,3 +472,64 @@ export function freshness(post, { today, cloudRow = null, cloudPost = null, slot
   }
   return { key, ...FRESHNESS[key], note, approval, latest, history: post?.freshness?.history ?? [], gate };
 }
+
+// ── LCE-041: manual refresh of the whole post package ──
+export const REFRESH_CONFIRM = "This will generate a new version of the text and its associated media. The current version " +
+  "will be preserved in History and the refreshed version will require your approval again.";
+const UNPUBLISHED_CLOSED = new Set(["PUBLISHED", "PUBLISHING", "PUBLISH_FAILED", "NEEDS_RECONCILE", "REJECTED"]);
+
+/** Can the owner ask for a refresh? Only unpublished posts that are not in the cloud publish queue. */
+export function canRefresh(post, inCloud) {
+  return Boolean(post && post.text && !inCloud && !UNPUBLISHED_CLOSED.has(post.state));
+}
+
+/** Where a refresh stands for this post (from the recorded request/outcome only). */
+export function refreshState(post, pending = null) {
+  if (pending?.action === "refresh") {
+    return { key: "recorded", label: "Refresh requested", tone: "info",
+      note: "Recorded in the cloud; the private workflow adds it to the repository within about an hour." };
+  }
+  if (post?.refresh_request) {
+    return { key: "requested", label: "Refresh requested", tone: "info",
+      note: "Waiting for a writing session (the scheduled Routine or a manual session) to produce the new version." };
+  }
+  const r = post?.refresh;
+  if (r?.outcome === "refreshed" && post.state === "AWAITING_APPROVAL") {
+    return { key: "refreshed", label: "Refreshed · Awaiting approval", tone: "warn", note: r.reason ?? null };
+  }
+  if (r?.outcome === "refreshed") return { key: "refreshed_done", label: "Refreshed", tone: "muted", note: r.reason ?? null };
+  if (r?.outcome === "kept") return { key: "kept", label: "Refresh checked · current version kept", tone: "ok", note: r.reason ?? null };
+  return null;
+}
+
+/** The media relevance record as rows (never invented: missing → said so). */
+export function relevanceRows(image) {
+  const rel = image?.media_relevance;
+  if (!image || image.kind === "none") return { rows: [], decision: null };
+  if (!rel) return { rows: [["Relevance", "not recorded"]], decision: "missing" };
+  const pct = (x) => (x === null || x === undefined ? "not machine-checked (declared)" : `${Math.round(x * 100)}%`);
+  const rows = [
+    ["Visual concept", rel.concept ?? "not stated"],
+    ["Visual type", rel.visual_type ?? "not stated"],
+    ["Why it helps", rel.relevance_reason ?? "not stated"],
+    ["Copied post text", pct(rel.copied_post_text_ratio)],
+    ["Facts in the image", (rel.factual_claims ?? []).length
+      ? rel.factual_claims.map((f) => `${f.text}${f.supported ? " (sourced)" : " (UNSUPPORTED)"}`).join("; ") : "none"],
+  ];
+  if ((rel.source_requirements ?? []).length) rows.push(["Source shown", rel.source_requirements.join("; ")]);
+  return { rows, decision: rel.media_decision, legacy: Boolean(rel.legacy), problems: rel.problems ?? [] };
+}
+
+/** Previous → current for the History view: the last preserved version and the current package. */
+export function versionCompare(post, versionMedia = []) {
+  const vs = post?.versions ?? [];
+  if (!vs.length) return null;
+  const prev = vs[vs.length - 1];
+  const hasImg = (v) => versionMedia.some((m) => m.post_id === post.post_id && Number(m.version) === v.version);
+  return {
+    previous: { ...prev, image_available: Boolean(prev.image_file) && hasImg(prev) },
+    current: { hook: hook(post.text), content_hash: post.actual_hash, image_sha256: post.image?.sha256 ?? null,
+      concept: post.image?.media_relevance?.concept ?? null, state: post.state, refresh: post.refresh ?? null },
+    older: vs.slice(0, -1).reverse().map((v) => ({ ...v, image_available: Boolean(v.image_file) && hasImg(v) })),
+  };
+}

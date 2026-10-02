@@ -94,35 +94,25 @@ def claim_status(claim: str, text: str) -> str:
 
 
 # ── media re-evaluation ──────────────────────────────────────────────
-def diagram_strings(doc: dict) -> list[str]:
-    spec = doc.get("spec") or {}
-    if spec:
-        return [
-            spec.get("title", ""),
-            *spec.get("items", []),
-            *([spec["footer"]] if spec.get("footer") else []),
-        ]
-    rel = doc.get("relation", "")  # diagrams made before the spec was stored
-    if "verbatim:" in rel:
-        body = rel.split("verbatim:", 1)[1]
-        title, _, items = body.partition(" — ")
-        return [title.strip(), *[x.strip() for x in items.split("; ") if x.strip()]]
-    return []
-
-
 def media_check(store: DataStore, post_id: str, text: str) -> dict:
+    """Is the media still right for this text? Rights/file integrity, then the LCE-041
+    semantic relevance record re-evaluated against the current text (a visual that
+    restates the post, or states an unsourced figure, is stale and must be redone)."""
     doc = images.load(store, post_id)
     if doc is None:
         return {"status": "needs_decision", "note": "no media decision recorded"}
-    errors, warnings = images.check(store, post_id)
     out = {"kind": doc["kind"], "sha256": doc.get("sha256")}
     if doc["kind"] == images.NO_IMAGE:
-        return {
-            **out,
-            "status": "text_only",
-            "note": doc.get("text_only_reason") or "text-only",
-            "warnings": warnings,
-        }
+        _, warnings = images.check(store, post_id)
+        return {**out, "status": "text_only", "note": doc.get("text_only_reason") or "text-only",
+                "warnings": warnings}
+    rel = images.relevance_now(store, post_id, doc)
+    if rel is not None:
+        out["relevance"] = {k: rel.get(k) for k in ("concept", "visual_type", "copied_post_text_ratio",
+                                                    "media_decision", "problems")}
+    if rel is not None and rel["media_decision"] != "accepted":
+        return {**out, "status": "stale", "note": "media relevance rejected: " + "; ".join(rel["problems"])}
+    errors, _ = images.check(store, post_id)
     if errors:
         return {**out, "status": "invalid", "note": "; ".join(errors)}
     prov = doc.get("provenance") or {}
@@ -131,31 +121,13 @@ def media_check(store: DataStore, post_id: str, text: str) -> dict:
         from lce.commons import license_usage
 
         if license_usage(prov.get("license", "")) is None:
-            return {
-                **out,
-                "status": "invalid",
-                "note": f"licence {prov.get('license')!r} is no longer accepted",
-            }
+            note = f"licence {prov.get('license')!r} is no longer accepted"
+            return {**out, "status": "invalid", "note": note}
         notes.append(f"licence {prov.get('license')} still accepted")
-    if doc["kind"] == "diagram":
-        strings = [s for s in diagram_strings(doc) if s]
-        t = norm(text)
-        missing = [s for s in strings if norm(s).strip(" .:") not in t]
-        if not strings:
-            notes.append("diagram strings unknown; relevance needs review")
-            return {**out, "status": "needs_review", "note": "; ".join(notes)}
-        if missing:
-            return {
-                **out,
-                "status": "stale",
-                "note": "diagram text no longer in the post: " + "; ".join(missing),
-            }
-        notes.append(f"all {len(strings)} diagram strings still in the post text")
-    if doc["kind"] == "chart":
-        recorded = {c.get("text") for c in store.load_post(post_id).get("claims") or []}
-        notes.append("chart claims still recorded" if recorded else "chart: no recorded claims left")
-        if not recorded:
-            return {**out, "status": "stale", "note": "; ".join(notes)}
+    if rel is not None:
+        ratio = rel.get("copied_post_text_ratio")
+        notes.append(f"relevance accepted ({rel.get('visual_type')}"
+                     + (f", {ratio:.0%} copied post text" if ratio is not None else ", declared") + ")")
     notes.append("file hash and rights metadata valid")
     return {**out, "status": "still_relevant", "note": "; ".join(notes)}
 

@@ -75,7 +75,7 @@ def lookup(title: str, transport=None) -> dict:
 
 
 def attach(store: DataStore, post_id: str, title: str, *, relation: str, alt_text: str,
-           rationale: str, transport=None) -> dict:
+           rationale: str, transport=None, relevance: dict | None = None) -> dict:
     info = lookup(title, transport)
     usage = license_usage(info["license"])
     if usage is None:
@@ -101,4 +101,5 @@ def attach(store: DataStore, post_id: str, title: str, *, relation: str, alt_tex
         f = Path(tmp) / f"commons{ext}"
         f.write_bytes(data)
         return images.decide(store, post_id, kind="source_image", rationale=rationale, source_file=str(f),
-                             relation=relation, alt_text=alt_text, provenance=prov, decided_by="agent")
+                             relation=relation, alt_text=alt_text, provenance=prov, decided_by="agent",
+                             relevance=relevance)

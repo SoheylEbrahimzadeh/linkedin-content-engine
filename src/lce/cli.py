@@ -270,10 +270,15 @@ def cmd_image_decide(args):
                                                            if args.prompt else {})}
     if args.kind == "none" and not args.text_only_reason:
         raise StoreError("--kind none needs --text-only-reason (why no visual serves this post)")
+    rel = None
+    if args.kind != "none" and (args.concept or args.visual_type or args.relevance_reason):
+        rel = {"concept": args.concept or "", "visual_type": args.visual_type or "",
+               "reason": args.relevance_reason or ""}
     doc = decide(_store(args), args.post, kind=args.kind, rationale=args.rationale,
                  source_file=args.file, relation=args.relation or "", alt_text=args.alt or "",
                  provenance=prov, decided_by=args.by,
-                 text_only_reason=args.text_only_reason if args.kind == "none" else None)
+                 text_only_reason=args.text_only_reason if args.kind == "none" else None,
+                 relevance=rel)
     print(f"✓ image decision for {args.post}: {doc['kind']}"
           + (f" ({doc['file']}, sha256 {doc['sha256'][:12]}…)" if doc["kind"] != "none" else ""))
     return cmd_image_check(args)
@@ -308,6 +313,63 @@ def _push_freshness(client, rows):
     for row in rows:
         client.call("PUT", f"/freshness/{row['post_id']}", row)
     print(f"✓ {len(rows)} same-day freshness record(s) sent to the cloud (test-mode records are never sent)")
+
+
+def cmd_refresh_manual(args):
+    """LCE-041: manual refresh of the whole post package (pending, package, keep)."""
+    from lce import repackage
+
+    store = _store(args)
+    if args.sub == "pending":
+        rows = repackage.pending(store)
+        if args.json:
+            print(json.dumps(rows, indent=2, ensure_ascii=False))
+        elif not rows:
+            print("no refresh requested")
+        for r in [] if args.json else rows:
+            print(f"{r['post_id']}  {r['state']}  planned {r.get('plan_date')}  requested {r['requested_at']}"
+                  f" by {r.get('requested_by')}" + (f"  note: {r['note']}" if r.get("note") else ""))
+        return 0
+    if args.sub == "keep":
+        out = repackage.keep(store, args.post, reason=args.reason, by=args.by)
+        print(f"✓ {args.post}: current version kept ({out['reason']}); approval state unchanged")
+        return 0
+    pkg_path = Path(args.file)
+    pkg = yaml.safe_load(pkg_path.read_text(encoding="utf-8")) or {}
+    if "text_file" in pkg:
+        pkg["text"] = (pkg_path.parent / pkg.pop("text_file")).read_text(encoding="utf-8")
+    spec = (pkg.get("media") or {}).get("spec")
+    if isinstance(spec, str):
+        pkg["media"]["spec"] = yaml.safe_load((pkg_path.parent / spec).read_text(encoding="utf-8"))
+    rec = repackage.package(store, args.post, pkg, by=args.by, as_of=_as_of(store, args.as_of))
+    print(f"✓ {args.post} refreshed → AWAITING_APPROVAL (previous version kept as v{rec['version_before']})")
+    print(f"    text  {rec['content_hash_before'][:12]}… → {rec['content_hash'][:12]}…")
+    print(f"    image {(rec['image_sha256_before'] or 'none')[:12]} → {(rec['image_sha256'] or 'none')[:12]}"
+          f"  ({rec['media']['note']})")
+    rel = rec["media"].get("relevance") or {}
+    if rel:
+        print(f"    media relevance {rel.get('media_decision')}: {rel.get('visual_type')} · "
+              f"{rel.get('concept')}")
+    dup = rec["steps"]["duplicate"]
+    print(f"    QA passed · duplicate check {dup['status']} against {dup['compared_against']} archived "
+          f"post(s) · approval {rec['approval_effect']}")
+    print("    nothing was approved or published; the owner approves the new version in the Control Center")
+    return 0
+
+
+def cmd_versions(args):
+    from lce import versions
+
+    store = _store(args)
+    if args.sub == "list":
+        for v in versions.listing(store, args.post):
+            print(f"v{v['version']}  {v['created_at']}  {v['state']}  text {v['content_hash'][:12]}…  "
+                  f"image {(v.get('image_sha256') or 'none')[:12]}  {v['reason']}")
+        return 0
+    m = versions.restore(store, args.post, args.version, by=args.by)
+    print(f"✓ v{m['version']} restored as the current candidate (HUMANIZED); the version it replaced is "
+          "kept. Run QA, the duplicate check and prepare approval again.")
+    return 0
 
 
 def cmd_refresh(args):
@@ -357,11 +419,21 @@ def cmd_refresh(args):
 
 
 def cmd_image_diagram(args):
-    from lce.visuals import diagram
+    from lce.visuals import concept, diagram
 
-    doc = diagram(_store(args), args.post, title=args.title, items=args.item, footer=args.footer)
+    store = _store(args)
+    if args.spec:
+        spec = yaml.safe_load(Path(args.spec).read_text(encoding="utf-8")) or {}
+        doc = concept(store, args.post, spec)
+    elif args.title and args.item:
+        doc = diagram(store, args.post, title=args.title, items=args.item, footer=args.footer)
+    else:
+        raise StoreError("give --spec <file.yaml> (a conceptual visual of the post's idea)")
+    rel = doc["media_relevance"]
     print(f"✓ diagram generated for {args.post} ({doc['file']}, {doc.get('width')}x{doc.get('height')}, "
           f"sha256 {doc['sha256'][:12]}…)")
+    print(f"  relevance {rel['media_decision']}: {rel['visual_type']} · copied post text "
+          f"{rel['copied_post_text_ratio']:.0%} · {rel['image_words']} words in the image")
     return cmd_image_check(args)
 
 
@@ -369,7 +441,9 @@ def cmd_image_commons(args):
     from lce.commons import attach
 
     doc = attach(_store(args), args.post, args.title, relation=args.relation, alt_text=args.alt,
-                 rationale=args.rationale)
+                 rationale=args.rationale,
+                 relevance={"concept": args.concept, "visual_type": args.visual_type,
+                            "reason": args.relevance_reason})
     prov = doc["provenance"]
     print(f"✓ {args.title} attached to {args.post}: {prov['license']} ({prov['usage']}), "
           f"credit {prov['credit']}")
@@ -1197,12 +1271,21 @@ def build_parser() -> argparse.ArgumentParser:
                    choices=["text_carries_point", "no_relevant_visual", "no_rights_safe_source",
                             "personal_story_without_owner_photo", "would_be_decorative"],
                    help="required with --kind none: why the post stays text-only")
+    p.add_argument("--concept", default=None, help="the idea the image communicates (LCE-041)")
+    p.add_argument("--visual-type", dest="visual_type", default=None,
+                   help="flow, process, decision_tree, framework, relationship_map, comparison, matrix, "
+                        "chart, photo, screenshot, illustration")
+    p.add_argument("--relevance-reason", dest="relevance_reason", default=None,
+                   help="what the image adds beyond the text")
     p = gcmd(g, "diagram", cmd_image_diagram,
-             "checklist diagram made only of the post's own words (visuals extra)")
+             "conceptual diagram of the post's idea from a spec file (visuals extra); "
+             "attached only if the media relevance check accepts it")
     p.add_argument("post")
-    p.add_argument("--title", required=True, help="verbatim from the post")
-    p.add_argument("--item", action="append", required=True, help="verbatim from the post (2-5)")
-    p.add_argument("--footer", default="", help="verbatim from the post or a recorded claim")
+    p.add_argument("--spec", default=None, help="YAML spec: visual_type, concept, relevance_reason, "
+                   "title, nodes [{label, note}], outcomes, footer_claim, alt_text (see docs/MEDIA.md)")
+    p.add_argument("--title", default=None, help="(legacy) title; goes through the same relevance check")
+    p.add_argument("--item", action="append", default=[], help="(legacy) item")
+    p.add_argument("--footer", default="")
     p = gcmd(g, "commons", cmd_image_commons,
              "attach a Wikimedia Commons file with a reuse licence (PD, CC0, CC BY, CC BY-SA)")
     p.add_argument("post")
@@ -1210,6 +1293,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--relation", required=True)
     p.add_argument("--alt", required=True)
     p.add_argument("--rationale", required=True)
+    p.add_argument("--concept", required=True, help="the idea the image communicates")
+    p.add_argument("--visual-type", dest="visual_type", required=True, help="e.g. photo, illustration")
+    p.add_argument("--relevance-reason", dest="relevance_reason", required=True,
+                   help="what the image adds beyond the text")
     p = gcmd(g, "show", cmd_image_show, "the post's media decision (type, status, source, rights)")
     p.add_argument("post")
     p = gcmd(g, "chart", cmd_image_chart, "chart from the post's recorded claims (visuals extra)")
@@ -1247,10 +1334,33 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("post")
     p.add_argument("--as-of", dest="as_of", default=None)
     p.add_argument("--by", default="session")
+    p = gcmd(g, "pending", cmd_refresh_manual, "posts whose owner asked for a refresh (LCE-041)")
+    p.add_argument("--json", action="store_true")
+    p = gcmd(g, "package", cmd_refresh_manual,
+             "manual refresh: a new post package (text, sources, claims, media) through every check")
+    p.add_argument("post")
+    p.add_argument("--file", required=True, help="YAML: text|text_file, reason, sources [{url, title}], "
+                   "claims [{text, source_url}], media {spec: <file|dict> | keep: <reason> | "
+                   "text_only: {reason, rationale}}")
+    p.add_argument("--as-of", dest="as_of", default=None)
+    p.add_argument("--by", default="session")
+    p = gcmd(g, "keep", cmd_refresh_manual,
+             "close a refresh request without a new version (only if the current one is complete and valid)")
+    p.add_argument("post")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--by", default="session")
     p = gcmd(g, "push", cmd_refresh, "send today's latest freshness records to the cloud gate")
     p.add_argument("--as-of", dest="as_of", default=None)
     p = gcmd(g, "show", cmd_refresh, "the post's freshness history")
     p.add_argument("post")
+
+    g = group("versions", "earlier versions of a post package (kept by every refresh)")
+    p = gcmd(g, "list", cmd_versions, "the post's preserved versions")
+    p.add_argument("post")
+    p = gcmd(g, "restore", cmd_versions, "make version N the current candidate again (approval discarded)")
+    p.add_argument("post")
+    p.add_argument("--version", type=int, required=True)
+    p.add_argument("--by", default="session")
 
     g = group("analytics", "metrics of published posts and what they teach")
     p = gcmd(g, "record", cmd_analytics_record, "record metrics you can see for a published post")

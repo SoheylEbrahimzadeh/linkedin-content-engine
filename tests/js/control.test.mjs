@@ -243,3 +243,53 @@ test("freshness: approval validity and the scheduled-publish gate", () => {
   assert.equal(freshness(ok, { today, cloudPost, cloudRow: { ...row, content_hash: "h9" }, slotDate: today }).gate.ok, false);
   assert.equal(freshness(ok, { today }).gate, null);
 });
+
+test("refresh (LCE-041): who may refresh and what state is shown", () => {
+  const { canRefresh, refreshState, REFRESH_CONFIRM } = lib;
+  const p = { post_id: "p1", state: "AWAITING_APPROVAL", text: "x" };
+  assert.equal(canRefresh(p, false), true);
+  assert.equal(canRefresh(p, true), false);                                    // in the cloud queue
+  for (const st of ["PUBLISHED", "PUBLISHING", "REJECTED", "NEEDS_RECONCILE"]) assert.equal(canRefresh({ ...p, state: st }, false), false);
+  assert.equal(canRefresh({ ...p, text: null }, false), false);
+  assert.equal(refreshState(p), null);
+  assert.equal(refreshState(p, { action: "refresh" }).label, "Refresh requested");
+  assert.equal(refreshState({ ...p, refresh_request: { requested_at: "t" } }).key, "requested");
+  const done = refreshState({ ...p, refresh: { outcome: "refreshed", reason: "new visual", previous_version: 1 } });
+  assert.equal(done.label, "Refreshed · Awaiting approval");
+  assert.equal(refreshState({ ...p, state: "APPROVED", refresh: { outcome: "refreshed" } }).label, "Refreshed");
+  assert.match(REFRESH_CONFIRM, /preserved in History/);
+  assert.match(REFRESH_CONFIRM, /require your approval again/);
+});
+
+test("relevance rows show the recorded media relevance, never invent it", () => {
+  const { relevanceRows } = lib;
+  assert.deepEqual(relevanceRows({ kind: "none" }).rows, []);
+  assert.equal(relevanceRows({ kind: "diagram" }).decision, "missing");
+  const r = relevanceRows({ kind: "diagram", media_relevance: { concept: "c", visual_type: "flow", relevance_reason: "why",
+    copied_post_text_ratio: 0.08, factual_claims: [{ text: "40% canceled", supported: true }], source_requirements: ["source shown on the image: gartner.com"],
+    media_decision: "accepted", problems: [] } });
+  assert.equal(r.decision, "accepted");
+  const map = Object.fromEntries(r.rows);
+  assert.equal(map["Copied post text"], "8%");
+  assert.equal(map["Facts in the image"], "40% canceled (sourced)");
+  assert.equal(relevanceRows({ kind: "source_image", media_relevance: { copied_post_text_ratio: null, media_decision: "accepted" } })
+    .rows.find(([k]) => k === "Copied post text")[1], "not machine-checked (declared)");
+  const legacy = relevanceRows({ kind: "diagram", media_relevance: { legacy: true, media_decision: "rejected", problems: ["text dump"] } });
+  assert.equal(legacy.legacy, true);
+  assert.deepEqual(legacy.problems, ["text dump"]);
+});
+
+test("version compare: previous → current, images only when uploaded", () => {
+  const { versionCompare } = lib;
+  assert.equal(versionCompare({ post_id: "p1", versions: [] }), null);
+  const post = { post_id: "p1", text: "New hook line\n\nBody", actual_hash: "h2", state: "AWAITING_APPROVAL",
+    image: { sha256: "i2", media_relevance: { concept: "decision flow" } }, refresh: { outcome: "refreshed" },
+    versions: [{ version: 1, hook: "Old", content_hash: "h0", image_file: null }, { version: 2, hook: "Older hook", content_hash: "h1", image_file: "image.png", image_sha256: "i1" }] };
+  const c = versionCompare(post, [{ post_id: "p1", version: 2 }]);
+  assert.equal(c.previous.version, 2);
+  assert.equal(c.previous.image_available, true);
+  assert.equal(c.current.hook, "New hook line");
+  assert.equal(c.current.concept, "decision flow");
+  assert.deepEqual(c.older.map((v) => v.version), [1]);
+  assert.equal(versionCompare(post, []).previous.image_available, false);
+});

@@ -92,6 +92,14 @@ export async function handleApi(request: Request, env: Env, now: number,
     }
     if (request.method === "DELETE" && (r = m(/^\/api\/decisions\/(d-[0-9a-f-]{36})$/))) return json(200, await cancelDecision(env, now, who, r[1]));
     if (request.method === "GET" && (r = m(/^\/api\/posts\/([^/]+)\/image$/))) return await postImage(env, r[1], request);
+    if (request.method === "GET" && (r = m(/^\/api\/posts\/([^/]+)\/versions\/(\d{1,4})\/image$/))) {
+      return await versionImage(env, r[1], Number(r[2]), request);
+    }
+    if (request.method === "GET" && url.pathname === "/api/version-media") return json(200, await versionMediaList(env));
+    if (request.method === "PUT" && (r = m(/^\/api\/version-media\/([^/]+)\/(\d{1,4})$/))) {
+      if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "version media is uploaded by lce cloud sync");
+      return json(200, await putVersionMedia(env, now, actor, r[1], Number(r[2]), await body(request)));
+    }
     if (request.method === "PUT" && (r = m(/^\/api\/freshness\/([^/]+)$/))) {
       if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "freshness is sent by lce refresh run --push");
       return json(200, await putFreshness(env, now, actor, r[1], await body(request)));
@@ -412,6 +420,8 @@ export async function snapshot(env: Env, now: number) {
     events,
     decisions: (await listDecisions(env, null)).decisions.slice(0, 100),
     preview_media: (await previewMediaList(env)).media,
+    // LCE-041: tolerated until migration 0007 is applied (cloud-sync applies it after a deploy).
+    version_media: await versionMediaList(env).then((r) => r.media, (e) => { if (isSchemaMissing(e)) return []; throw e; }),
     freshness: (await env.DB.prepare("SELECT * FROM freshness").all<Record<string, unknown>>()).results,
   };
 }
@@ -463,6 +473,37 @@ async function putPreviewMedia(env: Env, now: number, actor: string, rawId: stri
   return { post_id: id, sha256: img.sha256, bytes: img.data.length };
 }
 
+// ── LCE-041: images of earlier versions (previous → refreshed in the Control Center) ──
+async function versionMediaList(env: Env) {
+  const rows = (await env.DB.prepare("SELECT post_id, version, sha256, bytes, mime, alt_text, updated_at FROM version_media ORDER BY post_id, version")
+    .all<Record<string, unknown>>()).results;
+  return { media: rows };
+}
+
+async function putVersionMedia(env: Env, now: number, actor: string, rawId: string, version: number, b: Record<string, unknown>) {
+  const id = requirePostId(rawId);
+  if (!Number.isInteger(version) || version < 1) throw new HttpError(400, "invalid version");
+  const img = await parseImage({ data_base64: b.data_base64, sha256: b.sha256, alt_text: String(b.alt_text ?? "").trim() || "image" });
+  if (!img) throw new HttpError(400, "image is required");
+  const type = MAGIC.find(([mg]) => mg.every((x, i) => img.data[i] === x))![1];
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO version_media (post_id, version, data, sha256, bytes, mime, alt_text, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(post_id, version) DO UPDATE SET data = excluded.data, sha256 = excluded.sha256, bytes = excluded.bytes,
+        mime = excluded.mime, alt_text = excluded.alt_text, updated_at = excluded.updated_at`)
+      .bind(id, version, img.data, img.sha256, img.data.length, `image/${type}`, String(b.alt_text ?? ""), isoUtc(now)),
+    event(env.DB, now, "version_media.stored", actor, id, { version, sha256: img.sha256 }),
+  ]);
+  return { post_id: id, version, sha256: img.sha256, bytes: img.data.length };
+}
+
+async function versionImage(env: Env, rawId: string, version: number, request?: Request): Promise<Response> {
+  const id = requirePostId(rawId);
+  const row = await env.DB.prepare("SELECT data, sha256 FROM version_media WHERE post_id = ? AND version = ?").bind(id, version)
+    .first<{ data: ArrayBuffer; sha256: string }>();
+  if (!row) return json(404, { error: "no image for this version in the cloud" });
+  return imageResponse(row, request);
+}
+
 // Image of a pushed post (D1), for the Control Center preview. Access-protected like every API route.
 async function postImage(env: Env, rawId: string, request?: Request): Promise<Response> {
   const id = requirePostId(rawId);
@@ -470,6 +511,10 @@ async function postImage(env: Env, rawId: string, request?: Request): Promise<Re
   const row = await env.DB.prepare("SELECT data, sha256 FROM post_images WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer; sha256: string }>()
     ?? await env.DB.prepare("SELECT data, sha256 FROM preview_media WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer; sha256: string }>();
   if (!row) return json(404, { error: "no image in the cloud for this post" });
+  return imageResponse(row, request);
+}
+
+function imageResponse(row: { data: ArrayBuffer; sha256: string }, request?: Request): Response {
   const data = new Uint8Array(row.data);
   const type = MAGIC.find(([m]) => m.every((x, i) => data[i] === x))?.[1];
   if (!type) return json(415, { error: "unrecognised image" });

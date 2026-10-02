@@ -37,7 +37,8 @@
             "enum": [
               "check",
               "research",
-              "update"
+              "update",
+              "manual"
             ]
           },
           "by": {

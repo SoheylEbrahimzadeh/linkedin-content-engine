@@ -52,28 +52,44 @@ Phase 1 ends at the approval boundary. **You never run `lce approve`,
    is missing.
 5. **Duplicate check**: `lce dupcheck <post_id>`. On failure, change the angle
    or topic; do not paraphrase around it.
-6. **Media decision (explicit; text-only is never a silent default).** Decide
-   *Image + text* or *Text-only* for this post, in this order:
-   - **Recorded figures** (the post cites sourced numbers): `lce image chart <post_id>`
-     draws them verbatim with their source.
-   - **A checklist, steps, comparison or framework in the post**:
-     `lce image diagram <post_id> --title "<verbatim>" --item "<verbatim>" ...`
-     (2-5 items; every string must be the post's own words or a recorded
-     claim; the source publisher is added automatically).
-   - **A real photo or illustration adds meaning** (a named product, place,
-     artefact, historical figure): `lce image commons <post_id> --title "File:…"
-     --relation "…" --alt "…" --rationale "…"`. Wikimedia Commons only, through
-     its API; the licence must be PD, CC0, CC BY or CC BY-SA; credit and licence
-     are recorded. Never Google Images, never an editorial or stock photo without
-     a licence, never an invented URL.
-   - **The owner's own screenshot/photo**: `lce image decide … --origin owner_screenshot|owner_photo`.
+6. **Media decision (explicit; text-only is never a silent default).** A visual
+   must communicate the post's IDEA, never re-type the post. Decide in this order:
+   1. What is the post's central idea, in one line? Would a visual add
+      information or understanding a reader does not get from the text?
+      If not: text-only (below).
+   2. Which visual form carries that idea: flow / process, decision_tree,
+      framework / relationship_map (centre + elements), comparison, chart?
+   3. Write a spec (YAML) with SHORT labels of your own (≤ 6 words, optional
+      note ≤ 8 words), not the post's sentences or questions:
+      ```yaml
+      visual_type: decision_tree          # flow, process, decision_tree, framework, relationship_map
+      concept: "<the idea the visual carries>"
+      relevance_reason: "<what it adds beyond the text>"
+      title: "<short title>"
+      nodes: [{label: "Business value", note: "result changed, how measured"}, ...]
+      outcomes: ["Proceed", "Fund as experiment", "Stop"]   # optional
+      footer_claim: 0                     # optional: a recorded claim drawn verbatim + its source
+      alt_text: "<describe the visual: form, elements, outcome — not the post>"
+      ```
+      then `lce image diagram <post_id> --spec <file>`. It is attached only if
+      the media relevance check accepts it: no text dump (copied post text ≤ 35%),
+      no copied questions, every number a recorded sourced claim with the
+      source shown, alt text describing the visual. "It rendered" is not proof
+      of relevance. Every figure in an image must come from a recorded claim.
+   - **Recorded figures** the post rests on: `lce image chart <post_id>`.
+   - **A real photo or illustration adds meaning**: `lce image commons <post_id>
+     --title "File:…" --relation "…" --alt "…" --rationale "…" --concept "…"
+     --visual-type photo --relevance-reason "…"`. Wikimedia Commons only; PD,
+     CC0, CC BY or CC BY-SA; credit and licence recorded. Never Google Images,
+     never an unlicensed or invented source.
+   - **The owner's own screenshot/photo**: `lce image decide … --origin
+     owner_screenshot|owner_photo --concept … --visual-type screenshot|photo
+     --relevance-reason …`.
    - **Otherwise text-only**, with the reason:
      `lce image decide <post_id> --kind none --text-only-reason text_carries_point|no_relevant_visual|no_rights_safe_source|personal_story_without_owner_photo|would_be_decorative --rationale "..."`.
-   Never a random stock/AI image to fill space, never generated people, logos
-   or fake screenshots. `lce image check <post_id>` must pass (it warns when
-   text-only is chosen although recorded figures exist); `lce image show
-   <post_id>` prints the media record (type, status, source, licence, size,
-   alt text). Usage `needs_review` waits for the owner.
+   Never a random stock/AI image, generated people, logos or fake screenshots.
+   `lce image check <post_id>` must pass; `lce image show <post_id>` prints the
+   media record with its `media_relevance`.
 7. **Approval artifact**: `lce approval prepare <post_id>`, then show the owner
    `posts/<post_id>/APPROVAL.md` and the exact command they can run in their
    own terminal.
