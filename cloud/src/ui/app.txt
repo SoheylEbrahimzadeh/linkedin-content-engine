@@ -8,8 +8,8 @@
 
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
-  displayStatus, hashtags, hook, humanizationRows, initials, localDate, localTime, media, parseHash, segments,
-  timeline, weekday,
+  displayStatus, hashtags, hook, humanizationRows, initials, localDate, localTime, media, mediaRecord,
+  mediaSourceShort, parseHash, segments, timeline, weekday,
 } from "./lib.js";
 
 const main = document.getElementById("main");
@@ -284,7 +284,8 @@ function planRow(i) {
     h("div", { class: "row-main" },
       h("div", { class: "row-title" }, href ? link(href, i.title) : i.title),
       h("div", { class: "meta" }, statusPill(i.status), typeChip(i.media.type),
-        i.media.preview === "available" ? badge("image preview", "muted") : null,
+        p && mediaSourceShort(p) ? h("span", { class: "small muted" }, mediaSourceShort(p)) : null,
+        p && !p.image ? h("span", { class: "small muted" }, "no media decision") : null,
         i.objective ? h("span", { class: "small muted" }, objectiveLabel(i.objective)) : null,
         i.note ? h("span", { class: "small muted" }, i.note) : null),
       h("div", { class: "row-actions" },
@@ -444,19 +445,54 @@ function viewPost(id) {
           ["Media", typeChip(media(p ?? c, S.snap).type)],
           ["Visibility", (st().visibility || "PUBLIC") === "PUBLIC" ? "Public" : st().visibility],
         ])),
+        mediaCard(p, c),
         card("Humanization", h("ul", { class: "hz" }, humanizationRows(p, voice).map((r) =>
           h("li", {}, h("span", { class: "hz-label" }, r.label), h("span", { class: "pill " + r.tone }, r.value), r.note ? h("div", { class: "small muted" }, r.note) : null))),
           voice ? h("details", { class: "rules" }, h("summary", {}, "Voice profile used"), voiceSummary(voice)) : null),
         card("Controls", h("div", { class: "controls" }, controls)),
         p?.sources?.length ? card("Sources", h("ul", { class: "list" }, p.sources.map((s) => h("li", {}, ext(s.url, s.title || s.url))))) : null,
         p?.regeneration ? card("Regeneration requested", h("p", {}, p.regeneration.reason), h("p", { class: "small muted" }, fmtWhen(p.regeneration.requested_at))) : null,
-        h("details", { class: "card tech" }, h("summary", {}, "Technical details"), kv([
-          ["Post ID", h("code", {}, id)], ["Pipeline state", state ?? "—"], ["Content hash", h("code", {}, short(p?.actual_hash ?? c?.approved_hash, 24))],
-          ["Approved hash", h("code", {}, short(c?.approved_hash, 24))], ["Publication", pb ? stateBadge(pb.state) : "none"],
-          ["LinkedIn post", pb?.remote_id ? h("code", {}, pb.remote_id) : "—"],
-          ["Humanized", p?.humanization ? `${fmtWhen(p.humanization.at)} by ${p.humanization.by ?? "?"}` : "no record"],
-        ])))),
+        h("details", { class: "card tech" }, h("summary", {}, "Technical details"), techDetails(id, p, c, pb, state)))),
   ];
+}
+
+function mediaCard(p, c) {
+  const rec = mediaRecord(p ?? (c?.image ? { image: { kind: "source_image", media_status: "attached" } } : null));
+  const m = media(p ?? c, S.snap);
+  const tone = { attached: "ok", text_only: "muted", needs_review: "warn", invalid: "err", undecided: "warn" }[rec.status] ?? "muted";
+  return card("Media",
+    h("div", { class: "media-head" }, typeChip(m.type), h("span", { class: "pill " + tone }, rec.statusLabel),
+      m.type.key === "image" ? h("span", { class: "small muted" }, m.preview === "available" ? "thumbnail loaded from the real asset" : "preview not uploaded yet") : null),
+    m.preview === "available" ? h("img", { class: "media-thumb", src: `/api/posts/${encodeURIComponent((p ?? c).post_id)}/image`, alt: m.alt || "Post image", loading: "lazy" }) : null,
+    rec.rows.length ? h("dl", { class: "kv" }, rec.rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v && v.href ? ext(v.href, v.href.replace(/^https?:\/\//, "")) : v)])) : null,
+    rec.note ? h("p", { class: "small muted" }, rec.note) : null,
+    (rec.errors ?? []).map((e) => h("p", { class: "err small" }, e)),
+    (rec.warnings ?? []).map((w) => h("p", { class: "small muted" }, "Note: " + w)));
+}
+
+function techDetails(id, p, c, pb, state) {
+  const kv = (rows) => h("dl", { class: "kv" }, rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v ?? UNKNOWN)]));
+  const eng = S.pipe?.meta?.engine ?? {};
+  const voice = S.pipe?.voice ?? {};
+  const hz = p?.humanization;
+  const rec = mediaRecord(p);
+  return kv([
+    ["Post ID", h("code", {}, id)],
+    ["Content hash", h("code", {}, short(p?.actual_hash ?? c?.approved_hash, 24))],
+    ["Pipeline", `engine ${eng.version ?? UNKNOWN}${eng.commit ? " · " + short(eng.commit, 7) : ""}`],
+    ["Voice profile", `v${voice.version ?? "?"} · ${short(voice.voice_sha256, 12)}`],
+    ["Humanization", hz ? `${hz.source === "owner_edit" ? "owner edit" : "session"} · ${fmtWhen(hz.at)} · voice v${hz.voice_version ?? "?"} (${short(hz.voice_sha256, 12)})${hz.profile_current === false ? " · profile changed since" : ""}`
+      : "no record (written before humanization records)"],
+    ["Media", `${rec.statusLabel}${p?.image?.sha256 ? " · " + short(p.image.sha256, 12) : ""}`],
+    ["Sources", String((p?.sources ?? []).length)],
+    ["QA", p?.qa?.status ?? "not run"],
+    ["Duplicate check", p?.duplicate?.status ?? "not run"],
+    ["Pipeline state", state ?? "—"],
+    ["Approval", p?.approval?.state ? `${p.approval.state}${p.approval.approved_by ? " by " + p.approval.approved_by : ""}` : "—"],
+    ["Approved hash", c?.approved_hash ? h("code", {}, short(c.approved_hash, 24)) : "—"],
+    ["Publication", pb ? stateBadge(pb.state) : "none"],
+    ["LinkedIn post", pb?.remote_id ? h("code", {}, pb.remote_id) : "—"],
+  ]);
 }
 
 function voiceSummary(v) {

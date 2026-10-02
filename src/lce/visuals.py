@@ -116,3 +116,81 @@ def chart(store: DataStore, post_id: str, *, claims: list[int] | None = None) ->
                         "generation": {"method": f"lce image chart (matplotlib "
                                                  f"{matplotlib.__version__})"}},
             decided_by="agent")
+
+
+# ── LCE-038: checklist/summary diagram from the post's own words ──────
+def _norm(s: str) -> str:
+    return " ".join(s.lower().split()).strip(" .:;,!?")
+
+
+def render_diagram(title: str, items: list[str], footer: str, out: Path,
+                   accent: str = DEFAULT_ACCENT) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyBboxPatch
+
+    fig = plt.figure(figsize=(SIZE_PX / DPI, SIZE_PX / DPI), dpi=DPI)
+    fig.patch.set_facecolor("#ffffff")
+    left, top = 0.08, 0.90
+    fig.text(left, top, "\n".join(textwrap.wrap(title, 30)), fontsize=17, fontweight="bold",
+             color="#18181b", va="top")
+    n = len(items)
+    row_h = min(0.17, 0.66 / max(n, 1))
+    y = top - 0.12 - 0.04 * (len(textwrap.wrap(title, 30)) - 1)
+    for i, item in enumerate(items, 1):
+        fig.patches.append(FancyBboxPatch((left, y - row_h + 0.02), 0.84, row_h - 0.03,
+                                          boxstyle="round,pad=0,rounding_size=0.015",
+                                          transform=fig.transFigure, facecolor="#f4f4f5",
+                                          edgecolor="none"))
+        fig.text(left + 0.035, y - row_h / 2 + 0.005, str(i), fontsize=20, fontweight="bold",
+                 color=accent, va="center")
+        fig.text(left + 0.11, y - row_h / 2 + 0.005, "\n".join(textwrap.wrap(item, 44)), fontsize=9.5,
+                 color="#27272a", va="center", linespacing=1.35)
+        y -= row_h
+    if footer:
+        fig.text(left, 0.06, "\n".join(textwrap.wrap(footer, 80)), fontsize=6.5, color="#52525b", va="bottom")
+    fig.savefig(out, format="png", dpi=DPI, metadata={"Software": None})
+    plt.close(fig)
+
+
+def diagram(store: DataStore, post_id: str, *, title: str, items: list[str], footer: str = "") -> dict:
+    """Render a checklist diagram whose title, items and footer are taken VERBATIM
+    from the post's text (or recorded claims), plus the source publishers. It can
+    only restate the post; it cannot add claims."""
+    from lce.posts import current_text
+
+    text = _norm(current_text(store, post_id))
+    post = store.load_post(post_id)
+    claims = [_norm(c.get("text", "")) for c in post.get("claims") or []]
+    if not (2 <= len(items) <= 5):
+        raise StoreError("a diagram needs 2 to 5 items")
+    for part in [title, *items] + ([footer] if footer else []):
+        if _norm(part) not in text and not any(_norm(part) in c for c in claims):
+            raise StoreError("not in the post or its recorded claims (a diagram may only "
+                             f"restate them): {part!r}")
+    publishers = sorted({s.get("publisher") or urlparse(s["url"]).netloc
+                         for s in post.get("sources") or []})
+    source_line = f"Source: {', '.join(publishers)}." if publishers else ""
+    lead = footer.strip()
+    if lead and lead[-1] not in ".!?":
+        lead += "."
+    shown_footer = " ".join(x for x in [lead, source_line] if x)
+    accent = (store.settings().get("visuals") or {}).get("accent", DEFAULT_ACCENT)
+    import matplotlib
+
+    with tempfile.TemporaryDirectory() as tmp:
+        f = Path(tmp) / "diagram.png"
+        render_diagram(title, items, shown_footer, f, accent)
+        return images.decide(
+            store, post_id, kind="diagram",
+            rationale="the post's core is a short checklist; the diagram makes it scannable in the feed",
+            source_file=str(f),
+            relation=f"restates the post's checklist verbatim: {title} — " + "; ".join(items),
+            alt_text=f"{title}. " + " ".join(f"{i}. {x}" for i, x in enumerate(items, 1))
+                     + (f" {shown_footer}" if shown_footer else ""),
+            provenance={"origin": "own_creation", "usage": "owned",
+                        "generation": {"method": f"lce image diagram (matplotlib {matplotlib.__version__}); "
+                                                 "text taken verbatim from the post"}},
+            decided_by="agent")

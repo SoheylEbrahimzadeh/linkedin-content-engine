@@ -52,17 +52,28 @@ Phase 1 ends at the approval boundary. **You never run `lce approve`,
    is missing.
 5. **Duplicate check**: `lce dupcheck <post_id>`. On failure, change the angle
    or topic; do not paraphrase around it.
-6. **Image**: decide what, if anything, the post needs, then record it:
-   `lce image decide <post_id> --kind none --rationale "..."`, or with a file:
-   `lce image decide <post_id> --kind diagram|architecture|chart|screenshot|source_image|generated_concept --file <png/jpg/gif> --rationale "..." --relation "<what it shows and how it supports the point>" --alt "<alt text>" --origin <origin> --usage <usage> [--source-url --license --credit] [--method "<tool/code>" --prompt "..."]`.
-   If the post cites recorded figures, `lce image chart <post_id>` draws them
-   (verbatim claim text, source shown, provenance recorded). Otherwise prefer a
-   diagram built from the post's own recorded facts; a
-   third-party image only with its licence; a screenshot only of the owner's
-   own work or a cited source; a generated concept image only when it adds
-   meaning. Never a random stock/AI image to fill space: choose `none`. Never
-   generated people, logos or fake screenshots. `lce image check <post_id>`
-   must pass; usage `needs_review` waits for the owner.
+6. **Media decision (explicit; text-only is never a silent default).** Decide
+   *Image + text* or *Text-only* for this post, in this order:
+   - **Recorded figures** (the post cites sourced numbers): `lce image chart <post_id>`
+     draws them verbatim with their source.
+   - **A checklist, steps, comparison or framework in the post**:
+     `lce image diagram <post_id> --title "<verbatim>" --item "<verbatim>" ...`
+     (2-5 items; every string must be the post's own words or a recorded
+     claim; the source publisher is added automatically).
+   - **A real photo or illustration adds meaning** (a named product, place,
+     artefact, historical figure): `lce image commons <post_id> --title "File:…"
+     --relation "…" --alt "…" --rationale "…"`. Wikimedia Commons only, through
+     its API; the licence must be PD, CC0, CC BY or CC BY-SA; credit and licence
+     are recorded. Never Google Images, never an editorial or stock photo without
+     a licence, never an invented URL.
+   - **The owner's own screenshot/photo**: `lce image decide … --origin owner_screenshot|owner_photo`.
+   - **Otherwise text-only**, with the reason:
+     `lce image decide <post_id> --kind none --text-only-reason text_carries_point|no_relevant_visual|no_rights_safe_source|personal_story_without_owner_photo|would_be_decorative --rationale "..."`.
+   Never a random stock/AI image to fill space, never generated people, logos
+   or fake screenshots. `lce image check <post_id>` must pass (it warns when
+   text-only is chosen although recorded figures exist); `lce image show
+   <post_id>` prints the media record (type, status, source, licence, size,
+   alt text). Usage `needs_review` waits for the owner.
 7. **Approval artifact**: `lce approval prepare <post_id>`, then show the owner
    `posts/<post_id>/APPROVAL.md` and the exact command they can run in their
    own terminal.

@@ -191,6 +191,11 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   token through Access, 0 pending, nothing committed. Not yet exercised in
   production: an owner decision end to end (needs the owner's browser login),
   a real image preview (no post in the private data has an image yet).
+- LCE-038: explicit media pipeline ([MEDIA.md](MEDIA.md)): text-only needs a
+  recorded reason; `lce image diagram` (verbatim post text only), `lce image
+  commons` (Commons API, reuse licences only, SHA-1 checked), `lce image show`;
+  dimensions/mime recorded; dashboard media card (type, status, real thumbnail,
+  source, rights, size, alt) and a useful Technical details section.
 
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →

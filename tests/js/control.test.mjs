@@ -167,3 +167,36 @@ test("humanization rows claim only what is recorded", () => {
   assert.equal(edit[0].value, "owner edit");
   assert.equal(edit[1].tone, "err");
 });
+
+// ── LCE-038 media record ──
+const { mediaRecord, mediaSourceShort } = lib;
+
+test("media record shows real source, rights, size and alt text; nothing invented", () => {
+  const post = { post_id: "p", image: { kind: "diagram", media_status: "attached", sha256: "s", width: 1200, height: 1200, bytes: 61440,
+    mime: "image/png", alt_text: "Checklist", relation: "restates the post",
+    provenance: { origin: "own_creation", usage: "owned", generation: { method: "lce image diagram" } }, decided_by: "agent" } };
+  const r = mediaRecord(post);
+  assert.equal(r.status, "attached");
+  const rows = Object.fromEntries(r.rows.map(([k, v]) => [k, v]));
+  assert.equal(rows.Source, "Own creation");
+  assert.equal(rows.Size, "1200×1200 px · 60 KB · PNG");
+  assert.equal(rows["Alt text"], "Checklist");
+  assert.equal(rows.Rights, "owned");
+  assert.equal(mediaSourceShort(post), "own diagram");
+  const commons = { image: { kind: "source_image", provenance: { origin: "licensed_stock", usage: "licensed", license: "CC BY-SA 4.0",
+    credit: "Jane via Wikimedia Commons", source_url: "https://commons.wikimedia.org/wiki/File:X.png" } } };
+  const c = Object.fromEntries(mediaRecord(commons).rows.map(([k, v]) => [k, v]));
+  assert.equal(c.Rights, "CC BY-SA 4.0 · licensed");
+  assert.deepEqual(c["Source URL"], { href: "https://commons.wikimedia.org/wiki/File:X.png" });
+  assert.equal(mediaSourceShort(commons), "CC BY-SA 4.0");
+});
+
+test("text-only shows its reason; a missing decision says so", () => {
+  const t = mediaRecord({ image: { kind: "none", text_only_reason: "text_carries_point", rationale: "one figure" } });
+  assert.equal(t.status, "text_only");
+  assert.equal(t.rows[0][1], "The text carries the point");
+  const legacy = mediaRecord({ post_id: "old" });
+  assert.equal(legacy.status, "undecided");
+  assert.equal(legacy.statusLabel, "No media decision recorded");
+  assert.match(legacy.note, /predates the media stage/);
+});

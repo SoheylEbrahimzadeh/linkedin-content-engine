@@ -5,47 +5,147 @@
   "description": "Per-post image decision (posts/<id>/image.yaml). 'none' is a valid, explicit decision. An image is never decoration: it needs a stated relation to the post and a provenance record.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["kind", "rationale", "decided_at"],
+  "required": [
+    "kind",
+    "rationale",
+    "decided_at"
+  ],
   "properties": {
-    "demo": {"type": "boolean"},
-    "kind": {
-      "enum": ["none", "source_image", "diagram", "architecture", "screenshot", "chart",
-               "generated_concept"]
+    "demo": {
+      "type": "boolean"
     },
-    "rationale": {"type": "string", "minLength": 1,
-                  "description": "Why this kind of image (or no image) serves the post."},
-    "relation": {"type": "string",
-                 "description": "What the image shows and how it supports the post's point."},
-    "file": {"type": "string", "pattern": "^image\\.(png|jpg|jpeg|gif)$"},
-    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "bytes": {"type": "integer", "minimum": 1},
-    "alt_text": {"type": "string"},
+    "kind": {
+      "enum": [
+        "none",
+        "source_image",
+        "diagram",
+        "architecture",
+        "screenshot",
+        "chart",
+        "generated_concept"
+      ]
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Why this kind of image (or no image) serves the post."
+    },
+    "relation": {
+      "type": "string",
+      "description": "What the image shows and how it supports the post's point."
+    },
+    "file": {
+      "type": "string",
+      "pattern": "^image\\.(png|jpg|jpeg|gif)$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "alt_text": {
+      "type": "string"
+    },
     "provenance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["origin", "usage"],
+      "required": [
+        "origin",
+        "usage"
+      ],
       "properties": {
-        "origin": {"enum": ["own_creation", "owner_screenshot", "owner_photo",
-                            "source_publication", "licensed_stock", "generated"]},
-        "source_url": {"type": "string", "pattern": "^https?://"},
-        "credit": {"type": "string"},
-        "license": {"type": "string"},
-        "usage": {"enum": ["owned", "licensed", "permitted", "public_domain", "needs_review"],
-                  "description": "needs_review blocks approval until the owner resolves it."},
+        "origin": {
+          "enum": [
+            "own_creation",
+            "owner_screenshot",
+            "owner_photo",
+            "source_publication",
+            "licensed_stock",
+            "generated"
+          ]
+        },
+        "source_url": {
+          "type": "string",
+          "pattern": "^https?://"
+        },
+        "credit": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "usage": {
+          "enum": [
+            "owned",
+            "licensed",
+            "permitted",
+            "public_domain",
+            "needs_review"
+          ],
+          "description": "needs_review blocks approval until the owner resolves it."
+        },
         "generation": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["method"],
+          "required": [
+            "method"
+          ],
           "properties": {
-            "method": {"type": "string", "minLength": 1,
-                       "description": "Tool or code used (e.g. a diagram script or an image model)."},
-            "prompt": {"type": "string"},
-            "at": {"type": "string"}
+            "method": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool or code used (e.g. a diagram script or an image model)."
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "at": {
+              "type": "string"
+            }
           }
+        },
+        "license_url": {
+          "type": "string",
+          "pattern": "^https?://"
+        },
+        "title": {
+          "type": "string"
         }
       }
     },
-    "decided_at": {"type": "string"},
-    "decided_by": {"type": "string"}
+    "decided_at": {
+      "type": "string"
+    },
+    "decided_by": {
+      "type": "string"
+    },
+    "text_only_reason": {
+      "enum": [
+        "text_carries_point",
+        "no_relevant_visual",
+        "no_rights_safe_source",
+        "personal_story_without_owner_photo",
+        "would_be_decorative"
+      ],
+      "description": "Why the post stays text-only (LCE-038)."
+    },
+    "mime": {
+      "enum": [
+        "image/png",
+        "image/jpeg",
+        "image/gif"
+      ]
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1
+    }
   }
 }

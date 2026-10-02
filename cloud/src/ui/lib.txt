@@ -374,3 +374,49 @@ export function humanizationRows(post, voice) {
     tone: post?.duplicate?.status === "passed" ? "ok" : post?.duplicate?.status ? "err" : "muted" });
   return rows;
 }
+
+// ── LCE-038: media record shown per post (from image.yaml via the mirror) ──
+const ORIGIN_LABEL = { own_creation: "Own creation", owner_screenshot: "Your screenshot", owner_photo: "Your photo",
+  source_publication: "Source publication", licensed_stock: "Licensed (Wikimedia Commons or stock)", generated: "Generated" };
+const REASON_LABEL = { text_carries_point: "The text carries the point", no_relevant_visual: "No relevant visual",
+  no_rights_safe_source: "No rights-safe source", personal_story_without_owner_photo: "Personal story without your photo",
+  would_be_decorative: "An image would only decorate" };
+const STATUS_LABEL = { attached: "Attached", text_only: "Text-only (decided)", needs_review: "Rights need your review",
+  invalid: "Invalid — fix before approval", undecided: "No decision yet" };
+
+export function mediaRecord(post) {
+  const img = post?.image ?? null;
+  if (!img) {
+    return { status: "undecided", statusLabel: post ? "No media decision recorded" : STATUS_LABEL.undecided, rows: [],
+      note: "This post has no media decision (it predates the media stage or the decision is still open)." };
+  }
+  const status = img.media_status ?? (img.kind === "none" ? "text_only" : "attached");
+  const rows = [];
+  if (img.kind === "none") {
+    rows.push(["Reason", img.text_only_reason ? REASON_LABEL[img.text_only_reason] ?? img.text_only_reason : "not categorised"]);
+    if (img.rationale) rows.push(["Rationale", img.rationale]);
+  } else {
+    const prov = img.provenance ?? {};
+    rows.push(["Kind", img.kind]);
+    rows.push(["Source", ORIGIN_LABEL[prov.origin] ?? prov.origin ?? UNKNOWN]);
+    if (prov.credit) rows.push(["Credit", prov.credit]);
+    if (prov.license || prov.usage) rows.push(["Rights", [prov.license, prov.usage].filter(Boolean).join(" · ")]);
+    if (prov.source_url) rows.push(["Source URL", { href: prov.source_url }]);
+    if (prov.generation?.method) rows.push(["Made with", prov.generation.method]);
+    if (img.width && img.height) rows.push(["Size", `${img.width}×${img.height} px${img.bytes ? ` · ${Math.round(img.bytes / 1024)} KB` : ""}${img.mime ? ` · ${img.mime.replace("image/", "").toUpperCase()}` : ""}`]);
+    else if (img.bytes) rows.push(["Size", `${Math.round(img.bytes / 1024)} KB`]);
+    if (img.alt_text) rows.push(["Alt text", img.alt_text]);
+    if (img.relation) rows.push(["Relation", img.relation]);
+  }
+  if (img.decided_by) rows.push(["Decided", `${img.decided_by}${img.decided_at ? " · " + String(img.decided_at).slice(0, 10) : ""}`]);
+  return { status, statusLabel: STATUS_LABEL[status] ?? status, rows, errors: img.errors ?? [], warnings: img.warnings ?? [] };
+}
+
+export function mediaSourceShort(post) {
+  const img = post?.image;
+  if (!img || img.kind === "none") return null;
+  const prov = img.provenance ?? {};
+  if (prov.origin === "own_creation") return `own ${img.kind}`;
+  if (prov.origin === "licensed_stock") return prov.license ? `${prov.license}` : "licensed";
+  return ORIGIN_LABEL[prov.origin] ?? null;
+}

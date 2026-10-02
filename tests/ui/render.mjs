@@ -45,6 +45,10 @@ pipe.posts[0].duplicate = { status: "passed" };
 pipe.posts.push({ post_id: "20260929-old-approved", state: "APPROVED", text: "An approved fictional post whose date passed.\n\nBody.", actual_hash: "9".repeat(64), plan_date: ymd(-3), topic: "Old", image: { kind: "none" } });
 pipe.calendar.unshift({ date: ymd(-3), topic: "Old", status: "approved", draft_ref: "20260929-old-approved" });
 snap.preview_media = [{ post_id: "20261008-demo-b", sha256: "e", bytes: 100, mime: "image/png" }];
+pipe.posts[1].image = { kind: "diagram", media_status: "attached", file: "image.png", sha256: "e", width: 1200, height: 1200, bytes: 61440, mime: "image/png",
+  alt_text: "A fictional checklist diagram", relation: "restates the post's checklist", provenance: { origin: "own_creation", usage: "owned", generation: { method: "lce image diagram" } },
+  decided_by: "agent", decided_at: day(-1) };
+pipe.posts[0].image = { kind: "none", media_status: "text_only", text_only_reason: "text_carries_point", rationale: "One figure carries it." };
 const identity = { ok: true, status: "verified", person_urn: "urn:li:person:TestPerson1", configured_person_urn: "urn:li:person:TestPerson1", person_urn_matches: true, api_version: "202609", api_version_valid: true };
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const files = { "/": ["index.html", "text/html"], "/app.js": ["app.txt", "text/javascript"], "/lib.js": ["lib.txt", "text/javascript"], "/app.css": ["app.css", "text/css"] };
