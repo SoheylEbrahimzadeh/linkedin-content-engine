@@ -91,7 +91,7 @@ export async function handleApi(request: Request, env: Env, now: number,
       return json(200, await resolveDecision(env, now, actor, r[1], await body(request)));
     }
     if (request.method === "DELETE" && (r = m(/^\/api\/decisions\/(d-[0-9a-f-]{36})$/))) return json(200, await cancelDecision(env, now, who, r[1]));
-    if (request.method === "GET" && (r = m(/^\/api\/posts\/([^/]+)\/image$/))) return await postImage(env, r[1]);
+    if (request.method === "GET" && (r = m(/^\/api\/posts\/([^/]+)\/image$/))) return await postImage(env, r[1], request);
     if (request.method === "GET" && url.pathname === "/api/preview-media") return json(200, await previewMediaList(env));
     if (request.method === "PUT" && (r = m(/^\/api\/preview-media\/([^/]+)$/))) {
       if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "preview media is uploaded by lce cloud sync");
@@ -433,17 +433,23 @@ async function putPreviewMedia(env: Env, now: number, actor: string, rawId: stri
 }
 
 // Image of a pushed post (D1), for the Control Center preview. Access-protected like every API route.
-async function postImage(env: Env, rawId: string): Promise<Response> {
+async function postImage(env: Env, rawId: string, request?: Request): Promise<Response> {
   const id = requirePostId(rawId);
   // The approved image in the publish queue wins; otherwise the pipeline's preview copy (LCE-037).
-  const row = await env.DB.prepare("SELECT data FROM post_images WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer }>()
-    ?? await env.DB.prepare("SELECT data FROM preview_media WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer }>();
+  const row = await env.DB.prepare("SELECT data, sha256 FROM post_images WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer; sha256: string }>()
+    ?? await env.DB.prepare("SELECT data, sha256 FROM preview_media WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer; sha256: string }>();
   if (!row) return json(404, { error: "no image in the cloud for this post" });
   const data = new Uint8Array(row.data);
   const type = MAGIC.find(([m]) => m.every((x, i) => data[i] === x))?.[1];
   if (!type) return json(415, { error: "unrecognised image" });
-  return new Response(data, { status: 200, headers: { "Content-Type": `image/${type}`, "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'", "Referrer-Policy": "no-referrer" } });
+  // LCE-039: an inline image for <img> (never an attachment). Private (behind Access), revalidated by
+  // the content hash so a replaced asset is never shown stale.
+  const etag = `"${row.sha256}"`;
+  const headers = { "Content-Type": `image/${type}`, "Content-Disposition": "inline", "Cache-Control": "private, no-cache",
+    ETag: etag, "Content-Length": String(data.length), "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'", "Referrer-Policy": "no-referrer" };
+  if (request?.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
+  return new Response(data, { status: 200, headers });
 }
 
 

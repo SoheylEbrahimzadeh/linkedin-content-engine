@@ -239,10 +239,25 @@ function publishingAs(compact) {
         " · LinkedIn identity ", identityBadge())));
 }
 
+// LCE-039: a real <img> (eager, with intrinsic size so layout reserves space). If the browser cannot
+// load it (e.g. the Access session expired), a visible diagnostic replaces it instead of bare alt text.
+function postImage(postId, cls, img) {
+  const src = `/api/posts/${encodeURIComponent(postId)}/image`;
+  const el = h("img", { class: cls, src, alt: img?.alt || "Post image", width: img?.width || null, height: img?.height || null,
+    decoding: "async", loading: "eager", "data-post": postId });
+  el.addEventListener("error", async () => {
+    let why = "the browser could not load it";
+    try {
+      const r = await fetch(src, { credentials: "same-origin", cache: "no-store" });
+      why = `HTTP ${r.status}, ${r.headers.get("content-type") || "no content type"}${r.redirected ? ", redirected (Access session?)" : ""}`;
+    } catch (e) { why = String(e?.message || e); }
+    el.replaceWith(h("div", { class: "media-note warn" }, "The image could not be displayed: ", why, ". Reload the page; if it persists, sign in to Cloudflare Access again."));
+  }, { once: true });
+  return el;
+}
+
 function mediaView(p, m, big) {
-  if (m.preview === "available") {
-    return h("img", { class: big ? "media" : "thumb", src: `/api/posts/${encodeURIComponent(p.post_id)}/image`, alt: m.alt || "Post image", loading: "lazy" });
-  }
+  if (m.preview === "available") return postImage(p.post_id, big ? "media" : "thumb", { alt: m.alt, ...(pipePost(p.post_id)?.image ?? {}) });
   if (m.type.key === "image") {
     return h("div", { class: "media-note warn" }, "Image recorded", m.file ? ` (${m.file})` : "", " — preview not available yet; it appears after the next private sync.");
   }
@@ -463,7 +478,7 @@ function mediaCard(p, c) {
   return card("Media",
     h("div", { class: "media-head" }, typeChip(m.type), h("span", { class: "pill " + tone }, rec.statusLabel),
       m.type.key === "image" ? h("span", { class: "small muted" }, m.preview === "available" ? "thumbnail loaded from the real asset" : "preview not uploaded yet") : null),
-    m.preview === "available" ? h("img", { class: "media-thumb", src: `/api/posts/${encodeURIComponent((p ?? c).post_id)}/image`, alt: m.alt || "Post image", loading: "lazy" }) : null,
+    m.preview === "available" ? postImage((p ?? c).post_id, "media-thumb", { alt: m.alt, ...(p?.image ?? {}) }) : null,
     rec.rows.length ? h("dl", { class: "kv" }, rec.rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v && v.href ? ext(v.href, v.href.replace(/^https?:\/\//, "")) : v)])) : null,
     rec.note ? h("p", { class: "small muted" }, rec.note) : null,
     (rec.errors ?? []).map((e) => h("p", { class: "err small" }, e)),
