@@ -78,6 +78,8 @@ const srv = http.createServer((req, res) => {
   const u = new URL(req.url, "http://x");
   const j = (o, s = 200) => { res.writeHead(s, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
   if (files[u.pathname]) { const [f, t] = files[u.pathname]; res.writeHead(200, { "content-type": t, "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" }); return res.end(readFileSync(UI + f)); }
+  // LCE-041: an expired Access session — the edge redirects API calls to its login page (another origin)
+  if (req.method === "POST" && u.pathname === "/api/decisions") { res.writeHead(302, { location: "https://access.example.invalid/login" }); return res.end(); }
   if (u.pathname === "/api/snapshot") return j(snap);
   if (u.pathname === "/api/pipeline") return j(pipe);
   if (u.pathname === "/api/migrations") return j({ applied: ["0001", "0002", "0003", "0004"], pending: [] });
@@ -166,7 +168,15 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   const dlg = await page.locator("dialog[open]").innerText().catch(() => "");
   if (!dlg.includes("Refresh this post?") || !dlg.includes("preserved in History") || !dlg.includes("require your approval again")) errors.push(`${name}: refresh dialog wrong: ${dlg.slice(0, 200)}`);
   if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-refresh-dialog.png` });
-  await page.keyboard.press("Escape");
+  // confirming while the Access session has expired: a clear banner, never a bare "Failed to fetch"
+  await page.locator("dialog[open]").getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.waitForTimeout(500);
+  const banner = await page.locator("#session-banner").innerText().catch(() => "");
+  const toastText = await page.locator("#toast").innerText().catch(() => "");
+  if (!banner.includes("nothing was recorded") || !banner.includes("Sign in again")) errors.push(`${name}: no session-expired banner (${banner})`);
+  if (toastText.includes("Failed to fetch") || !toastText.includes("expired")) errors.push(`${name}: unclear refusal: ${toastText}`);
+  if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-session-expired.png` });
+  await page.evaluate(() => document.getElementById("session-banner")?.remove());
   // a scheduled (cloud-queued) post has no Refresh; the requested one says so
   await page.goto(`http://127.0.0.1:${port}/#upcoming`);
   await page.waitForTimeout(400);

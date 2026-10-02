@@ -52,12 +52,32 @@ function toast(text, tone) {
   setTimeout(() => t.remove(), 7000);
 }
 
+// Cloudflare Access answers an expired session with a redirect to its login page (another origin).
+// fetch() would then fail with a bare "Failed to fetch"; with redirect: "manual" we can say what happened.
+const SESSION_EXPIRED = "Your Cloudflare Access sign-in has expired, so nothing was recorded. Sign in again and repeat the action.";
+function sessionExpired() {
+  if (document.getElementById("session-banner")) return;
+  document.body.prepend(h("div", { id: "session-banner", class: "notice warn session-banner", role: "alert" },
+    h("strong", {}, "Signed out. "), SESSION_EXPIRED + " ",
+    h("button", { type: "button", class: "small primary", onclick: () => location.reload() }, "Sign in again")));
+}
 async function api(method, path, body) {
-  const res = await fetch("/api" + path, {
-    method, credentials: "same-origin", cache: "no-store",
-    headers: { "content-type": "application/json", "x-lce-client": "dashboard" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch("/api" + path, {
+      method, credentials: "same-origin", cache: "no-store", redirect: "manual",
+      headers: { "content-type": "application/json", "x-lce-client": "dashboard" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (e) {
+    throw new Error(`the Control Center could not be reached (${e?.message || e}); nothing was recorded. Check the connection and try again.`);
+  }
+  if (res.type === "opaqueredirect" || res.status === 0 || res.status === 401) {
+    sessionExpired();
+    const err = new Error(SESSION_EXPIRED);
+    err.status = 401;
+    throw err;
+  }
   let data = {};
   try { data = await res.json(); } catch { data = {}; }
   if (!res.ok) {
@@ -260,8 +280,9 @@ function postImage(postId, cls, img, version = null) {
   el.addEventListener("error", async () => {
     let why = "the browser could not load it";
     try {
-      const r = await fetch(src, { credentials: "same-origin", cache: "no-store" });
-      why = `HTTP ${r.status}, ${r.headers.get("content-type") || "no content type"}${r.redirected ? ", redirected (Access session?)" : ""}`;
+      const r = await fetch(src, { credentials: "same-origin", cache: "no-store", redirect: "manual" });
+      if (r.type === "opaqueredirect" || r.status === 0) { sessionExpired(); why = "your Cloudflare Access sign-in has expired"; }
+      else why = `HTTP ${r.status}, ${r.headers.get("content-type") || "no content type"}`;
     } catch (e) { why = String(e?.message || e); }
     el.replaceWith(h("div", { class: "media-note warn" }, "The image could not be displayed: ", why, ". Reload the page; if it persists, sign in to Cloudflare Access again."));
   }, { once: true });
@@ -800,6 +821,14 @@ async function load() {
       h("p", { class: "small muted" }, "You must be signed in through Cloudflare Access. The Control Center never shows substitute data.")));
   }
 }
+
+// Warn as soon as the tab is used again after the Access session ran out (before a dialog is filled in).
+let lastPing = 0;
+window.addEventListener("focus", () => {
+  if (Date.now() - lastPing < 60e3 || document.getElementById("session-banner")) return;
+  lastPing = Date.now();
+  api("GET", "/migrations").catch(() => {});
+});
 
 function shell() {
   const nav = (cls, items) => h("nav", { class: cls, "aria-label": "Main" }, items.map(([id, label]) => h("a", { href: "#" + id, "data-nav": id }, label)));
