@@ -160,6 +160,11 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   the route is refused without credentials. Endpoint/claims/version re-checked
   against LinkedIn's docs on 2026-10-02 (userinfo is still the OIDC `/v2`
   endpoint, unversioned; latest `Linkedin-Version` 202609).
+  **VERIFIED in production** (engine `c9fbeb6`, lce-data PR #23 → `d19d768`,
+  cloud-sync 2026-10-02T13:49:50Z): doctor `linkedin identity`: token verified
+  with LinkedIn, member person URN resolved (recorded only in the private
+  repo's run), person_urn not yet set in settings; smoke: the route is refused
+  without credentials (302); `/privacy` 200; auto-publish OFF.
 
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →
