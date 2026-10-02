@@ -74,7 +74,8 @@ def test_select_with_job_links_and_runs_to_approval(data, capsys, tmp_path):
     f.write_text(GOOD_POST)
     assert run(data, "draft", "save", pid, "--file", str(f)) == 0
     assert run(data, "humanize", "save", pid, "--file", str(f)) == 0
-    assert run(data, "image", "decide", pid, "--kind", "none", "--rationale", "text only") == 0
+    assert run(data, "image", "decide", pid, "--kind", "none", "--rationale", "text only",
+               "--text-only-reason", "text_carries_point") == 0
     assert run(data, "automation", "run-once") == 0
     assert store.load_post(pid)["state"] == "AWAITING_APPROVAL"
     assert run(data, "select", "pick", "c-demo-rules-first", "--pillar", "automation",

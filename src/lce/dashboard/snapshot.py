@@ -151,9 +151,13 @@ def _image_view(store: DataStore, pid: str) -> dict | None:
     if doc is None:
         return None
     errors, warnings = images.check(store, pid)
+    view = images.media_view(store, pid)   # LCE-038: type, status, source, rights, size
     return {"kind": doc["kind"], "rationale": doc.get("rationale"), "relation": doc.get("relation"),
             "alt_text": doc.get("alt_text"), "file": doc.get("file"), "sha256": doc.get("sha256"),
-            "provenance": doc.get("provenance"), "errors": errors, "warnings": warnings}
+            "provenance": doc.get("provenance"), "errors": errors, "warnings": warnings,
+            "media_status": view["media_status"], "text_only_reason": doc.get("text_only_reason"),
+            "width": doc.get("width"), "height": doc.get("height"), "bytes": doc.get("bytes"),
+            "mime": doc.get("mime"), "decided_by": doc.get("decided_by"), "decided_at": doc.get("decided_at")}
 
 
 def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[dict],

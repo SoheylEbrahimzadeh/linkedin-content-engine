@@ -268,12 +268,42 @@ def cmd_image_decide(args):
         if args.method:
             prov["generation"] = {"method": args.method, **({"prompt": args.prompt}
                                                            if args.prompt else {})}
+    if args.kind == "none" and not args.text_only_reason:
+        raise StoreError("--kind none needs --text-only-reason (why no visual serves this post)")
     doc = decide(_store(args), args.post, kind=args.kind, rationale=args.rationale,
                  source_file=args.file, relation=args.relation or "", alt_text=args.alt or "",
-                 provenance=prov, decided_by=args.by)
+                 provenance=prov, decided_by=args.by,
+                 text_only_reason=args.text_only_reason if args.kind == "none" else None)
     print(f"✓ image decision for {args.post}: {doc['kind']}"
           + (f" ({doc['file']}, sha256 {doc['sha256'][:12]}…)" if doc["kind"] != "none" else ""))
     return cmd_image_check(args)
+
+
+def cmd_image_diagram(args):
+    from lce.visuals import diagram
+
+    doc = diagram(_store(args), args.post, title=args.title, items=args.item, footer=args.footer)
+    print(f"✓ diagram generated for {args.post} ({doc['file']}, {doc.get('width')}x{doc.get('height')}, "
+          f"sha256 {doc['sha256'][:12]}…)")
+    return cmd_image_check(args)
+
+
+def cmd_image_commons(args):
+    from lce.commons import attach
+
+    doc = attach(_store(args), args.post, args.title, relation=args.relation, alt_text=args.alt,
+                 rationale=args.rationale)
+    prov = doc["provenance"]
+    print(f"✓ {args.title} attached to {args.post}: {prov['license']} ({prov['usage']}), "
+          f"credit {prov['credit']}")
+    return cmd_image_check(args)
+
+
+def cmd_image_show(args):
+    from lce.images import media_view
+
+    print(json.dumps(media_view(_store(args), args.post), indent=2, ensure_ascii=False))
+    return 0
 
 
 def cmd_image_chart(args):
@@ -1086,6 +1116,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--method", default=None, help="generation tool/code for generated images")
     p.add_argument("--prompt", default=None)
     p.add_argument("--by", default="agent", help="who decided (agent or owner)")
+    p.add_argument("--text-only-reason", dest="text_only_reason", default=None,
+                   choices=["text_carries_point", "no_relevant_visual", "no_rights_safe_source",
+                            "personal_story_without_owner_photo", "would_be_decorative"],
+                   help="required with --kind none: why the post stays text-only")
+    p = gcmd(g, "diagram", cmd_image_diagram,
+             "checklist diagram made only of the post's own words (visuals extra)")
+    p.add_argument("post")
+    p.add_argument("--title", required=True, help="verbatim from the post")
+    p.add_argument("--item", action="append", required=True, help="verbatim from the post (2-5)")
+    p.add_argument("--footer", default="", help="verbatim from the post or a recorded claim")
+    p = gcmd(g, "commons", cmd_image_commons,
+             "attach a Wikimedia Commons file with a reuse licence (PD, CC0, CC BY, CC BY-SA)")
+    p.add_argument("post")
+    p.add_argument("--title", required=True, help="Commons file title, e.g. File:Example.jpg")
+    p.add_argument("--relation", required=True)
+    p.add_argument("--alt", required=True)
+    p.add_argument("--rationale", required=True)
+    p = gcmd(g, "show", cmd_image_show, "the post's media decision (type, status, source, rights)")
+    p.add_argument("post")
     p = gcmd(g, "chart", cmd_image_chart, "chart from the post's recorded claims (visuals extra)")
     p.add_argument("post")
     p.add_argument("--claim", type=int, action="append", default=[],

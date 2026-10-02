@@ -33,6 +33,10 @@ ORIGINS_FOR_KIND = {
     "generated_concept": {"generated"},
 }
 THIRD_PARTY = {"source_publication", "licensed_stock"}
+# LCE-038: why a post stays text-only (recorded, never a silent default).
+TEXT_ONLY_REASONS = ("text_carries_point", "no_relevant_visual", "no_rights_safe_source",
+                     "personal_story_without_owner_photo", "would_be_decorative")
+MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif"}
 MIN_RELATION = 20
 NO_IMAGE = "none"
 
@@ -79,7 +83,8 @@ def file_sha256(p: Path) -> str:
 
 def decide(store: DataStore, post_id: str, *, kind: str, rationale: str,
            source_file: str | None = None, relation: str = "", alt_text: str = "",
-           provenance: dict | None = None, decided_by: str = "agent") -> dict:
+           provenance: dict | None = None, decided_by: str = "agent",
+           text_only_reason: str | None = None) -> dict:
     """Record the decision; copies the image into the post folder as image.<ext>."""
     from lce.posts import reopen
     from lce.state import PostState as S
@@ -87,6 +92,9 @@ def decide(store: DataStore, post_id: str, *, kind: str, rationale: str,
     state = S(store.load_post(post_id)["state"])
     if kind not in KINDS:
         raise StoreError(f"kind must be one of {', '.join(KINDS)}")
+    if text_only_reason is not None and (kind != NO_IMAGE or text_only_reason not in TEXT_ONLY_REASONS):
+        raise StoreError("text_only_reason applies to kind none and must be one of "
+                         + ", ".join(TEXT_ONLY_REASONS))
     if state in {S.PUBLISHING, S.PUBLISHED, S.PUBLISH_FAILED, S.NEEDS_RECONCILE}:
         raise StoreError(f"the image of a {state.value} post cannot change")
     if state in {S.AWAITING_APPROVAL, S.APPROVED, S.READY_TO_PUBLISH}:
@@ -97,6 +105,8 @@ def decide(store: DataStore, post_id: str, *, kind: str, rationale: str,
             old.unlink()
     doc: dict = {"kind": kind, "rationale": rationale.strip(), "decided_at": now_iso(),
                  "decided_by": decided_by}
+    if kind == NO_IMAGE and text_only_reason:
+        doc["text_only_reason"] = text_only_reason
     if kind != NO_IMAGE:
         if not source_file:
             raise StoreError("an image decision needs --file")
@@ -107,8 +117,11 @@ def decide(store: DataStore, post_id: str, *, kind: str, rationale: str,
         dest = folder / f"image{ext}"
         shutil.copyfile(src, dest)
         doc.update({"file": dest.name, "sha256": file_sha256(dest), "bytes": dest.stat().st_size,
-                    "relation": relation.strip(), "alt_text": alt_text.strip(),
+                    "mime": MIME[ext], "relation": relation.strip(), "alt_text": alt_text.strip(),
                     "provenance": provenance or {}})
+        size = dimensions(dest.read_bytes(), ext)
+        if size:
+            doc["width"], doc["height"] = int(size[0]), int(size[1])
     store.write_doc(path(store, post_id), "image", doc)
     store.log_event("image", post_id=post_id, kind=kind)
     return doc
@@ -123,6 +136,11 @@ def check(store: DataStore, post_id: str) -> tuple[list[str], list[str]]:
     if not doc.get("rationale", "").strip():
         errors.append("the decision needs a rationale")
     if doc["kind"] == NO_IMAGE:
+        if not doc.get("text_only_reason"):
+            warnings.append("text-only without a reason category (text_only_reason)")
+        if _has_figures(store, post_id):
+            warnings.append("the post cites recorded figures: `lce image chart` could show them; "
+                            "keep text-only only if the text carries the point")
         return errors, warnings
     f = store.post_dir(post_id) / doc.get("file", "")
     if not doc.get("file") or not f.is_file():
@@ -173,3 +191,36 @@ def approval_hash(store: DataStore, post_id: str) -> str:
     if doc["kind"] == NO_IMAGE:
         return NO_IMAGE
     return file_sha256(store.post_dir(post_id) / doc["file"])
+
+
+def _has_figures(store: DataStore, post_id: str) -> bool:
+    from lce.textutil import claim_numbers
+
+    return any(claim_numbers(c.get("text", "")) for c in store.load_post(post_id).get("claims") or [])
+
+
+def media_view(store: DataStore, post_id: str) -> dict:
+    """The post's media decision as the dashboard and reports show it (LCE-038).
+    Derived from image.yaml and the actual file; never invented."""
+    doc = load(store, post_id)
+    if doc is None:
+        return {"media_required": None, "media_type": "text", "media_status": "undecided",
+                "note": "no media decision recorded"}
+    errors, warnings = check(store, post_id)
+    if doc["kind"] == NO_IMAGE:
+        return {"media_required": False, "media_type": "text", "media_status": "text_only",
+                "text_only_reason": doc.get("text_only_reason"), "rationale": doc.get("rationale"),
+                "decided_by": doc.get("decided_by"), "decided_at": doc.get("decided_at"),
+                "warnings": warnings}
+    prov = doc.get("provenance") or {}
+    status = "attached" if not errors else (
+        "needs_review" if prov.get("usage") == "needs_review" else "invalid")
+    return {"media_required": True, "media_type": "image", "kind": doc["kind"], "media_status": status,
+            "media_source": prov.get("origin"), "media_source_url": prov.get("source_url"),
+            "credit": prov.get("credit"), "license": prov.get("license"), "usage": prov.get("usage"),
+            "generation": (prov.get("generation") or {}).get("method"),
+            "sha256": doc.get("sha256"), "bytes": doc.get("bytes"), "mime": doc.get("mime"),
+            "width": doc.get("width"), "height": doc.get("height"), "alt_text": doc.get("alt_text"),
+            "relation": doc.get("relation"), "rationale": doc.get("rationale"),
+            "decided_by": doc.get("decided_by"), "decided_at": doc.get("decided_at"),
+            "errors": errors, "warnings": warnings}
