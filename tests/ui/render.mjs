@@ -61,6 +61,7 @@ const srv = http.createServer((req, res) => {
   if (u.pathname === "/api/pipeline") return j(pipe);
   if (u.pathname === "/api/migrations") return j({ applied: ["0001", "0002", "0003", "0004"], pending: [] });
   if (u.pathname === "/api/linkedin/identity") return j(identity);
+  if (u.pathname.endsWith("/image") && u.pathname.includes("demo-c")) { res.writeHead(302, { location: "/cdn-cgi/access/login" }); return res.end(); }
   if (u.pathname.endsWith("/image")) { res.writeHead(200, { "content-type": "image/png" }); return res.end(PNG); }
   j({ error: "not found" }, 404);
 }).listen(0);
@@ -88,6 +89,17 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   for (const want of ["Content hash", "Pipeline", "Voice profile", "Humanization", "no record", "Media", "No media decision recorded", "Sources", "QA", "Duplicate check"]) {
     if (!tech.includes(want)) errors.push(`${name}: technical details lack ${want}`);
   }
+  // an image that cannot load shows a visible diagnostic, not bare alt text
+  await page.goto(`http://127.0.0.1:${port}/#test/20261012-demo-c`);
+  await page.waitForTimeout(800);
+  if (!(await page.locator("main").innerText()).includes("could not be displayed")) errors.push(`${name}: failed image has no visible diagnostic`);
+  // a loading image is a visible <img> of real size, not a link
+  await page.goto(`http://127.0.0.1:${port}/#post/20261008-demo-b`);
+  await page.waitForTimeout(500);
+  const box = await page.locator(".media-thumb").boundingBox();
+  const inLink = await page.locator("a .media-thumb, a img.media").count();
+  if (!box || box.width < 150 || box.height < 150) errors.push(`${name}: media thumbnail not visible (${JSON.stringify(box)})`);
+  if (inLink) errors.push(`${name}: post-page image wrapped in a link`);
   // open a dialog
   await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
   await page.waitForTimeout(300);

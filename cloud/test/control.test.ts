@@ -239,7 +239,15 @@ describe("preview media (LCE-037)", () => {
     expect((await call("GET", "/preview-media", undefined, SERVICE)).body!.media).toMatchObject([{ post_id: "20261006-demo-awaiting", sha256: h, mime: "image/png" }]);
     const img = await call("GET", "/posts/20261006-demo-awaiting/image");
     expect(img.status).toBe(200);
+    expect(img.res.headers.get("content-type")).toBe("image/png");
+    expect(img.res.headers.get("content-disposition")).toBe("inline");
+    expect(img.res.headers.get("cache-control")).toBe("private, no-cache");
+    expect(img.res.headers.get("etag")).toBe(`"${h}"`);
     expect(new Uint8Array(await img.res.arrayBuffer())).toEqual(png);
+    // revalidation by content hash
+    const again = await handleApi(new Request("https://lce.example/api/posts/20261006-demo-awaiting/image",
+      { headers: { "cf-access-jwt-assertion": await jwt(OWNER), "if-none-match": `"${h}"` } }), e, NOW, certs, fakeFetch().fn);
+    expect(again.status).toBe(304);
     const snap = await call("GET", "/snapshot");
     expect(snap.body!.preview_media).toHaveLength(1);
   });
