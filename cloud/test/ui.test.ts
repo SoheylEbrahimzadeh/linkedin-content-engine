@@ -26,7 +26,7 @@ beforeAll(async () => {
 
 describe("remote dashboard", () => {
   it("serves the page, script and styles only with a valid Access login", async () => {
-    for (const [path, type] of [["/", "text/html"], ["/app.js", "text/javascript"], ["/app.css", "text/css"]]) {
+    for (const [path, type] of [["/", "text/html"], ["/app.js", "text/javascript"], ["/lib.js", "text/javascript"], ["/app.css", "text/css"]]) {
       const ok = await get(path);
       expect(ok.status).toBe(200);
       expect(ok.headers.get("content-type")).toContain(type);

@@ -8,6 +8,8 @@ import { isoUtc, loadSchedule, parseIsoUtc, ScheduleError, slotById, slotsBetwee
 import { applyMigrations, MigrationConflict, migrationStatus } from "./migrations";
 import { contentHash, sha256Bytes } from "./text";
 import { IDENTITY_HTTP, linkedinIdentity } from "./identity";
+import { cancelDecision, createDecision, DecisionError, listDecisions, resolveDecision } from "./decisions";
+import { publishNow } from "./runner";
 import type { FetchLike } from "./linkedin";
 
 const POST_ID_RE = /^\d{8}-[a-z0-9-]{1,56}$/;
@@ -70,6 +72,9 @@ export async function handleApi(request: Request, env: Env, now: number,
   try {
     const who = await verifyAccess(request, env, now, certs);
     const actor = who.subject;
+    const human = () => {
+      if (!who.human) throw new HttpError(403, "this action needs a person signed in through Cloudflare Access, not a service token");
+    };
     if (request.method !== "GET") requireSameOriginClient(request, url);
     const m = (re: RegExp) => re.exec(url.pathname);
     let r: RegExpExecArray | null;
@@ -78,6 +83,23 @@ export async function handleApi(request: Request, env: Env, now: number,
     if (request.method === "GET" && url.pathname === "/api/linkedin/identity") {
       const report = await linkedinIdentity(env.LINKEDIN_TOKEN, await loadSettings(env.DB), fetchImpl);
       return json(IDENTITY_HTTP[report.status], report);
+    }
+    if (request.method === "GET" && url.pathname === "/api/decisions") return json(200, await listDecisions(env, url.searchParams.get("status")));
+    if (request.method === "POST" && url.pathname === "/api/decisions") return json(201, await createDecision(env, now, who, await body(request)));
+    if (request.method === "POST" && (r = m(/^\/api\/decisions\/(d-[0-9a-f-]{36})\/resolve$/))) {
+      if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "decisions are resolved by the private workflow (CLI)");
+      return json(200, await resolveDecision(env, now, actor, r[1], await body(request)));
+    }
+    if (request.method === "DELETE" && (r = m(/^\/api\/decisions\/(d-[0-9a-f-]{36})$/))) return json(200, await cancelDecision(env, now, who, r[1]));
+    if (request.method === "GET" && (r = m(/^\/api\/posts\/([^/]+)\/image$/))) return await postImage(env, r[1]);
+    if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/publish-now$/))) {
+      human();
+      const id = requirePostId(r[1]);
+      const b = await body(request);
+      requirePhrase(b, `PUBLISH NOW ${id}`);
+      if (!HEX64.test(String(b.approved_hash ?? ""))) throw new HttpError(400, "approved_hash is required");
+      const rep = await publishNow(env, now, actor, id, String(b.approved_hash), fetchImpl);
+      return json(rep.http, rep);
     }
     if (request.method === "GET" && url.pathname === "/api/migrations") return json(200, await migrationStatus(env.DB));
     if (request.method === "POST" && url.pathname === "/api/migrations") return json(200, await migrate(env, now, actor, await body(request)));
@@ -88,11 +110,12 @@ export async function handleApi(request: Request, env: Env, now: number,
     if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/reconcile$/))) return json(200, await reconcile(env, now, actor, r[1], await body(request)));
     if (request.method === "POST" && url.pathname === "/api/consents") return json(201, await consent(env, now, actor, await body(request)));
     if (request.method === "DELETE" && (r = m(/^\/api\/consents\/([^/]+)$/))) return json(200, await revoke(env, now, actor, r[1]));
-    if (request.method === "PUT" && url.pathname === "/api/settings") return json(200, await putSettings(env, now, actor, await body(request)));
+    if (request.method === "PUT" && url.pathname === "/api/settings") return json(200, await putSettings(env, now, actor, await body(request), who.human));
     return json(404, { error: "not found" });
   } catch (err) {
     if (err instanceof AuthError) return json(err.status, { error: err.message });
     if (err instanceof HttpError) return json(err.status, { error: err.message });
+    if (err instanceof DecisionError) return json(err.status, { error: err.message });
     if (err instanceof ScheduleError) return json(422, { error: err.message });
     if (err instanceof MigrationConflict) return json(409, { error: err.message });
     if (isSchemaMissing(err)) return json(503, { error: "database schema missing: apply cloud/migrations to D1" });
@@ -286,14 +309,31 @@ async function reconcile(env: Env, now: number, actor: string, rawId: string, b:
 }
 
 // ── settings (never secrets) ────────────────────────────────────────────
-async function putSettings(env: Env, now: number, actor: string, raw: Record<string, unknown>) {
+const PROFILE_URL_RE = /^https:\/\/www\.linkedin\.com\/in\/[A-Za-z0-9_%-]{3,100}\/?$/;
+
+async function putSettings(env: Env, now: number, actor: string, raw: Record<string, unknown>, human = false) {
   const { confirm, ...b } = raw;
-  if (b.auto_publish === true) requirePhrase({ confirm }, "ENABLE AUTO-PUBLISH");
+  // Turning publication ON (auto-publish, or releasing the emergency stop) needs a person and the phrase.
+  if (b.auto_publish === true) {
+    if (!human) throw new HttpError(403, "only a signed-in person can enable auto-publish");
+    requirePhrase({ confirm }, "ENABLE AUTO-PUBLISH");
+  }
+  if (b.emergency_stop === false) {
+    if (!human) throw new HttpError(403, "only a signed-in person can release the emergency stop");
+    requirePhrase({ confirm }, "RELEASE EMERGENCY STOP");
+  }
   const updates: [string, string][] = [];
   for (const [k, v] of Object.entries(b)) {
     if (!(SETTING_KEYS as readonly string[]).includes(k)) throw new HttpError(400, `unknown setting ${k}`);
-    if (k === "auto_publish") {
-      if (typeof v !== "boolean") throw new HttpError(400, "auto_publish must be true or false");
+    if (k === "auto_publish" || k === "emergency_stop") {
+      if (typeof v !== "boolean") throw new HttpError(400, `${k} must be true or false`);
+      updates.push([k, String(v)]);
+    } else if (k === "display_name") {
+      const name = String(v).trim();
+      if (!name || name.length > 100) throw new HttpError(400, "display_name must be 1..100 characters");
+      updates.push([k, name]);
+    } else if (k === "profile_url") {
+      if (!PROFILE_URL_RE.test(String(v))) throw new HttpError(400, "profile_url must be https://www.linkedin.com/in/<handle>/");
       updates.push([k, String(v)]);
     } else if (k === "cadence") {
       updates.push([k, JSON.stringify(v)]);
@@ -361,7 +401,20 @@ export async function snapshot(env: Env, now: number) {
     posts: posts.map((p) => ({ ...p, image: imgs.get(p.post_id) ?? null })), consents, jobs,
     publications: publications.map((p) => ({ ...p, attempts: JSON.parse(String(p.attempts ?? "[]")) })),
     events,
+    decisions: (await listDecisions(env, null)).decisions.slice(0, 100),
   };
+}
+
+// Image of a pushed post (D1), for the Control Center preview. Access-protected like every API route.
+async function postImage(env: Env, rawId: string): Promise<Response> {
+  const id = requirePostId(rawId);
+  const row = await env.DB.prepare("SELECT data FROM post_images WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer }>();
+  if (!row) return json(404, { error: "no image in the cloud for this post" });
+  const data = new Uint8Array(row.data);
+  const type = MAGIC.find(([m]) => m.every((x, i) => data[i] === x))?.[1];
+  if (!type) return json(415, { error: "unrecognised image" });
+  return new Response(data, { status: 200, headers: { "Content-Type": `image/${type}`, "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'", "Referrer-Policy": "no-referrer" } });
 }
 
 

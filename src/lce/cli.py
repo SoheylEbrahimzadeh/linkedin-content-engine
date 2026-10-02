@@ -840,6 +840,26 @@ def cmd_cloud(args):
         print(f"✓ cloud settings updated: {', '.join(out.get('updated', []))} "
               "(auto-publish unchanged; enable it in the dashboard with its typed phrase)")
         return 0
+    if args.sub == "decisions":
+        from lce import decisions
+
+        if not args.apply:
+            items = decisions.pending(client)
+            for d in items:
+                print(f"- {d['decision_id']} {d['action']} {d.get('post_id') or d.get('plan_date')} "
+                      f"by {d['created_by']} at {d['created_at']}")
+            print(f"{len(items)} pending decision(s)" + (" (apply with --apply)" if items else ""))
+            return 0
+        results = decisions.apply_all(store, client)
+        marks = {"applied": "✓", "refused": "✗", "pending": "…"}
+        for r in results:
+            print(f"{marks[r['status']]} {r['action']} {r.get('post_id') or ''}: {r['result']}")
+        print(f"{len(results)} decision(s) processed")
+        if os.environ.get("GITHUB_ACTIONS") == "true" and results:
+            for r in results:
+                print(f"::notice title=lce cloud decisions::{r['status']}: {r['action']} "
+                      f"{r.get('post_id') or ''} — {r['result']}")
+        return 0
     if args.sub == "push":
         out = cloud.push(store, args.post, client)
         print(f"✓ {args.post} delegated to the cloud ({out.get('state')}); local publish is now refused")
@@ -1172,6 +1192,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = gcmd(g, "sync", cmd_cloud, "mirror the private pipeline to the cloud dashboard (read-only view)")
     p.add_argument("--verify", action="store_true",
                    help="read the mirror back: same sha256 and posts, no leaks")
+    p = gcmd(g, "decisions", cmd_cloud,
+             "owner decisions from the cloud Control Center; --apply applies them to this repository")
+    p.add_argument("--apply", action="store_true",
+                   help="apply pending decisions (hash-checked) and resolve them in the cloud")
     p = gcmd(g, "identity", cmd_cloud,
              "verify LINKEDIN_TOKEN with LinkedIn through the Worker (read-only) and show the person URN")
     p.add_argument("--write", action="store_true", help="record the person URN in config/linkedin.yaml")

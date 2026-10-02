@@ -13,6 +13,7 @@ import { event, isSchemaMissing, loadSettings, type ConsentRow, type Env, type P
 import { configProblems, publish, type FetchLike, type ImageInput, type LinkedInConfig, type PublishResult } from "./linkedin";
 import { isoUtc, parseIsoUtc } from "./schedule";
 import { contentHash, sha256Bytes, sha256Hex, stripText, toLittle } from "./text";
+import { linkedinIdentity } from "./identity";
 
 const ACTOR = "cron";
 
@@ -22,13 +23,15 @@ function linkedinConfig(s: Settings): LinkedInConfig {
   return { apiVersion: s.api_version ?? "", personUrn: s.person_urn ?? "", visibility: s.visibility, maxChars: 3000 };
 }
 
-async function invalidate(env: Env, now: number, c: ConsentRow, reason: string, jobState = "FAILED"): Promise<RunReport> {
+const invalidateAs = invalidate;
+async function invalidate(env: Env, now: number, c: ConsentRow, reason: string, jobState = "FAILED",
+                          actor = ACTOR): Promise<RunReport> {
   await env.DB.batch([
     env.DB.prepare("UPDATE consents SET status = 'invalid', resolved_at = ?, reason = ? WHERE consent_id = ? AND status = 'active'")
       .bind(isoUtc(now), reason, c.consent_id),
     env.DB.prepare("UPDATE jobs SET state = ?, reason = ?, updated_at = ? WHERE slot_id = ?")
       .bind(jobState, reason, isoUtc(now), c.slot_id),
-    event(env.DB, now, "publish.blocked", ACTOR, c.post_id, { consent_id: c.consent_id, reason }),
+    event(env.DB, now, "publish.blocked", actor, c.post_id, { consent_id: c.consent_id, reason }),
   ]);
   return { status: "blocked", consent_id: c.consent_id, post_id: c.post_id, detail: reason };
 }
@@ -59,7 +62,8 @@ export async function runScheduled(env: Env, now: number, fetchImpl: FetchLike):
       ]);
       continue;
     }
-    // Kill switch: nothing is written; the consent expires if the switch stays off.
+    // Emergency stop and kill switch: nothing is written; the consent expires if they stay on/off.
+    if (settings.emergency_stop) return { status: "emergency_stop", consent_id: c.consent_id };
     if (!settings.auto_publish) return { status: "kill_switch_off", consent_id: c.consent_id };
     return await publishOne(env, now, c, settings, fetchImpl);
   }
@@ -67,7 +71,9 @@ export async function runScheduled(env: Env, now: number, fetchImpl: FetchLike):
 }
 
 async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settings,
-                          fetchImpl: FetchLike): Promise<RunReport> {
+                          fetchImpl: FetchLike, actor = ACTOR): Promise<RunReport> {
+  const invalidate = (e: Env, n: number, cr: ConsentRow, reason: string, jobState = "FAILED") =>
+    invalidateAs(e, n, cr, reason, jobState, actor);
   if (settings.provider !== "linkedin_api") return invalidate(env, now, c, "provider_not_enabled");
   const cfg = linkedinConfig(settings);
   const problems = configProblems(cfg);
@@ -124,7 +130,7 @@ async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settin
       `UPDATE jobs SET state = 'RUNNING', reason = 'publishing', updated_at = ?
        WHERE slot_id = ? AND EXISTS (SELECT 1 FROM consents WHERE consent_id = ? AND status = 'consumed' AND resolved_at = ?)`,
     ).bind(at, c.slot_id, c.consent_id, at),
-    event(env.DB, now, "publish.intent", ACTOR, post.post_id, { consent_id: c.consent_id, slot_id: c.slot_id }),
+    event(env.DB, now, "publish.intent", actor, post.post_id, { consent_id: c.consent_id, slot_id: c.slot_id }),
   ]);
   if (claim[0].meta.changes !== 1 || claim[1].meta.changes !== 1) {
     return { status: "claim_lost", consent_id: c.consent_id, post_id: post.post_id };
@@ -136,11 +142,12 @@ async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settin
   } catch (err) {
     result = { outcome: "ambiguous", detail: { reason: `internal:${(err as Error)?.name}`, sent: true } };
   }
-  await record(env, now, post.post_id, c.slot_id, result);
+  await record(env, now, post.post_id, c.slot_id, result, actor);
   return { status: "done", consent_id: c.consent_id, post_id: post.post_id, outcome: result.outcome };
 }
 
-async function record(env: Env, now: number, postId: string, slotId: string, r: PublishResult): Promise<void> {
+async function record(env: Env, now: number, postId: string, slotId: string, r: PublishResult,
+                      actor = ACTOR): Promise<void> {
   const at = isoUtc(now);
   const d = r.detail;
   const attemptPatch = JSON.stringify({
@@ -169,8 +176,60 @@ async function record(env: Env, now: number, postId: string, slotId: string, r: 
       .bind(map.post, at, postId),
     env.DB.prepare("UPDATE jobs SET state = ?, reason = ?, updated_at = ? WHERE slot_id = ?")
       .bind(map.job, d.reason ?? r.outcome, at, slotId),
-    event(env.DB, now, map.event, ACTOR, postId, {
+    event(env.DB, now, map.event, actor, postId, {
       http_status: d.http_status ?? null, reason: d.reason ?? null, remote_id: r.remoteId ?? null,
     }),
   ]);
+}
+
+// ── LCE-036: controlled manual publication ──────────────────────────────
+// One post, now, at the owner's explicit request (typed phrase, checked by the
+// API). Independent of auto-publish, blocked by the emergency stop. It reuses
+// publishOne, so every gate and the duplicate protection above apply unchanged:
+// a one-off consent is created and consumed in the same claim transaction.
+// Before anything is sent, the token's member must be the configured author.
+
+export type ManualReport = RunReport & { http: number; publication?: Record<string, unknown> | null };
+
+export async function publishNow(env: Env, now: number, actor: string, postId: string, approvedHash: string,
+                                 fetchImpl: FetchLike): Promise<ManualReport> {
+  const settings = await loadSettings(env.DB);
+  const refuse = (http: number, detail: string): ManualReport => ({ status: "refused", http, post_id: postId, detail });
+  if (settings.emergency_stop) return refuse(409, "the emergency stop is on; release it first");
+  if (settings.provider !== "linkedin_api") return refuse(409, "provider is not linkedin_api");
+  const problems = configProblems(linkedinConfig(settings));
+  if (problems.length) return refuse(409, `config: ${problems.join("; ")}`);
+  const post = await env.DB.prepare("SELECT * FROM posts WHERE post_id = ?").bind(postId).first<PostRow>();
+  if (!post) return refuse(404, "post not found in the cloud (push it first)");
+  if (post.state !== "READY_TO_PUBLISH") return refuse(409, `post is ${post.state}, not READY_TO_PUBLISH`);
+  if (post.approved_hash !== approvedHash) return refuse(409, "the text you confirmed is not the approved text");
+  const busy = await env.DB.prepare("SELECT consent_id FROM consents WHERE post_id = ? AND status = 'active'")
+    .bind(postId).first<{ consent_id: string }>();
+  if (busy) return refuse(409, "this post is already scheduled; revoke that consent first");
+  const who = await linkedinIdentity(env.LINKEDIN_TOKEN, settings, fetchImpl);
+  if (!who.ok) return refuse(409, `LinkedIn identity not verified (${who.status}); nothing was sent`);
+  if (who.person_urn_matches !== true) {
+    return refuse(409, "the token's member is not the configured person_urn; nothing was sent");
+  }
+  const at = isoUtc(now);
+  const id = `manual-${crypto.randomUUID()}`;
+  const c: ConsentRow = { consent_id: id, post_id: postId, slot_id: id, slot_utc: at, approved_hash: approvedHash,
+    status: "active", created_at: at, created_by: actor, resolved_at: null, reason: null };
+  try {
+    await env.DB.batch([
+    env.DB.prepare(`INSERT INTO consents (consent_id, post_id, slot_id, slot_utc, approved_hash, status, created_at, created_by)
+      VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`).bind(id, postId, id, at, approvedHash, at, actor),
+    env.DB.prepare(`INSERT INTO jobs (job_id, slot_id, slot_utc, state, post_id, consent_id, updated_at)
+      VALUES (?, ?, ?, 'SCHEDULED', ?, ?, ?)`).bind(`job-${id}`, id, at, postId, id, at),
+    event(env.DB, now, "publish.manual_requested", actor, postId, { consent_id: id }),
+    ]);
+  } catch (err) {
+    if (String((err as Error).message).includes("UNIQUE")) return refuse(409, "another publication of this post is in progress");
+    throw err;
+  }
+  const report = await publishOne(env, now, c, settings, fetchImpl, actor);
+  const publication = await env.DB.prepare("SELECT state, remote_id, url, published_at, idempotency_key FROM publications WHERE post_id = ?")
+    .bind(postId).first<Record<string, unknown>>();
+  const http = report.status === "done" ? (report.outcome === "published" ? 200 : 502) : 409;
+  return { ...report, http, publication };
 }

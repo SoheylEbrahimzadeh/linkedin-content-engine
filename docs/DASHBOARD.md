@@ -63,6 +63,11 @@ snapshot, never from the browser clock.
 
 ## Cloud (any device)
 
+The cloud root `<api_base>/` is the Personal LinkedIn Control Center (LCE-036,
+see [CLOUD.md](CLOUD.md#personal-linkedin-control-center-lce-036)); this
+page's views are served at `<api_base>/pipeline/`.
+
+
 The same app is served by the Worker at `<api_base>/pipeline/`, behind
 Cloudflare Access, reading the D1 mirror that `lce cloud sync` uploads (see
 docs/CLOUD.md, "Full pipeline on any device"). After changing files in

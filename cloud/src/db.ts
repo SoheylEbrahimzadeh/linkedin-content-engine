@@ -12,12 +12,15 @@ export type Env = {
 };
 
 export const SETTING_KEYS = ["auto_publish", "provider", "timezone", "cadence", "api_version",
-  "person_urn", "visibility", "token_expires_at", "max_lateness_minutes"] as const;
+  "person_urn", "visibility", "token_expires_at", "max_lateness_minutes",
+  "emergency_stop", "display_name", "profile_url"] as const;
 
 export type Settings = {
   auto_publish: boolean; provider: string; timezone?: string; cadence?: unknown;
   api_version?: string; person_urn?: string; visibility: string; token_expires_at?: string;
   max_lateness_minutes: number;
+  // LCE-036: emergency stop blocks every publication (scheduled and manual).
+  emergency_stop: boolean; display_name?: string; profile_url?: string;
 };
 
 export async function loadSettings(db: D1Database): Promise<Settings> {
@@ -39,6 +42,9 @@ export async function loadSettings(db: D1Database): Promise<Settings> {
     visibility: raw.visibility ?? "PUBLIC",
     token_expires_at: raw.token_expires_at,
     max_lateness_minutes: Number(raw.max_lateness_minutes ?? 180),
+    emergency_stop: raw.emergency_stop === "true",
+    display_name: raw.display_name,
+    profile_url: raw.profile_url,
   };
 }
 

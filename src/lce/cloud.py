@@ -316,7 +316,11 @@ def _confirm(confirm, is_tty, phrase: str, prompt: str) -> None:
         raise CloudError("confirmation phrase did not match; nothing changed")
 
 
-def push(store: DataStore, post_id: str, client: CloudClient, *, confirm=input, is_tty=None) -> dict:
+def push(store: DataStore, post_id: str, client: CloudClient, *, confirm=input, is_tty=None,
+         decision_id: str | None = None) -> dict:
+    """Delegate a READY_TO_PUBLISH post to the cloud. Interactive (typed phrase), or
+    applying an owner's Control Center approval (`decision_id`, LCE-036), where
+    the person already confirmed in the dashboard."""
     post = store.load_post(post_id)
     if PostState(post["state"]) != S.READY_TO_PUBLISH:
         raise CloudError(f"only READY_TO_PUBLISH posts can be delegated; this one is {post['state']}")
@@ -336,9 +340,10 @@ def push(store: DataStore, post_id: str, client: CloudClient, *, confirm=input, 
                 and prior.get("state") in {"publish_failed", "not_published_confirmed"}):
             raise CloudError("a publish attempt exists for this post; it cannot be delegated")
     image_payload = _image_payload(store, post_id, approval)
-    _confirm(confirm, is_tty, f"DELEGATE {post_id}",
-             f"From now on only the cloud may publish {post_id} (hash {h[:12]}); local "
-             "`lce publish` will refuse it.")
+    if decision_id is None:
+        _confirm(confirm, is_tty, f"DELEGATE {post_id}",
+                 f"From now on only the cloud may publish {post_id} (hash {h[:12]}); local "
+                 "`lce publish` will refuse it.")
     body = {"text": text, "approved_hash": h, "approved_at": approval["approved_at"],
             "language": post["language"], "plan_date": post.get("plan_date")}
     if image_payload:
@@ -349,7 +354,8 @@ def push(store: DataStore, post_id: str, client: CloudClient, *, confirm=input, 
     if image_payload:
         record["image_sha256"] = image_payload["sha256"]
     _atomic_write(delegation_path(store, post_id), json.dumps(record, indent=2) + "\n")
-    store.log_event("cloud.delegated", post_id=post_id, approved_hash=h)
+    store.log_event("cloud.delegated", post_id=post_id, approved_hash=h,
+                    **({"decision_id": decision_id} if decision_id else {}))
     return result
 
 
@@ -469,7 +475,8 @@ def configure_payload(store: DataStore) -> dict:
     settings = store.settings()
     body = {k: settings[k] for k in ("timezone", "cadence") if settings.get(k)}
     li = store.read_doc(store.root / "config" / "linkedin.yaml")
-    for key in ("api_version", "person_urn", "visibility", "token_expires_at"):
+    for key in ("api_version", "person_urn", "visibility", "token_expires_at", "display_name",
+                "profile_url"):
         if li.get(key):
             body[key] = str(li[key])
     if li.get("api_version") and li.get("person_urn"):
@@ -669,7 +676,7 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
     elif pipe.status in (200, 404):
         synced = pipe.status == 200
         received = pipe.body.get("meta", {}).get("mirror", {}).get("received_at")
-        out.append(_check("database", OK, "schema present (migrations 0001–0003)"))
+        out.append(_check("database", OK, "schema present"))
         out.append(_check("pipeline mirror", OK if synced else ACTION,
                           f"synced {received}" if synced else "no snapshot yet",
                           "" if synced else "lce cloud sync (or the private cloud-sync workflow)"))
@@ -806,7 +813,9 @@ def verify_sync(store: DataStore, client: CloudClient, sent: dict, stored: dict)
 # 302 to its login page, which must count as "refused", not as the login HTML.
 PROTECTED = [("GET", "/", None), ("GET", "/pipeline/", None), ("GET", "/api/snapshot", None),
              ("GET", "/api/pipeline", None), ("PUT", "/api/settings", {"auto_publish": True}),
-             ("GET", "/api/linkedin/identity", None), ("POST", "/api/consents", {}),
+             ("GET", "/api/linkedin/identity", None), ("GET", "/api/decisions", None),
+             ("POST", "/api/decisions", {"action": "approve"}),
+             ("POST", "/api/posts/20260101-smoke/publish-now", {}), ("POST", "/api/consents", {}),
              ("PUT", "/api/pipeline", {"schema": 1, "meta": {"mode": "real"}})]
 
 

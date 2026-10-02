@@ -2,20 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
-  <title>LCE Cloud Control Center</title>
+  <meta name="color-scheme" content="light dark">
+  <title>LCE Cloud Control Center · Personal LinkedIn</title>
   <link rel="stylesheet" href="/app.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
   <header class="top">
-    <strong>LCE Cloud Control Center</strong>
-    <span id="banner" class="badge muted">Loading…</span>
-    <a href="/pipeline/">Pipeline</a>
-    <button id="refresh" type="button">Refresh</button>
+    <div class="brand"><span class="logo" aria-hidden="true">LCE</span><span><strong>Content Control Center</strong><span class="brand-sub">Personal LinkedIn</span></span></div>
+    <span id="status" class="badge muted">Loading…</span>
+    <button id="refresh" type="button" aria-label="Refresh">↻</button>
+    <button id="estop" type="button" class="danger solid">Emergency stop</button>
   </header>
-  <main id="main"><p class="muted">Loading…</p></main>
-  <noscript>This dashboard needs JavaScript.</noscript>
+  <div class="layout">
+    <aside id="sidebar"></aside>
+    <div class="content">
+      <div id="banner"></div>
+      <main id="main"><p class="empty">Loading…</p></main>
+    </div>
+  </div>
+  <div id="bottombar"></div>
+  <noscript>This Control Center needs JavaScript.</noscript>
 </body>
 </html>

@@ -24,7 +24,7 @@ Verification commands (activate `.venv` first):
 ```
 ruff check .
 pytest -q
-node --test tests/js/lib.test.mjs
+node --test tests/js/lib.test.mjs tests/js/control.test.mjs
 (cd cloud && npx vitest run)
 lce privacy-scan
 gitleaks git --no-banner .

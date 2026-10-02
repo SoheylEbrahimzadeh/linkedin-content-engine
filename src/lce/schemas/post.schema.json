@@ -104,9 +104,20 @@
       "description": "Personal-brand placement of this post (theme, evidence mode, career chapter).",
       "additionalProperties": false,
       "properties": {
-        "theme": {"type": "string", "pattern": "^[a-z0-9-]+$"},
-        "chapter": {"type": "string", "pattern": "^[a-z0-9-]+$"},
-        "evidence": {"enum": ["personal", "external"]}
+        "theme": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "chapter": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "evidence": {
+          "enum": [
+            "personal",
+            "external"
+          ]
+        }
       }
     },
     "state": {
@@ -223,6 +234,10 @@
         },
         "reason": {
           "type": "string"
+        },
+        "decision_id": {
+          "type": "string",
+          "description": "Cloud Control Center decision applied by the private workflow (LCE-036)."
         }
       }
     },
@@ -247,6 +262,33 @@
           }
         }
       }
+    },
+    "regeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_at",
+        "reason"
+      ],
+      "description": "Owner asked for a rewrite from the Control Center (LCE-036); the next drafting session handles it.",
+      "properties": {
+        "requested_at": {
+          "type": "string"
+        },
+        "requested_by": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "decision_id": {
+          "type": "string"
+        }
+      }
+    },
+    "duplicated_from": {
+      "type": "string",
+      "description": "post_id this post was copied from (LCE-036)."
     }
   }
 }

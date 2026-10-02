@@ -1,7 +1,9 @@
 // Cloudflare Access JWT verification (RS256). Fail-closed: without a configured
 // Access application every API request is refused.
 
-export type Identity = { subject: string };
+// human: a person signed in through Access (the JWT carries an email). Service
+// tokens (automation) carry common_name instead and are never "human".
+export type Identity = { subject: string; human: boolean };
 export type CertsFetcher = (teamDomain: string) => Promise<{ keys: JsonWebKey[] }>;
 
 let certsCache: { domain: string; at: number; keys: JsonWebKey[] } | null = null;
@@ -72,7 +74,8 @@ export async function verifyAccess(request: Request, env: AccessEnv,
   if (typeof payload.exp !== "number" || payload.exp < now) throw new AuthError("token expired");
   if (typeof payload.nbf === "number" && payload.nbf > now + 60) throw new AuthError("token not yet valid");
   const subject = String(payload.email ?? payload.common_name ?? payload.sub ?? "unknown");
-  return { subject };
+  const human = typeof payload.email === "string" && payload.email.includes("@") && !payload.common_name;
+  return { subject, human };
 }
 
 export function resetCertsCache(): void {

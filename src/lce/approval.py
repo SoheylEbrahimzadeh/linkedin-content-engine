@@ -164,6 +164,37 @@ def approve(store: DataStore, post_id: str, hash_prefix: str, *,
     return set_state(store, post, S.APPROVED, "approved by human")
 
 
+def approve_recorded(store: DataStore, post_id: str, content_hash_: str, image_sha256: str | None, *,
+                     approver: str, decision_id: str) -> dict:
+    """Apply an approval the owner made in the cloud Control Center (LCE-036).
+
+    The human step happened there: a person signed in through Cloudflare Access,
+    reviewed the text, and typed `APPROVE <post>`; the Worker bound the decision
+    to the full hash of that text. Here the same checks as `approve` run against
+    the git-tracked files; any difference refuses the decision. Never publishes."""
+    post = store.load_post(post_id)
+    if PostState(post["state"]) != S.AWAITING_APPROVAL:
+        raise StoreError(f"only AWAITING_APPROVAL posts can be approved; this one is {post['state']}")
+    h = _require_consistent(store, post)
+    if content_hash_ != h:
+        raise StoreError("the approved text is not the current text; nothing was approved")
+    artifact = store.post_text(post_id, "APPROVAL.md") or ""
+    if content_hash(artifact) != post.get("approval", {}).get("artifact_hash"):
+        raise StoreError("APPROVAL.md changed after it was prepared; prepare it again")
+    image_hash = post.get("approval", {}).get("image_hash")
+    errors, _ = images.check(store, post_id)
+    if errors or images.approval_hash(store, post_id) != image_hash:
+        raise StoreError("the image changed after APPROVAL.md was prepared; prepare it again")
+    if (image_sha256 or images.NO_IMAGE) != image_hash:
+        raise StoreError("the image you reviewed is not the current image; nothing was approved")
+    post["approval"] = {"state": "approved", "approved_hash": h, "approved_at": now_iso(),
+                        "approved_by": f"cloud-access:{approver}", "decision_id": decision_id,
+                        "artifact_hash": post["approval"]["artifact_hash"], "image_hash": image_hash}
+    store.log_event("approval", post_id=post_id, decision="approved", content_hash=h,
+                    via="cloud", decision_id=decision_id)
+    return set_state(store, post, S.APPROVED, "approved by human (cloud Control Center)")
+
+
 def reject(store: DataStore, post_id: str, reason: str) -> dict:
     post = store.load_post(post_id)
     post["approval"] = {"state": "rejected", "reason": reason}

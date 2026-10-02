@@ -1,0 +1,215 @@
+// LCE Control Center helpers (served as /lib.js). Pure functions only: no DOM,
+// no network, so they are unit-tested with node (tests/js/control.test.mjs).
+// Rule: unknown stays unknown; nothing is invented.
+
+export const UNKNOWN = "unknown";
+
+// What the publisher can really send today (cloud/src/linkedin.ts): text, and
+// text with ONE image (PNG/JPEG/GIF, ≤ 1.5 MB in the cloud). Everything else is
+// shown honestly as not implemented.
+export const CONTENT_TYPES = [
+  { key: "text", label: "Text-only", icon: "¶", implemented: true, note: "Posts API, commentary only." },
+  { key: "image", label: "Image + text", icon: "▣", implemented: true,
+    note: "One image via the Images API (PNG, JPEG or GIF; up to 1.5 MB when published from the cloud)." },
+  { key: "video", label: "Video + text", icon: "▶", implemented: false, note: "Not implemented (Videos API upload is not built)." },
+  { key: "document", label: "Document/PDF + text", icon: "▤", implemented: false, note: "Not implemented (Documents API upload is not built)." },
+  { key: "article", label: "Article/link + text", icon: "↗", implemented: false, note: "Not implemented (article content block is not built); a URL inside the text is sent as plain text." },
+  { key: "multi_image", label: "Multi-image", icon: "▦", implemented: false, note: "Not implemented (MultiImage content is not built)." },
+  { key: "poll", label: "Poll", icon: "◔", implemented: false, note: "Not implemented." },
+];
+const TYPE_BY_KEY = Object.fromEntries(CONTENT_TYPES.map((t) => [t.key, t]));
+const FORMAT_TYPE = { video: "video", document: "document", pdf: "document", carousel: "document",
+  article: "article", link: "article", multi_image: "multi_image", "multi-image": "multi_image", poll: "poll" };
+
+/** Content type of a post, from its declared format and its image decision. */
+export function contentType(post) {
+  const fmt = String(post?.format ?? "").toLowerCase();
+  if (FORMAT_TYPE[fmt]) return TYPE_BY_KEY[FORMAT_TYPE[fmt]];
+  const img = post?.image;
+  const hasImage = img && (img.kind ? img.kind !== "none" : Boolean(img.sha256 || img.bytes));
+  return TYPE_BY_KEY[hasImage ? "image" : "text"];
+}
+
+/** First meaningful line, shortened: the hook shown in lists and the calendar. */
+export function hook(text, max = 90) {
+  const line = String(text ?? "").split("\n").map((l) => l.trim()).find(Boolean);
+  if (!line) return null;
+  return line.length > max ? line.slice(0, max - 1).trimEnd() + "…" : line;
+}
+
+export function hashtags(text) {
+  return [...new Set(String(text ?? "").match(/(^|\s)#[\p{L}\p{N}_]+/gu)?.map((t) => t.trim()) ?? [])];
+}
+
+/** Split text into plain and hashtag segments for the feed preview. */
+export function segments(text) {
+  const out = [];
+  const re = /#[\p{L}\p{N}_]+/gu;
+  let last = 0;
+  const s = String(text ?? "");
+  for (const m of s.matchAll(re)) {
+    if (m.index > last) out.push({ text: s.slice(last, m.index), tag: false });
+    out.push({ text: m[0], tag: true });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push({ text: s.slice(last), tag: false });
+  return out;
+}
+
+export function initials(name) {
+  const parts = String(name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+
+/** Local date (YYYY-MM-DD) of an instant in a time zone. */
+export function localDate(iso, tz) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz || "UTC", year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(d);
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+export function localTime(iso, tz) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", { timeZone: tz || "UTC", hour: "2-digit", minute: "2-digit" }).format(d);
+}
+
+export function addDays(ymd, n) {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+export function weekday(ymd) {
+  return new Date(`${ymd}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
+}
+
+const APPROVAL_OF_STATE = { AWAITING_APPROVAL: "pending", APPROVED: "approved", READY_TO_PUBLISH: "approved",
+  PUBLISHING: "approved", PUBLISHED: "approved", PUBLISH_FAILED: "approved", NEEDS_RECONCILE: "approved",
+  REJECTED: "rejected" };
+export function approvalOf(state) {
+  return APPROVAL_OF_STATE[state] ?? "not yet";
+}
+
+/**
+ * The next `days` days as buckets, merging the private plan (pipeline mirror),
+ * scheduled cloud consents and free publishing slots. Nothing is inferred: an
+ * item without a post says so.
+ */
+export function upcoming({ pipeline, cloud, now, tz, days = 7 }) {
+  const today = localDate(now, tz);
+  const end = addDays(today, days - 1);
+  const posts = new Map((pipeline?.posts ?? []).map((p) => [p.post_id, p]));
+  const cloudPosts = new Map((cloud?.posts ?? []).map((p) => [p.post_id, p]));
+  const pubs = new Map((cloud?.publications ?? []).map((p) => [p.post_id, p]));
+  const buckets = new Map();
+  for (let i = 0; i < days; i++) buckets.set(addDays(today, i), []);
+  const scheduled = new Set();
+  for (const c of cloud?.consents ?? []) {
+    if (c.status !== "active") continue;
+    const day = localDate(c.slot_utc, tz);
+    if (!buckets.has(day)) continue;
+    const p = posts.get(c.post_id) ?? cloudPosts.get(c.post_id) ?? { post_id: c.post_id };
+    const cp = cloudPosts.get(c.post_id);
+    scheduled.add(c.post_id);
+    buckets.get(day).push({ kind: "scheduled", date: day, time: localTime(c.slot_utc, tz), post_id: c.post_id,
+      title: hook(p.text ?? cp?.text) ?? p.topic ?? c.post_id, type: contentType({ ...cp, ...p }),
+      state: cp?.state ?? p.state ?? null, approval: "approved", publishing: pubs.get(c.post_id)?.state ?? "scheduled",
+      slot_id: c.slot_id, consent_id: c.consent_id });
+  }
+  for (const e of pipeline?.calendar ?? []) {
+    const day = String(e.date ?? "");
+    if (!buckets.has(day) || (e.draft_ref && scheduled.has(e.draft_ref))) continue;
+    const p = e.draft_ref ? posts.get(e.draft_ref) : null;
+    buckets.get(day).push({ kind: "planned", date: day, time: null, post_id: e.draft_ref ?? null,
+      title: (p && hook(p.text)) ?? e.topic ?? UNKNOWN, type: contentType({ format: e.format, ...(p ?? {}) }),
+      state: p?.state ?? null, plan_status: e.status ?? null, approval: p ? approvalOf(p.state) : "no post yet",
+      publishing: p ? (cloudPosts.has(p.post_id) ? "in cloud queue" : "not scheduled") : "no post yet" });
+  }
+  const taken = new Set([...(cloud?.consents ?? [])].filter((c) => c.status === "active").map((c) => c.slot_id));
+  for (const s of cloud?.upcoming_slots ?? []) {
+    const day = localDate(s.utc, tz);
+    if (!buckets.has(day) || taken.has(s.slot_id)) continue;
+    buckets.get(day).push({ kind: "slot", date: day, time: localTime(s.utc, tz), slot_id: s.slot_id, title: "Free slot" });
+  }
+  for (const list of buckets.values()) list.sort((a, b) => String(a.time ?? "99").localeCompare(String(b.time ?? "99")));
+  return { from: today, to: end, days: [...buckets.entries()].map(([date, items]) => ({ date, items })) };
+}
+
+// History stages, in pipeline order.
+export const STAGES = ["planned", "decision", "approved", "pushed", "scheduled", "started", "executed", "verified",
+  "failed", "needs_reconcile", "other"];
+const STAGE_OF_EVENT = {
+  "decision.approve": "decision", "decision.reject": "decision", "decision.edit": "decision",
+  "decision.regenerate": "decision", "decision.reschedule": "decision", "decision.skip": "decision",
+  "decision.duplicate": "decision", "decision.applied": "decision", "decision.refused": "decision",
+  "post.pushed": "pushed", "post.redelegated": "pushed", "consent.created": "scheduled",
+  "publish.manual_requested": "scheduled", "publish.intent": "started", "publish.published": "executed",
+  "publish.failed": "failed", "publish.blocked": "failed", "publish.missed": "failed",
+  "publish.ambiguous": "needs_reconcile", "publish.reconciled": "verified",
+};
+
+/** One chronological list from cloud events, decisions and private post histories (newest first). */
+export function timeline({ cloud, pipeline, postId = null }) {
+  const out = [];
+  for (const e of cloud?.events ?? []) {
+    let detail = {};
+    try { detail = typeof e.detail === "string" ? JSON.parse(e.detail) : (e.detail ?? {}); } catch { detail = {}; }
+    out.push({ at: e.at, stage: STAGE_OF_EVENT[e.event] ?? "other", label: e.event, post_id: e.post_id ?? null,
+      id: detail.consent_id ?? detail.decision_id ?? detail.remote_id ?? null, actor: e.actor, source: "cloud" });
+  }
+  for (const p of cloud?.publications ?? []) {
+    if (p.state === "published" && p.verified_by) {
+      out.push({ at: p.published_at ?? p.updated_at, stage: "verified", label: `verified by ${p.verified_by}`,
+        post_id: p.post_id, id: p.remote_id ?? p.idempotency_key ?? null, actor: "linkedin", source: "cloud" });
+    }
+  }
+  for (const p of pipeline?.posts ?? []) {
+    for (const h of p.history ?? []) {
+      const stage = h.state === "APPROVED" ? "approved" : h.state === "READY_TO_PUBLISH" ? "approved"
+        : ["SELECTED", "DRAFTED", "HUMANIZED", "QA_PASSED", "DUPLICATE_CHECKED", "AWAITING_APPROVAL"].includes(h.state) ? "planned"
+          : h.state === "PUBLISHED" ? "executed" : h.state === "PUBLISH_FAILED" ? "failed"
+            : h.state === "NEEDS_RECONCILE" ? "needs_reconcile" : "other";
+      out.push({ at: h.at, stage, label: `${h.state}${h.note ? " — " + h.note : ""}`, post_id: p.post_id, id: null,
+        actor: "pipeline", source: "git" });
+    }
+  }
+  return out.filter((x) => x.at && (!postId || x.post_id === postId))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+
+/** Items that need the owner's attention, most urgent first. */
+export function attention({ cloud, pipeline, decisions }) {
+  const out = [];
+  for (const p of cloud?.posts ?? []) {
+    if (p.state === "NEEDS_RECONCILE" || p.state === "PUBLISHING") out.push({ level: "err", post_id: p.post_id, text: "Publication outcome unknown: reconcile" });
+    if (p.state === "PUBLISH_FAILED") out.push({ level: "err", post_id: p.post_id, text: "Publication failed" });
+  }
+  for (const d of decisions ?? []) {
+    if (d.status === "refused") out.push({ level: "warn", post_id: d.post_id, text: `Decision refused (${d.action}): ${d.result ?? ""}` });
+  }
+  for (const p of pipeline?.posts ?? []) {
+    if (p.state === "AWAITING_APPROVAL") out.push({ level: "info", post_id: p.post_id, text: "Awaiting your approval" });
+    if (p.state === "NEEDS_REVISION") out.push({ level: "warn", post_id: p.post_id, text: "Needs revision" });
+    if (p.state === "NEEDS_INPUT") out.push({ level: "warn", post_id: p.post_id, text: "Needs your input" });
+  }
+  const rank = { err: 0, warn: 1, info: 2 };
+  return out.sort((a, b) => rank[a.level] - rank[b.level]);
+}
+
+/** Days until an ISO instant (floor), or null. */
+export function daysUntil(iso, nowIso) {
+  if (!iso) return null;
+  const ms = Date.parse(iso) - Date.parse(nowIso);
+  return Number.isNaN(ms) ? null : Math.floor(ms / 86400000);
+}
+
+export function parseHash(hash) {
+  const h = String(hash ?? "").replace(/^#\/?/, "");
+  const [view, ...rest] = h.split("/");
+  return { view: view || "overview", arg: rest.length ? decodeURIComponent(rest.join("/")) : null };
+}
