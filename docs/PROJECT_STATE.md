@@ -211,8 +211,22 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   `lce-refresh`, D1 `freshness` (migration 0006), CLI-only `PUT
   /api/freshness/:id` (today only), scheduled-publish gate
   (`freshness_pending`), Control Center freshness state + evidence. Test-mode
-  (`--as-of` another day) records are never sent or counted. Production
-  verification: see the LCE-040 report.
+  (`--as-of` another day) records are never sent or counted.
+  **VERIFIED in production (test mode)** (engine `2081dad`/`8d22214`, Workers
+  version `bd1d82ed`; lce-data `refresh.yml`, PRs #36–#39): migration 0006
+  applied by cloud-sync; the refresh workflow checked the Gartner post as of
+  2026-10-08 in GitHub Actions: Gartner page HTTP 403 → `unverifiable` /
+  `needs_review`, diagram `still_relevant`, approval preserved; session
+  research (search summaries only; pages blocked from the session) found no
+  revision → `confirmed`, not material. Text `24c149a5…`, APPROVAL.md
+  `df7ca9c9…` and image `6c1a4eeb…` unchanged; still AWAITING_APPROVAL.
+  The production Control Center shows "Freshness: Not checked · test run as of
+  2026-10-08" with evidence on desktop and phone. The material-change path
+  (new text → humanization → QA → archive duplicate check → stale diagram →
+  new diagram → new approval artifact, approval invalidated) was run on a
+  temporary copy only. NOT YET VERIFIED: a real same-day run on a publication
+  day (first one: 2026-10-08 03:41 UTC) and the gate releasing a scheduled
+  publication (nothing is scheduled; auto-publish OFF).
 
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →
