@@ -65,7 +65,9 @@ The dashboard/API exposes only `token_present` and `token_expires_at`.
 `GET /api/health` (public, no data) · `GET /api/snapshot` ·
 `PUT /api/posts/:id` · `POST /api/posts/:id/withdraw|rearm|reconcile` ·
 `POST /api/consents` · `DELETE /api/consents/:id` · `PUT /api/settings` ·
-`GET /api/linkedin/identity`.
+`GET /api/linkedin/identity` · `GET|POST /api/decisions` ·
+`POST /api/decisions/:id/resolve` (CLI) · `DELETE /api/decisions/:id` ·
+`POST /api/posts/:id/publish-now` · `GET /api/posts/:id/image`.
 Every mutation is written to `events` with the Access identity.
 
 ### LinkedIn identity (LCE-035)
@@ -90,6 +92,47 @@ member or a refused token). `lce cloud identity --write [--api-version 202609]`
 records the URN in the private `config/linkedin.yaml`; commit that file and run
 `lce cloud configure`. The route is behind Access like every other API route
 (`lce cloud smoke` checks that it is refused without credentials).
+
+### Personal LinkedIn Control Center (LCE-036)
+
+`<api_base>/` is the owner's Control Center (Access-protected, phone and
+desktop): Overview, Upcoming (7/14-day calendar of planned, scheduled and free
+slots), Posts with a feed-style preview, Controlled test publish, History and
+System. It publishes as the **personal profile** only: the author is the
+configured `person_urn`, which the read-only identity check matches against
+the token's member; company pages are not implemented. `/pipeline/` stays as
+the detailed pipeline view.
+
+Decisions (`POST /api/decisions`, D1 table `decisions`, migration 0004):
+approve, reject, edit, regenerate, reschedule, skip, duplicate. Only a person
+signed in through Access may decide (service tokens get 403). Approve needs
+`APPROVE <post>` and is bound to the full hash of the mirrored text the owner
+reviewed (and its image); reject needs `REJECT <post>`. The cloud only records
+them. The private workflow runs `lce cloud decisions --apply`, which re-checks
+every hash against the git files, applies the decision (approve → APPROVED →
+READY_TO_PUBLISH → pushed to the cloud queue; edit → text replaced, then QA,
+duplicate check and a new approval artifact; regenerate → flagged
+NEEDS_REVISION for the next drafting session; reschedule/skip/duplicate →
+plan), commits, and resolves each decision as `applied` or `refused`. A
+decision on a post already in the cloud queue is refused (withdraw it first).
+
+Controlled test publish (`POST /api/posts/:id/publish-now`): a person, the
+phrase `PUBLISH NOW <post>`, the approved hash of the exact text shown, a post
+READY_TO_PUBLISH in the cloud queue without a scheduled consent, and a fresh
+identity check whose member equals `person_urn` — otherwise nothing is sent.
+It does not need or change auto-publish; it reuses the scheduled publisher's
+claim transaction and records the LinkedIn post URN.
+
+Emergency stop (`emergency_stop` setting): blocks every publication,
+scheduled and manual. Turning it on needs nothing; releasing it, like enabling
+auto-publish, needs a person and a typed phrase (`RELEASE EMERGENCY STOP`,
+`ENABLE AUTO-PUBLISH`). Optional display settings `display_name` and
+`profile_url` come from the private `config/linkedin.yaml` via
+`lce cloud configure`.
+
+Media: text-only and text + one image (PNG/JPEG/GIF, ≤ 1.5 MB in the cloud)
+are implemented. Video, document/PDF, article/link, multi-image and polls are
+shown as "not implemented" and cannot be test-published.
 
 Mutation safety: every non-GET request needs the header `x-lce-client`
 (`cli` or `dashboard`), which forces a CORS preflight that is never granted,

@@ -6,6 +6,7 @@ import { AuthError, verifyAccess, type CertsFetcher } from "./auth";
 import type { Env } from "./db";
 import css from "./ui/app.css";
 import js from "./ui/app.txt";
+import lib from "./ui/lib.txt";
 import html from "./ui/index.html";
 import pipelineJs from "./pipeline/app.txt";
 import pipelineHtml from "./pipeline/index.html";
@@ -18,6 +19,7 @@ const FILES: Record<string, [string, string]> = {
   "/": [html, "text/html; charset=utf-8"],
   "/app.css": [css, "text/css; charset=utf-8"],
   "/app.js": [js, "text/javascript; charset=utf-8"],
+  "/lib.js": [lib, "text/javascript; charset=utf-8"],
   // LCE-013: the Web Control Center (same files as `lce dashboard serve`), reading
   // the private-pipeline mirror from D1 instead of the local data directory.
   "/pipeline/": [pipelineHtml, "text/html; charset=utf-8"],

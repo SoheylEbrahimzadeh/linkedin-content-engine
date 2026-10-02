@@ -165,6 +165,14 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   with LinkedIn, member person URN resolved (recorded only in the private
   repo's run), person_urn not yet set in settings; smoke: the route is refused
   without credentials (302); `/privacy` 200; auto-publish OFF.
+- LCE-036: Personal LinkedIn Control Center at `/` (Overview, Upcoming
+  calendar, feed-style preview, content types, controls, controlled test
+  publish, history, diagnostics; responsive). Decision inbox (D1 `decisions`,
+  migration 0004) applied to the private repo by `lce cloud decisions --apply`
+  with hash checks; `POST /api/posts/:id/publish-now` (person + phrase +
+  approved hash + identity match; independent of auto-publish); emergency stop;
+  only text and text + one image are implemented media types. Publishing target
+  is the personal profile (person URN), never a company page.
 
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →

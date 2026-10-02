@@ -53,8 +53,10 @@ owner's own approved posts. Engagement figures, if recorded at all, are entered 
     scheduling settings (time zone, cadence, LinkedIn API version, person URN, token expiry date, the
     publish switch), posts the owner approved and scheduled (text, approved image up to 1.5&nbsp;MB, alt
     text, content hashes), scheduling consents, publication records, an audit log of actions with the
-    identity of the person or service that performed them, and a read-only copy of the owner's planning
-    dashboard (drafts, research notes with sources, calendar and quality checks).</li>
+    identity of the person or service that performed them, decisions the owner makes in the dashboard
+    (approve, reject, edit with the edited text, reschedule, skip, duplicate, regeneration requests) until the
+    owner's private repository applies them, and a read-only copy of the owner's planning dashboard (drafts,
+    research notes with sources, calendar and quality checks).</li>
   <li><strong>Cloudflare Access</strong> protects the dashboard and API: only the owner (and an automated
     service credential of the owner) can use them. Cloudflare Access sets its own authentication cookie
     for signed-in sessions; this application sets no cookies and uses no analytics or tracking.</li>

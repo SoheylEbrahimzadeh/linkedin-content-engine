@@ -6,11 +6,13 @@
 import m0001 from "../migrations/0001_init.sql";
 import m0002 from "../migrations/0002_images.sql";
 import m0003 from "../migrations/0003_pipeline.sql";
+import m0004 from "../migrations/0004_decisions.sql";
 
 export const MIGRATIONS: [string, string][] = [
   ["0001_init.sql", m0001],
   ["0002_images.sql", m0002],
   ["0003_pipeline.sql", m0003],
+  ["0004_decisions.sql", m0004],
 ];
 
 // Exactly Wrangler's table (getCreateMigrationsTableQuery, default name d1_migrations).

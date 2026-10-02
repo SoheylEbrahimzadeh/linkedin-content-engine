@@ -15,7 +15,7 @@ export function testEnv(overrides: Partial<Env> = {}): Env {
 }
 
 export async function reset(e: Env): Promise<void> {
-  await e.DB.batch(["events", "publications", "jobs", "consents", "post_images", "posts", "settings", "pipeline_snapshot"]
+  await e.DB.batch(["events", "publications", "jobs", "consents", "post_images", "posts", "settings", "pipeline_snapshot", "decisions"]
     .map((t) => e.DB.prepare(`DELETE FROM ${t}`)));
   await e.DB.prepare(`INSERT INTO settings (key, value, updated_at) VALUES
     ('auto_publish','false','1970-01-01T00:00:00+00:00'), ('provider','none','1970-01-01T00:00:00+00:00'),
