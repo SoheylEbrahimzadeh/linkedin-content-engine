@@ -200,3 +200,46 @@ test("text-only shows its reason; a missing decision says so", () => {
   assert.equal(legacy.statusLabel, "No media decision recorded");
   assert.match(legacy.note, /predates the media stage/);
 });
+
+test("freshness (LCE-040): states are derived from the recorded check only", () => {
+  const { freshness } = lib;
+  const today = "2026-10-08";
+  const base = { post_id: "p1", state: "AWAITING_APPROVAL", actual_hash: "h1", approval: { state: "pending" } };
+  assert.equal(freshness(base, { today }).key, "not_checked");
+  assert.equal(freshness(base, { today }).label, "Not checked");
+  const rec = (x) => ({ ...base, freshness: { latest: { check_date: today, content_hash: "h1", ...x }, history: [] } });
+  assert.equal(freshness(rec({ decision: "unchanged", status: "current" }), { today }).label, "No changes needed");
+  assert.equal(freshness(rec({ decision: "unverifiable", status: "needs_review" }), { today }).label, "Checked today");
+  assert.equal(freshness(rec({ decision: "update_required", status: "update_required" }), { today }).label, "Update needed");
+  const upd = freshness(rec({ decision: "updated", status: "update_awaiting_approval", approval_effect: "invalidated" }), { today });
+  assert.equal(upd.label, "Update requires approval");
+  assert.match(upd.approval, /invalidated by refresh/);
+  assert.equal(freshness(rec({ decision: "updated", status: "update_in_progress" }), { today }).label, "Updated today");
+  // yesterday's check, or a check of another text version, is not today's check
+  assert.equal(freshness(rec({ decision: "unchanged", status: "current", check_date: "2026-10-07" }), { today }).key, "not_checked");
+  const other = freshness(rec({ decision: "unchanged", status: "current", content_hash: "h0" }), { today });
+  assert.equal(other.key, "not_checked");
+  assert.match(other.note, /earlier version/);
+  // a test run "as of" today's date is never today's check
+  const t = freshness(rec({ decision: "unchanged", status: "current", test_mode: true }), { today });
+  assert.equal(t.key, "not_checked");
+  assert.match(t.note, /test run as of 2026-10-08/);
+  assert.equal(t.latest.test_mode, true);
+});
+
+test("freshness: approval validity and the scheduled-publish gate", () => {
+  const { freshness } = lib;
+  const today = "2026-10-08";
+  const ok = { post_id: "p1", state: "APPROVED", actual_hash: "h1", approval: { state: "approved", approved_hash: "h1" },
+    freshness: { latest: { check_date: today, content_hash: "h1", decision: "unchanged", status: "current", approval_effect: "preserved" }, history: [] } };
+  assert.equal(freshness(ok, { today }).approval, "valid");
+  assert.equal(freshness({ ...ok, actual_hash: "h2" }, { today }).approval, "invalid (text changed)");
+  const cloudPost = { post_id: "p1", approved_hash: "h1", state: "READY_TO_PUBLISH" };
+  const row = { post_id: "p1", check_date: today, status: "current", content_hash: "h1" };
+  assert.equal(freshness(ok, { today, cloudPost, cloudRow: row, slotDate: today }).gate.ok, true);
+  assert.equal(freshness(ok, { today, cloudPost, cloudRow: null, slotDate: today }).gate.ok, false);
+  assert.equal(freshness(ok, { today, cloudPost, cloudRow: { ...row, check_date: "2026-10-07" }, slotDate: today }).gate.ok, false);
+  assert.equal(freshness(ok, { today, cloudPost, cloudRow: { ...row, status: "needs_review" }, slotDate: today }).gate.ok, false);
+  assert.equal(freshness(ok, { today, cloudPost, cloudRow: { ...row, content_hash: "h9" }, slotDate: today }).gate.ok, false);
+  assert.equal(freshness(ok, { today }).gate, null);
+});

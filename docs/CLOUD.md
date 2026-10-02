@@ -36,6 +36,11 @@ lce cloud pull  ◄─────────────────  outcomes
   locally and local `lce publish` refuses delegated posts.
 - **A missed window** (slot + lateness passed) expires the consent; nothing is
   published late.
+- **Same-day freshness (LCE-040):** a scheduled publication also needs a
+  freshness row received on the publishing day, dated that day, status
+  `current`, for the approved text hash; otherwise the run reports
+  `freshness_pending` and sends nothing. `PUT /api/freshness/:id` is CLI-only
+  and accepts only today's date. See [REFRESH.md](REFRESH.md).
 
 ## Images
 

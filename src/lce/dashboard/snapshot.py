@@ -209,6 +209,7 @@ def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[d
         "has_metrics": (folder / "metrics.yaml").exists(),
         "candidate_id": meta.get("candidate_id"),
         "history": meta.get("history", []),
+        "freshness": _freshness_view(store, pid),
         "objective": meta.get("objective"),
         "humanization": meta.get("humanization"),
         "text": text,
@@ -216,6 +217,13 @@ def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[d
         "has_approval_artifact": (folder / "APPROVAL.md").exists(),
         "calendar_entry": entry,
     }
+
+
+def _freshness_view(store: DataStore, pid: str) -> dict | None:
+    from lce import refresh
+
+    h = refresh.history(store, pid)
+    return {"latest": h[-1], "history": h[-5:]} if h else None
 
 
 def state_distribution(posts: list[dict]) -> list[dict]:

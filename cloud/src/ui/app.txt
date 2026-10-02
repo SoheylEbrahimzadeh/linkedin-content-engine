@@ -8,7 +8,7 @@
 
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
-  displayStatus, hashtags, hook, humanizationRows, initials, localDate, localTime, media, mediaRecord,
+  displayStatus, freshness, hashtags, hook, humanizationRows, initials, localDate, localTime, media, mediaRecord,
   mediaSourceShort, parseHash, segments, timeline, weekday,
 } from "./lib.js";
 
@@ -216,6 +216,9 @@ const A = {
 };
 
 // ── shared pieces ───────────────────────────────────────────────────
+const freshOf = (p, c = null, consent = null) => freshness(p, { today: localDate(S.snap.now, tz()), cloudPost: c,
+  cloudRow: (S.snap.freshness ?? []).find((r) => r.post_id === (p ?? c)?.post_id) ?? null,
+  slotDate: consent ? localDate(consent.slot_utc, tz()) : null });
 const plan = (days) => contentPlan({ pipeline: S.pipe, cloud: S.snap, now: S.snap.now, tz: tz(), days });
 const objectiveLabel = (id) => (S.pipe?.voice?.objectives ?? []).find((o) => o.id === id)?.label ?? id;
 
@@ -313,6 +316,7 @@ function planRow(i) {
         p && !p.image ? h("span", { class: "small muted" }, "no media decision") : null,
         i.objective ? h("span", { class: "small muted" }, objectiveLabel(i.objective)) : null,
         i.note ? h("span", { class: "small muted" }, i.note) : null),
+      p && !["PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) ? freshLine(freshOf(p, cloudPost(p.post_id), activeConsent(p.post_id))) : null,
       h("div", { class: "row-actions" },
         href ? link(href, "Open", "btn small") : null,
         p?.state === "AWAITING_APPROVAL" ? h("button", { type: "button", class: "small primary", onclick: () => A.approve(p) }, "Approve") : null,
@@ -321,6 +325,52 @@ function planRow(i) {
         !i.post_id && i.status === "PLANNED" ? h("button", { type: "button", class: "small", onclick: () => A.skip(null, i.plan_date) }, "Skip") : null,
         i.status === "SCHEDULED" && i.consent_id ? h("button", { type: "button", class: "small", onclick: () => A.revoke({ consent_id: i.consent_id }) }, "Unschedule") : null)));
 }
+function freshLine(f) {
+  return h("div", { class: "fresh-line" }, h("span", { class: "pill " + f.tone }, "Freshness: " + f.label),
+    h("span", { class: "small muted" }, "Approval: " + f.approval),
+    f.gate ? h("span", { class: "small " + (f.gate.ok ? "muted" : "warn-text") }, "Publish gate: " + f.gate.why) : null);
+}
+
+const stepText = (v) => {
+  if (!v || typeof v !== "object") return String(v ?? "—");
+  if ("passed" in v && "review" in v) return `${v.passed} passed · ${v.failed} failed · ${v.review} owner review`;
+  if ("compared_against" in v) return `${v.status} · compared with ${v.compared_against} · ${v.exact} exact · ${v.near} near`;
+  return Object.entries(v).map(([k, x]) => `${k}: ${x}`).join(" · ");
+};
+
+function freshCard(p, c, consent) {
+  const f = freshOf(p, c, consent);
+  const L = f.latest;
+  const kv = (rows) => h("dl", { class: "kv" }, rows.filter(Boolean).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v ?? UNKNOWN)]));
+  const tone = (s) => ({ ok: "ok", found: "ok", still_relevant: "ok", checked_by_session: "info", partial: "warn",
+    unverified: "warn", needs_review: "warn", text_only: "muted", missing: "err", stale: "err", invalid: "err" }[s] ?? "muted");
+  return card("Same-day freshness",
+    h("div", { class: "media-head" }, h("span", { class: "pill " + f.tone }, f.label), f.note ? h("span", { class: "small muted" }, f.note) : null),
+    kv([
+      ["Approval", f.approval],
+      f.gate ? ["Scheduled publish", f.gate.ok ? "allowed: " + f.gate.why : "held: " + f.gate.why] : null,
+      L ? ["Last check", `${fmtWhen(L.checked_at)} · ${L.mode} · by ${L.by}${L.test_mode ? ` · TEST RUN as of ${L.check_date}` : ""}`] : null,
+      L ? ["Decision", `${L.decision}${L.material_change ? " (material change)" : ""}`] : null,
+      L ? ["Approval effect", L.approval_effect ?? "—"] : null,
+      L?.content_hash_before ? ["Text hash", h("span", {}, h("code", {}, short(L.content_hash_before, 12)), " → ", h("code", {}, short(L.content_hash, 12)))]
+        : L ? ["Text hash", h("code", {}, short(L.content_hash, 12))] : null,
+      L && "image_sha256_before" in L ? ["Image hash", `${L.image_sha256_before ? short(L.image_sha256_before) : "none"} → ${L.image_sha256 ? short(L.image_sha256) : "none"}`]
+        : L ? ["Image hash", L.image_sha256 ? short(L.image_sha256) : "none"] : null,
+    ]),
+    L ? h("details", { class: "rules" }, h("summary", {}, "Evidence"),
+      h("h3", { class: "small" }, "Sources checked"),
+      (L.sources ?? []).length ? h("ul", { class: "list" }, L.sources.map((s) => h("li", {}, ext(s.url, s.url.replace(/^https?:\/\//, "")), " ",
+        h("span", { class: "pill " + tone(s.status) }, s.status), s.http ? h("span", { class: "small muted" }, ` HTTP ${s.http}`) : null,
+        s.error ? h("div", { class: "small muted" }, s.error) : null))) : h("p", { class: "small muted" }, "No sources recorded."),
+      (L.claims ?? []).length ? [h("h3", { class: "small" }, "Claims re-checked"), h("ul", { class: "list" }, L.claims.map((c) =>
+        h("li", {}, h("span", { class: "pill " + tone(c.status) }, c.status), " ", c.text)))] : null,
+      L.media ? [h("h3", { class: "small" }, "Image re-evaluation"), h("p", {}, h("span", { class: "pill " + tone(L.media.status) }, L.media.status), " ", L.media.note ?? "")] : null,
+      L.steps ? [h("h3", { class: "small" }, "Re-run after update"), kv(Object.entries(L.steps).map(([k, v]) => [k, stepText(v)]))] : null,
+      L.new_developments ? h("p", { class: "small muted" }, "New developments: " + L.new_developments) : null) : null,
+    f.history.length > 1 ? h("details", { class: "rules" }, h("summary", {}, `Recent checks (${f.history.length})`),
+      h("ul", { class: "list" }, [...f.history].reverse().map((x) => h("li", { class: "small" }, `${x.check_date} · ${x.mode} · ${x.decision} · ${x.status}`)))) : null);
+}
+
 const inCloud = (id) => { const c = cloudPost(id); return Boolean(c && c.state !== "WITHDRAWN"); };
 
 function rangeControls(base) {
@@ -469,6 +519,7 @@ function viewPost(id) {
           ["Media", typeChip(media(p ?? c, S.snap).type)],
           ["Visibility", (st().visibility || "PUBLIC") === "PUBLIC" ? "Public" : st().visibility],
         ])),
+        p ? freshCard(p, c, consent) : null,
         mediaCard(p, c),
         card("Humanization", h("ul", { class: "hz" }, humanizationRows(p, voice).map((r) =>
           h("li", {}, h("span", { class: "hz-label" }, r.label), h("span", { class: "pill " + r.tone }, r.value), r.note ? h("div", { class: "small muted" }, r.note) : null))),

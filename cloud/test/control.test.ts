@@ -266,3 +266,66 @@ describe("preview media (LCE-037)", () => {
     expect(last - NOW).toBeGreaterThan(25 * 86400e3);
   });
 });
+
+describe("same-day freshness gate (LCE-040)", () => {
+  const SLOT = "2026-10-05T11:00:00+00:00";
+  async function scheduled(fresh: boolean) {
+    await enableAll(e);
+    const h = await insertPost(e, READY);
+    await insertConsent(e, READY, "2026-10-05-mon-0500", SLOT, h, "consent-1", fresh);
+    return h;
+  }
+  async function setFresh(h: string, status: string, day = "2026-10-05", received = "2026-10-05T10:00:00+00:00") {
+    await e.DB.prepare(`INSERT INTO freshness (post_id, check_date, checked_at, status, decision, content_hash, reason, received_at, received_by)
+      VALUES (?, ?, ?, ?, 'x', ?, '', ?, 'x')
+      ON CONFLICT(post_id) DO UPDATE SET check_date = excluded.check_date, status = excluded.status, content_hash = excluded.content_hash,
+        received_at = excluded.received_at`)
+      .bind(READY, day, received, status, h, received).run();
+  }
+  it("blocks a scheduled post without a same-day check, writes nothing, keeps the consent", async () => {
+    await scheduled(false);
+    const f = fakeFetch();
+    const r = await runScheduled(e, NOW, f.fn);
+    expect(r).toMatchObject({ status: "freshness_pending", detail: "no same-day freshness check" });
+    expect(f.calls).toHaveLength(0);
+    expect((await rows<{ status: string }>(e, "SELECT status FROM consents"))[0].status).toBe("active");
+  });
+  it("refuses a check from another day, a non-current status, or another text version", async () => {
+    const h = await scheduled(false);
+    for (const [status, day, hash, why] of [["current", "2026-10-04", h, "not 2026-10-05"], ["needs_review", "2026-10-05", h, "needs_review"],
+      ["update_required", "2026-10-05", h, "update_required"], ["current", "2026-10-05", "f".repeat(64), "another text version"]]) {
+      await setFresh(hash, status, day);
+      const f = fakeFetch();
+      const r = await runScheduled(e, NOW, f.fn);
+      expect(r.status).toBe("freshness_pending");
+      expect(r.detail).toContain(why);
+      expect(f.calls).toHaveLength(0);
+    }
+  });
+  it("refuses a check dated for the publishing day but received on another day (test run as-of)", async () => {
+    const h = await scheduled(false);
+    await setFresh(h, "current", "2026-10-05", "2026-10-02T09:00:00+00:00");
+    const f = fakeFetch();
+    const r = await runScheduled(e, NOW, f.fn);
+    expect(r).toMatchObject({ status: "freshness_pending", detail: "freshness check was not received on the publishing day" });
+    expect(f.calls).toHaveLength(0);
+  });
+  it("publishes once a same-day current check for the approved text exists", async () => {
+    const h = await scheduled(false);
+    await setFresh(h, "current");
+    const f = fakeFetch(created("urn:li:share:7100"));
+    expect((await runScheduled(e, NOW, f.fn)).outcome).toBe("published");
+  });
+  it("freshness rows are sent by the CLI only and validated", async () => {
+    const body = { status: "current", decision: "unchanged", check_date: "2026-10-05", checked_at: "2026-10-05T04:00:00+00:00",
+      content_hash: "a".repeat(64), image_sha256: null, reason: "every claim still stated" };
+    expect((await call("PUT", `/freshness/${READY}`, body, SERVICE, fakeFetch(), "dashboard")).status).toBe(403);
+    expect((await call("PUT", `/freshness/${READY}`, { ...body, status: "fine" }, SERVICE, fakeFetch(), "cli")).status).toBe(400);
+    // only same-day checks (Worker clock, owner time zone): a future-dated test run is refused
+    const future = await call("PUT", `/freshness/${READY}`, { ...body, check_date: "2026-10-08" }, SERVICE, fakeFetch(), "cli");
+    expect(future.status).toBe(409);
+    expect((await call("PUT", `/freshness/${READY}`, body, SERVICE, fakeFetch(), "cli")).status).toBe(200);
+    const snap = await call("GET", "/snapshot");
+    expect(snap.body!.freshness).toMatchObject([{ post_id: READY, status: "current", check_date: "2026-10-05" }]);
+  });
+});

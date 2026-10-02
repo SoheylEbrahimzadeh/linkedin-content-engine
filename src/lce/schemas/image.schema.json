@@ -146,6 +146,25 @@
     "height": {
       "type": "integer",
       "minimum": 1
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Verbatim strings of a generated diagram (LCE-040 relevance re-check).",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "footer": {
+          "type": "string"
+        }
+      }
     }
   }
 }

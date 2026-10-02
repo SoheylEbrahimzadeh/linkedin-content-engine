@@ -9,7 +9,7 @@ import { applyMigrations, MigrationConflict, migrationStatus } from "./migration
 import { contentHash, sha256Bytes } from "./text";
 import { IDENTITY_HTTP, linkedinIdentity } from "./identity";
 import { cancelDecision, createDecision, DecisionError, listDecisions, resolveDecision } from "./decisions";
-import { publishNow } from "./runner";
+import { localDate, publishNow } from "./runner";
 import type { FetchLike } from "./linkedin";
 
 const POST_ID_RE = /^\d{8}-[a-z0-9-]{1,56}$/;
@@ -92,6 +92,10 @@ export async function handleApi(request: Request, env: Env, now: number,
     }
     if (request.method === "DELETE" && (r = m(/^\/api\/decisions\/(d-[0-9a-f-]{36})$/))) return json(200, await cancelDecision(env, now, who, r[1]));
     if (request.method === "GET" && (r = m(/^\/api\/posts\/([^/]+)\/image$/))) return await postImage(env, r[1], request);
+    if (request.method === "PUT" && (r = m(/^\/api\/freshness\/([^/]+)$/))) {
+      if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "freshness is sent by lce refresh run --push");
+      return json(200, await putFreshness(env, now, actor, r[1], await body(request)));
+    }
     if (request.method === "GET" && url.pathname === "/api/preview-media") return json(200, await previewMediaList(env));
     if (request.method === "PUT" && (r = m(/^\/api\/preview-media\/([^/]+)$/))) {
       if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "preview media is uploaded by lce cloud sync");
@@ -408,7 +412,34 @@ export async function snapshot(env: Env, now: number) {
     events,
     decisions: (await listDecisions(env, null)).decisions.slice(0, 100),
     preview_media: (await previewMediaList(env)).media,
+    freshness: (await env.DB.prepare("SELECT * FROM freshness").all<Record<string, unknown>>()).results,
   };
+}
+
+const FRESH_STATUS = ["current", "needs_review", "update_required", "update_awaiting_approval", "update_in_progress"];
+
+async function putFreshness(env: Env, now: number, actor: string, rawId: string, b: Record<string, unknown>) {
+  const id = requirePostId(rawId);
+  const status = String(b.status ?? "");
+  if (!FRESH_STATUS.includes(status)) throw new HttpError(400, "invalid freshness status");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.check_date ?? ""))) throw new HttpError(400, "check_date must be YYYY-MM-DD");
+  if (!HEX64.test(String(b.content_hash ?? ""))) throw new HttpError(400, "content_hash is required");
+  // A check counts only for the day it is received (Worker clock, owner time zone):
+  // a test run "as of" a future day can never stand in for that day's check.
+  const today = localDate(isoUtc(now), (await loadSettings(env.DB)).timezone || "UTC");
+  if (String(b.check_date) !== today) throw new HttpError(409, `check_date ${String(b.check_date)} is not today (${today}); only same-day checks are accepted`);
+  const img = b.image_sha256 === null || b.image_sha256 === undefined ? null : String(b.image_sha256);
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO freshness (post_id, check_date, checked_at, status, decision, content_hash, image_sha256, reason, received_at, received_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(post_id) DO UPDATE SET check_date = excluded.check_date, checked_at = excluded.checked_at, status = excluded.status,
+        decision = excluded.decision, content_hash = excluded.content_hash, image_sha256 = excluded.image_sha256,
+        reason = excluded.reason, received_at = excluded.received_at, received_by = excluded.received_by`)
+      .bind(id, String(b.check_date), isoUtc(now), status, String(b.decision ?? ""), String(b.content_hash),
+        img, String(b.reason ?? "").slice(0, 500), isoUtc(now), actor),
+    event(env.DB, now, "freshness.recorded", actor, id, { status, check_date: b.check_date }),
+  ]);
+  return { post_id: id, status };
 }
 
 async function previewMediaList(env: Env) {

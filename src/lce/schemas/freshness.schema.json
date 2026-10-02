@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/freshness.schema.json",
+  "title": "Same-day freshness checks (posts/<id>/freshness.yaml, LCE-040)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "checks"
+  ],
+  "properties": {
+    "demo": {
+      "type": "boolean"
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "checked_at",
+          "check_date",
+          "mode",
+          "decision",
+          "status",
+          "reason",
+          "content_hash"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": "string"
+          },
+          "check_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "mode": {
+            "enum": [
+              "check",
+              "research",
+              "update"
+            ]
+          },
+          "by": {
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "unchanged",
+              "update_required",
+              "unverifiable",
+              "confirmed",
+              "updated"
+            ]
+          },
+          "status": {
+            "enum": [
+              "current",
+              "needs_review",
+              "update_required",
+              "update_awaiting_approval",
+              "update_in_progress"
+            ]
+          },
+          "material_change": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array"
+          },
+          "claims": {
+            "type": "array"
+          },
+          "media": {
+            "type": "object"
+          },
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "content_hash_before": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "image_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_sha256_before": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "approval": {
+            "type": "string"
+          },
+          "approval_before": {
+            "type": "string"
+          },
+          "approval_effect": {
+            "enum": [
+              "preserved",
+              "invalidated",
+              "none"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
