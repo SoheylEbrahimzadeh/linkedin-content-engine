@@ -10,6 +10,7 @@ import m0004 from "../migrations/0004_decisions.sql";
 import m0005 from "../migrations/0005_preview_media.sql";
 import m0006 from "../migrations/0006_freshness.sql";
 import m0007 from "../migrations/0007_refresh.sql";
+import m0008 from "../migrations/0008_reliability.sql";
 
 export const MIGRATIONS: [string, string][] = [
   ["0001_init.sql", m0001],
@@ -19,6 +20,7 @@ export const MIGRATIONS: [string, string][] = [
   ["0005_preview_media.sql", m0005],
   ["0006_freshness.sql", m0006],
   ["0007_refresh.sql", m0007],
+  ["0008_reliability.sql", m0008],
 ];
 
 // Exactly Wrangler's table (getCreateMigrationsTableQuery, default name d1_migrations).

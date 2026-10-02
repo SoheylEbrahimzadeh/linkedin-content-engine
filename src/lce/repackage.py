@@ -1,28 +1,33 @@
-"""Manual post refresh (LCE-041): regenerate the whole post package.
+"""Manual post Refresh (LCE-041/042): reject this version, write a new replacement.
 
-The owner clicks Refresh in the Control Center → a `refresh` decision → the
-decisions workflow records `refresh_request` on the post. A Claude Code
-session (the `lce-refresh` skill, run by the Routine or by hand) then writes
-the new package and calls `lce refresh package`, which here, atomically:
+Refresh in the Control Center means "I reject this version — write another
+publishable candidate for the same slot". So:
 
-1. keeps the current version in `versions/vN` (never overwritten);
-2. replaces text (hook included), sources and claims;
-3. records the humanization/voice check (save_humanized);
-4. decides the media for THIS text: a new conceptual visual (relevance-checked),
-   an explicit text-only decision, or keeping the old image only when its
-   relevance is re-accepted against the new text AND a reason is given;
-5. QA → duplicate check against the archive → media checks → fresh approval
-   artifact bound to the new text and image hashes (AWAITING_APPROVAL);
-6. records the refresh (post.refresh, freshness record with old/new hashes).
+1. The `refresh` decision (applied by the private workflow) archives the current
+   package in `versions/vN` with status `rejected` and takes it out of the active
+   role at once: its approval is discarded and the post waits in NEEDS_REVISION
+   with a `refresh_request` (it can no longer be approved or published).
+2. A Claude Code session (the `lce-refresh` skill, run by the Routine or by hand)
+   writes a genuinely new package and calls `lce refresh package`, which here,
+   atomically: replaces text (new hook), sources and claims; records the
+   humanization/voice check; draws a NEW relevant visual (or decides text-only
+   with a reason; the old image is never kept); runs QA, the duplicate check
+   against the archive, the media relevance check; writes a fresh approval
+   artifact bound to the new hashes (AWAITING_APPROVAL).
+3. Novelty is enforced against every earlier version: a different hook, a text
+   that is not a rewording of an earlier one, an image that is not an earlier one.
 
-Any failure rolls the post back to exactly the version it was. Nothing is
-approved or published here, and a scheduled publication still needs the
-owner's approval and the same-day freshness check (LCE-040) of the new text.
+Each Refresh adds a version (v1 → v2 → v3 …); none is ever overwritten. Any
+failure restores the post exactly as it was (from a temporary backup).
+Skip is different: it releases the slot and generates nothing (decisions._skip).
+Nothing here approves or publishes.
 """
 
 from __future__ import annotations
 
+import tempfile
 from datetime import date
+from pathlib import Path
 
 from lce import images, refresh, versions
 from lce.posts import current_text
@@ -45,16 +50,38 @@ def _refreshable(store: DataStore, post_id: str) -> dict:
 
 
 def request(store: DataStore, post_id: str, *, by: str, note: str = "", decision_id: str = "") -> dict:
+    """The owner rejected the current version: archive it (status `rejected`) and
+    deactivate it now; a writing session produces the replacement."""
+    from lce.posts import reopen, set_state
+
     post = _refreshable(store, post_id)
+    already = bool(post.get("refresh_request"))
+    archived = None
+    if not already and (store.post_dir(post_id) / "post.md").exists():
+        archived = versions.snapshot(
+            store, post_id, reason="rejected by the owner (Refresh)", by=by, status="rejected"
+        )["version"]
+    state = S(post["state"])
+    if state in {S.AWAITING_APPROVAL, S.APPROVED, S.READY_TO_PUBLISH}:
+        reopen(store, post_id, "rejected by the owner (Refresh)")
+        state = S.HUMANIZED
+    if state == S.DUPLICATE_CHECKED:
+        set_state(store, store.load_post(post_id), S.HUMANIZED, "rejected by the owner (Refresh)")
+        state = S.HUMANIZED
+    post = store.load_post(post_id)
+    prev = post.get("refresh_request") or {}
     post["refresh_request"] = {
         "requested_at": now_iso(),
         "requested_by": by,
         **({"note": note.strip()} if note.strip() else {}),
         **({"decision_id": decision_id} if decision_id else {}),
+        "rejected_version": archived if archived is not None else prev.get("rejected_version"),
     }
     store.save_post(post)
-    store.log_event("post.refresh_requested", post_id=post_id, by=by)
-    return post["refresh_request"]
+    if state in {S.HUMANIZED, S.QA_PASSED}:
+        set_state(store, post, S.NEEDS_REVISION, "Refresh: replacement requested")
+    store.log_event("post.refresh_requested", post_id=post_id, by=by, rejected_version=archived)
+    return store.load_post(post_id)["refresh_request"]
 
 
 def pending(store: DataStore) -> list[dict]:
@@ -74,6 +101,40 @@ def pending(store: DataStore) -> list[dict]:
     return out
 
 
+MAX_SIMILARITY = 0.5  # share of the new text's words inside 4-word runs of an earlier version
+
+
+def _hook_of(text: str) -> str:
+    from lce.relevance import words
+
+    line = next((x for x in text.splitlines() if x.strip()), "")
+    return " ".join(words(line))
+
+
+def novelty_check_text(store: DataStore, post_id: str, text: str, current: str) -> None:
+    """A replacement must be a different post, not a rewording: new hook, and no earlier
+    version (or the current text) may cover half of its words in 4-word runs."""
+    from lce.relevance import copied_ratio
+
+    earlier = [current]
+    root = versions.folder(store, post_id)
+    for v in versions.listing(store, post_id):
+        f = root / f"v{v['version']}" / "post.md"
+        if f.exists():
+            earlier.append(f.read_text(encoding="utf-8"))
+    hook = _hook_of(text)
+    for old in earlier:
+        if hook and hook == _hook_of(old):
+            raise StoreError("the hook is the same as an earlier version's; a replacement needs a new hook")
+        body = "\n".join(line for line in text.splitlines() if not line.strip().startswith("#"))
+        ratio = copied_ratio([body], old)
+        if ratio > MAX_SIMILARITY:
+            raise StoreError(
+                f"the text repeats an earlier version ({ratio:.0%} of its words in shared 4-word runs, "
+                f"max {MAX_SIMILARITY:.0%}); write a genuinely new post"
+            )
+
+
 def _validate_package(pkg: dict) -> None:
     if not (pkg.get("text") or "").strip():
         raise StoreError("the package needs the new text")
@@ -87,11 +148,10 @@ def _validate_package(pkg: dict) -> None:
         if c.get("source_url") not in urls:
             raise StoreError(f"claim without one of the package's sources: {c.get('text')!r}")
     media = pkg.get("media") or {}
-    if sum(k in media for k in ("spec", "keep", "text_only")) != 1:
-        raise StoreError(
-            "media must be exactly one of: spec (new visual), keep (reason the current image "
-            "still fits), text_only {reason, rationale}"
-        )
+    if "keep" in media:
+        raise StoreError("Refresh replaces the media too: draw a new visual (spec) or decide text_only")
+    if sum(k in media for k in ("spec", "text_only")) != 1:
+        raise StoreError("media must be exactly one of: spec (a new visual), text_only {reason, rationale}")
 
 
 def package(
@@ -115,63 +175,81 @@ def package(
         "approval": (post.get("approval") or {}).get("state") or "none",
         "state": post["state"],
     }
-    kept = versions.snapshot(store, post_id, reason="before refresh: " + pkg["reason"].strip(), by=by)
-    try:
-        if S(post["state"]) in {S.AWAITING_APPROVAL, S.APPROVED, S.READY_TO_PUBLISH}:
-            reopen(store, post_id, "manual refresh")
-        post = store.load_post(post_id)
-        post["sources"] = [
-            {k: v for k, v in s.items() if k in ("url", "title", "publisher", "accessed_at")}
-            | {"accessed_at": s.get("accessed_at") or now_iso()}
-            for s in pkg["sources"]
-        ]
-        post["claims"] = [{"text": c["text"], "source_url": c["source_url"]} for c in pkg.get("claims") or []]
-        post.pop("regeneration", None)
-        store.save_post(post)
-        if S(post["state"]) == S.SELECTED:
-            from lce.posts import save_draft
-
-            save_draft(store, post_id, pkg["text"])
-        post = save_humanized(store, post_id, pkg["text"], source="session", by=by)
-        media = pkg["media"]
-        if "spec" in media:
-            concept(store, post_id, media["spec"])
-            media_note = "new conceptual visual"
-        elif "text_only" in media:
-            t = media["text_only"]
-            images.decide(
-                store,
-                post_id,
-                kind="none",
-                rationale=t["rationale"],
-                decided_by="agent",
-                text_only_reason=t["reason"],
-            )
-            media_note = f"text-only ({t['reason']})"
-        else:
-            rel = images.relevance_now(store, post_id)
-            if not before_doc or before_doc.get("kind") == images.NO_IMAGE:
-                raise StoreError("keep: there is no current image to keep")
-            if rel is None or rel["media_decision"] != "accepted":
-                raise StoreError(
-                    "keep refused: the current image is not relevant to the new text ("
-                    + "; ".join((rel or {}).get("problems") or ["no relevance record"])
-                    + ")"
+    history = versions.listing(store, post_id)
+    last_before = history[-1]["version"] if history else 0
+    novelty_check_text(store, post_id, pkg["text"], before_text)
+    with tempfile.TemporaryDirectory() as tmp:
+        versions.backup(store, post_id, Path(tmp))
+        try:
+            # The version being replaced is in history once: the Refresh decision archived it
+            # already (status rejected); a session-started refresh archives it here.
+            if not history or history[-1]["content_hash"] != before["content_hash"]:
+                history.append(
+                    versions.snapshot(
+                        store,
+                        post_id,
+                        reason="replaced by a refresh: " + pkg["reason"].strip(),
+                        by=by,
+                        status="replaced",
+                    )
                 )
-            media_note = "image kept: " + str(media["keep"]).strip()
-        qa = run_qa(store, post_id)
-        if qa["status"] != "passed":
-            raise StoreError("QA failed: " + "; ".join(f"{f['code']}: {f['message']}" for f in qa["errors"]))
-        dup = run_dupcheck(store, post_id)
-        if dup["status"] != "passed":
-            raise StoreError(f"duplicate check failed ({len(dup['exact'])} exact, {len(dup['near'])} near)")
-        errors, _ = images.check(store, post_id)
-        if errors:
-            raise StoreError("media: " + "; ".join(errors))
-        prepare(store, post_id)
-    except Exception:
-        versions.rollback(store, post_id, kept["version"])
-        raise
+            kept = history[-1]
+            if S(post["state"]) in {S.AWAITING_APPROVAL, S.APPROVED, S.READY_TO_PUBLISH}:
+                reopen(store, post_id, "manual refresh")
+            post = store.load_post(post_id)
+            post["sources"] = [
+                {k: v for k, v in s.items() if k in ("url", "title", "publisher")}
+                | {"accessed_at": now_iso()}
+                for s in pkg["sources"]
+            ]
+            post["claims"] = [
+                {"text": c["text"], "source_url": c["source_url"]} for c in pkg.get("claims") or []
+            ]
+            post.pop("regeneration", None)
+            store.save_post(post)
+            if S(post["state"]) == S.SELECTED:
+                from lce.posts import save_draft
+
+                save_draft(store, post_id, pkg["text"])
+            post = save_humanized(store, post_id, pkg["text"], source="session", by=by)
+            media = pkg["media"]
+            if "spec" in media:
+                doc = concept(store, post_id, media["spec"])
+                used = {v.get("image_sha256") for v in history} | {before["image_sha256"]}
+                if doc["sha256"] in used:
+                    raise StoreError(
+                        "the new visual is identical to an earlier version's image; draw a new one"
+                    )
+                media_note = "new conceptual visual"
+            else:
+                t = media["text_only"]
+                images.decide(
+                    store,
+                    post_id,
+                    kind="none",
+                    rationale=t["rationale"],
+                    decided_by="agent",
+                    text_only_reason=t["reason"],
+                )
+                media_note = f"text-only ({t['reason']})"
+            qa = run_qa(store, post_id)
+            if qa["status"] != "passed":
+                raise StoreError(
+                    "QA failed: " + "; ".join(f"{f['code']}: {f['message']}" for f in qa["errors"])
+                )
+            dup = run_dupcheck(store, post_id)
+            if dup["status"] != "passed":
+                raise StoreError(
+                    f"duplicate check failed ({len(dup['exact'])} exact, {len(dup['near'])} near)"
+                )
+            errors, _ = images.check(store, post_id)
+            if errors:
+                raise StoreError("media: " + "; ".join(errors))
+            prepare(store, post_id)
+        except Exception:
+            versions.restore_backup(store, post_id, Path(tmp))
+            versions.drop_after(store, post_id, last_before)  # only what THIS call archived
+            raise
     post = store.load_post(post_id)
     text = current_text(store, post_id)
     doc = images.load(store, post_id) or {}
@@ -248,39 +326,3 @@ def package(
         image_sha256=record["image_sha256"],
     )
     return record
-
-
-def keep(store: DataStore, post_id: str, *, reason: str, by: str = "session") -> dict:
-    """Close a refresh request without a new version: allowed only when the current
-    package is complete and valid (relevant media, approval artifact for the current
-    hashes). Nothing changes; the approval state is untouched."""
-    from lce.approval import _require_consistent, image_unchanged
-
-    post = _refreshable(store, post_id)
-    if not reason.strip():
-        raise StoreError("say why the current version is kept")
-    if S(post["state"]) not in {S.AWAITING_APPROVAL, S.APPROVED, S.READY_TO_PUBLISH}:
-        raise StoreError(f"the current version is not complete ({post['state']}); refresh it instead")
-    errors, _ = images.check(store, post_id)
-    if errors:
-        raise StoreError("the current version cannot be kept: " + "; ".join(errors))
-    _require_consistent(store, post)
-    if not image_unchanged(store, post):
-        raise StoreError("the image changed since the approval artifact; refresh it instead")
-    art = store.post_dir(post_id) / "APPROVAL.md"
-    want = (post.get("approval") or {}).get("artifact_hash")
-    if not art.exists() or (want and content_hash(art.read_text(encoding="utf-8")) != want):
-        raise StoreError("the approval artifact does not match the current version; refresh it instead")
-    req = post.pop("refresh_request", None) or {}
-    post["refresh"] = {
-        "completed_at": now_iso(),
-        "by": by,
-        "reason": reason.strip(),
-        "outcome": "kept",
-        "previous_version": None,
-        "requested_at": req.get("requested_at"),
-        "decision_id": req.get("decision_id"),
-    }
-    store.save_post(post)
-    store.log_event("post.refresh_kept", post_id=post_id, reason=reason.strip())
-    return post["refresh"]

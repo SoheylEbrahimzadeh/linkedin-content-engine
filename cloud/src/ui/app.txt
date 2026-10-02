@@ -8,7 +8,7 @@
 
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
-  REFRESH_CONFIRM, canRefresh, displayStatus, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
+  REFRESH_CONFIRM, SKIP_CONFIRM, canRefresh, displayStatus, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
   mediaSourceShort, parseHash, segments, timeline, weekday,
 } from "./lib.js";
 
@@ -54,42 +54,28 @@ function toast(text, tone) {
 
 // Cloudflare Access answers an expired session with a redirect to its login page (another origin).
 // fetch() would then fail with a bare "Failed to fetch"; with redirect: "manual" we can say what happened.
-const SESSION_EXPIRED = "Cloudflare Access sent this request to its sign-in page instead of the Control Center, so it was not recorded.";
-let retryAction = null;   // the action that hit the sign-in redirect; repeated after signing in again
+// ── LCE-042: reliable actions ─────────────────────────────────────────
+// Cloudflare Access answers a request whose session it does not accept with a redirect to its sign-in
+// page (another origin). With redirect: "manual" the page can tell that apart from a Worker answer, keep
+// the action, sign in again in a small top-level window, and send the SAME action once more (same
+// request_id, so the Worker never records it twice). What the browser saw is reported for diagnosis.
+const SIGNIN = "Cloudflare Access sent this request to its sign-in page instead of the Control Center, so it was not recorded.";
+const T = { pageLoadedAt: new Date().toISOString(), lastOkGetAt: null };
+const reports = [];
+S.outcomes = {};
+const newRequestId = () => "req-" + (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+
 function sessionNote() {
   const w = S.whoami;
   if (!w?.session_expires_at) return "";
   const end = new Date(w.session_expires_at * 1000).toISOString();
   const mins = w.session_issued_at ? Math.round((w.session_expires_at - w.session_issued_at) / 60) : null;
   return ` Your Access session ${w.session_expires_at * 1000 < Date.now() ? "ended" : "ends"} at ${localTime(end, tz())}` +
-    (mins !== null ? ` (session length ${mins} min, set in Cloudflare Access).` : ".");
+    (mins !== null ? ` (session length ${mins} min).` : ".");
 }
-function sessionExpired() {
-  document.getElementById("session-banner")?.remove();
-  document.body.prepend(h("div", { id: "session-banner", class: "notice warn session-banner", role: "alert" },
-    h("strong", {}, "Sign-in needed. "), SESSION_EXPIRED + sessionNote() + " ",
-    h("button", { type: "button", class: "small primary", onclick: reauth },
-      retryAction ? "Sign in and repeat the action" : "Sign in again")));
-}
-// Signs in again in a small window (a top-level page, which Cloudflare Access can redirect), keeps this page
-// and its state, then repeats the action that was refused.
-function reauth() {
-  const w = window.open("/?reauth=1", "lce-reauth", "width=520,height=680");
-  if (!w) { location.reload(); return; }
-  const onMsg = async (e) => {
-    if (e.origin !== location.origin || e.data !== "lce-reauth-ok") return;
-    window.removeEventListener("message", onMsg);
-    document.getElementById("session-banner")?.remove();
-    await refreshWhoami();
-    const again = retryAction; retryAction = null;
-    if (again) await again(); else await load();
-  };
-  window.addEventListener("message", onMsg);
-}
-async function refreshWhoami() {
-  try { S.whoami = await api("GET", "/whoami"); } catch { /* shown by the banner */ }
-}
-async function api(method, path, body) {
+
+/** One request; never throws. kind: ok | signin (Access redirect) | network | http. */
+async function rawFetch(method, path, body) {
   let res;
   try {
     res = await fetch("/api" + path, {
@@ -98,23 +84,134 @@ async function api(method, path, body) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (e) {
-    throw new Error(`the Control Center could not be reached (${e?.message || e}); nothing was recorded. Check the connection and try again.`);
+    return { kind: "network", error: String(e?.message || e) };
   }
-  if (res.type === "opaqueredirect" || res.status === 0) {
-    const err = new Error(SESSION_EXPIRED + sessionNote());
-    err.status = 401; err.signin = true;
-    throw err;
-  }
+  if (res.type === "opaqueredirect" || res.status === 0) return { kind: "signin", status: res.status, type: res.type };
   let data = {};
   try { data = await res.json(); } catch { data = {}; }
-  if (!res.ok) {
-    const err = new Error(data.error || data.detail || data.reason || ("HTTP " + res.status));
-    err.status = res.status;
-    err.data = data;
-    throw err;
-  }
-  return data;
+  if (!res.ok) return { kind: "http", status: res.status, data, error: data.error || data.detail || data.reason || ("HTTP " + res.status) };
+  if (method === "GET") T.lastOkGetAt = new Date().toISOString();
+  return { kind: "ok", status: res.status, data };
 }
+
+async function api(method, path, body) {
+  const r = await rawFetch(method, path, body);
+  if (r.kind === "ok") return r.data;
+  const err = new Error(r.kind === "signin" ? SIGNIN + sessionNote()
+    : r.kind === "network" ? `the Control Center could not be reached (${r.error})` : r.error);
+  err.status = r.status; err.signin = r.kind === "signin"; err.data = r.data;
+  throw err;
+}
+
+// A sign-in window: Access redirects top-level pages through its login and back; the window then tells us.
+function signInWindow() {
+  return new Promise((resolve) => {
+    const w = window.open("/?reauth=1", "lce-reauth", "width=520,height=680");
+    if (!w) { resolve(false); return; }
+    let done = false;
+    const finish = (ok) => { if (done) return; done = true; window.removeEventListener("message", onMsg); clearInterval(t); resolve(ok); };
+    const onMsg = (e) => { if (e.origin === location.origin && e.data === "lce-reauth-ok") finish(true); };
+    window.addEventListener("message", onMsg);
+    const t = setInterval(() => { if (w.closed) setTimeout(() => finish(false), 400); }, 500);
+  });
+}
+
+// Keeps the action while asking to sign in: tries the window at once (still inside the click), otherwise
+// a banner button opens it. Resolves true once signed in, false if the owner closes the window.
+async function signInKeeping(label) {
+  if (await signInWindow()) { document.getElementById("session-banner")?.remove(); return true; }
+  return new Promise((resolve) => {
+    document.getElementById("session-banner")?.remove();
+    const bar = h("div", { id: "session-banner", class: "notice warn session-banner", role: "alert" },
+      h("strong", {}, "Sign-in needed. "), `${SIGNIN}${sessionNote()} Your ${label} is kept and will be sent once, right after you sign in. `,
+      h("button", { type: "button", class: "small primary", onclick: async () => {
+        const ok = await signInWindow();
+        if (ok) { bar.remove(); resolve(true); }
+      } }, `Sign in and send the ${label}`),
+      h("button", { type: "button", class: "small", onclick: () => { bar.remove(); resolve(false); } }, "Cancel"));
+    document.body.prepend(bar);
+  });
+}
+
+async function refreshWhoami() {
+  const r = await rawFetch("GET", "/whoami");
+  if (r.kind === "ok") S.whoami = r.data;
+  return r.kind;
+}
+// Outside an action (an image or a background check was refused): offer to sign in, then reload the data.
+function sessionExpired() {
+  if (document.getElementById("session-banner")) return;
+  const bar = h("div", { id: "session-banner", class: "notice warn session-banner", role: "alert" },
+    h("strong", {}, "Sign-in needed. "), "Cloudflare Access is asking you to sign in again." + sessionNote() + " ",
+    h("button", { type: "button", class: "small primary", onclick: async () => {
+      if (await signInWindow()) { bar.remove(); await refreshWhoami(); await load(); }
+    } }, "Sign in again"));
+  document.body.prepend(bar);
+}
+
+function evidence(kind, extra) {
+  const w = S.whoami ?? {};
+  reports.push({ kind, detail: { ...extra, page_loaded_at: T.pageLoadedAt, last_ok_get_at: T.lastOkGetAt,
+    session_issued_at: w.session_issued_at ?? null, session_expires_at: w.session_expires_at ?? null,
+    browser_now: new Date().toISOString(), user_agent: navigator.userAgent.slice(0, 160) } });
+}
+async function flushReports() {
+  while (reports.length) {
+    const r = reports[0];
+    const out = await rawFetch("POST", "/client-report", r);
+    if (out.kind !== "ok") return;
+    reports.shift();
+  }
+}
+
+function setOutcome(key, o) {
+  if (!key) return;
+  S.outcomes[key] = { ...o, at: new Date().toISOString() };
+  if (S.snap) render();
+}
+
+/**
+ * Every Control Center change goes through here. `req.body.request_id` (decisions) is fixed when the
+ * owner confirms, so a retry is the same action. Outcome per post: recorded | failed (never ambiguous).
+ */
+async function mutate(req, { label, key = null, ok = "Done." } = {}) {
+  setOutcome(key, { state: "sending", label });
+  // 1. Is the Access session accepted right now? (A GET, like the page load.)
+  const pre = await rawFetch("GET", "/whoami");
+  if (pre.kind === "ok") S.whoami = pre.data;
+  if (pre.kind === "signin") {
+    evidence("access_redirect", { stage: "preflight", method: "GET", path: "/api/whoami", action: label });
+    if (!(await signInKeeping(label))) return failed(key, label, "you cancelled the sign-in");
+    await refreshWhoami();
+  }
+  // 2. The action itself.
+  const t0 = Date.now();
+  let r = await rawFetch(req.method, req.path, req.body);
+  if (r.kind === "signin") {
+    evidence("access_redirect", { stage: "action", method: req.method, path: "/api" + req.path, action: label,
+      preflight: pre.kind, ms_after_preflight_ok: pre.kind === "ok" ? Date.now() - t0 : null });
+    if (!(await signInKeeping(label))) { await flushReports(); return failed(key, label, "you cancelled the sign-in"); }
+    await refreshWhoami();
+    r = await rawFetch(req.method, req.path, req.body);           // exactly once more, same request id
+    evidence(r.kind === "ok" ? "retry_succeeded" : "retry_failed", { method: req.method, path: "/api" + req.path,
+      action: label, result: r.kind, status: r.status ?? null });
+  }
+  await flushReports();
+  if (r.kind === "ok") {
+    setOutcome(key, { state: "recorded", label, decision_id: r.data?.decision_id ?? null, replayed: Boolean(r.data?.replayed) });
+    toast(ok, "ok");
+    await load();
+    return r.data;
+  }
+  return failed(key, label, r.kind === "signin" ? SIGNIN : r.kind === "network" ? `the Control Center could not be reached (${r.error})`
+    : `${r.error} (HTTP ${r.status})`, () => mutate(req, { label, key, ok }));
+}
+function failed(key, label, why, retry = null) {
+  setOutcome(key, { state: "failed", label, message: why, retry });
+  toast(`${cap(label)} failed — the request was not recorded: ${why}`, "err");
+  return null;
+}
+const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
 
 // ── dialogs (no window.prompt: works on phones) ─────────────────────
 function dialog(title, body, actions) {
@@ -160,21 +257,8 @@ function confirmBox(title, text, label = "Yes", cls = "primary") {
   return dialog(title, h("p", {}, text), [{ label, cls, value: () => true }]);
 }
 
-async function act(fn, ok = "Done.") {
-  try {
-    const out = await fn();
-    if (out === null || out === undefined) return;
-    toast(ok, "ok");
-    await load();
-  } catch (err) {
-    if (err.signin) {
-      retryAction = () => act(fn, ok);
-      sessionExpired();
-      toast("Not recorded yet: sign in again (button at the top) and the action is repeated automatically.", "err");
-      return;
-    }
-    toast("Refused: " + err.message + (err.status ? ` (HTTP ${err.status})` : ""), "err");
-  }
+async function act(req, ok = "Done.", label = "change", key = null) {
+  return mutate(req, { label, key, ok });
 }
 
 // ── data ────────────────────────────────────────────────────────────
@@ -186,9 +270,13 @@ const activeConsent = (id) => (S.snap?.consents ?? []).find((c) => c.status === 
 const st = () => S.snap?.settings ?? {};
 const targetName = () => st().display_name || "Personal profile";
 
+const LABELS = { approve: "approval", reject: "rejection", edit: "edit", refresh: "refresh", regenerate: "regeneration request",
+  reschedule: "reschedule", skip: "skip", duplicate: "copy" };
 function decide(body, ok) {
-  return act(() => api("POST", "/decisions", body), ok ||
-    "Decision recorded. The private workflow applies it at its next run (within about an hour).");
+  const label = LABELS[body.action] ?? body.action;
+  return mutate({ method: "POST", path: "/decisions", body: { request_id: newRequestId(), ...body } },
+    { label, key: body.post_id ?? (body.plan_date ? "plan:" + body.plan_date : null),
+      ok: ok || "Decision recorded. The private workflow applies it at its next run (within about an hour)." });
 }
 
 // ── actions ─────────────────────────────────────────────────────────
@@ -212,11 +300,11 @@ const A = {
   async refresh(p) {
     const note = h("textarea", { rows: 3, maxlength: 500, class: "short", placeholder: "Optional: what should change (e.g. the image only repeats the text)" });
     const ok = await dialog("Refresh this post?", [h("p", {}, REFRESH_CONFIRM),
-      h("p", { class: "small muted" }, "Nothing is published. A writing session produces the new version (text, hook, sources, image, alt text); it then waits for your approval."),
+      h("p", { class: "small muted" }, "Nothing is published. The current version stops being approvable at once; a writing session (scheduled every 2 hours, or started by hand) produces the replacement, which then waits for your approval."),
       h("label", { class: "small" }, "Note for the rewrite (optional)"), note],
-      [{ label: "Refresh", value: () => true }]);
+      [{ label: "Reject and refresh", value: () => true }]);
     if (ok) decide({ action: "refresh", post_id: p.post_id, note: note.value.trim() },
-      "Refresh requested. It reaches the repository within about an hour; the new version then appears here for your approval.");
+      "Refresh requested and recorded. The current version is rejected; the replacement appears here for your approval.");
   },
   async regenerate(p) {
     const reason = await askText("Request regeneration", "What should change? The next drafting session rewrites it; nothing is regenerated automatically.");
@@ -227,27 +315,30 @@ const A = {
     if (date) decide({ action: "reschedule", post_id: p.post_id, date });
   },
   async skip(p, planDate) {
-    const reason = await askText("Skip", "Reason (optional)", { required: false, max: 500 });
-    if (reason === null) return;
+    const input = h("input", { type: "text", maxlength: 500, placeholder: "Reason (optional)" });
+    const go = await dialog("Skip this post?", [h("p", {}, SKIP_CONFIRM), h("label", { class: "small" }, "Reason (optional)"), input],
+      [{ label: "Skip and release the slot", cls: "danger", value: () => true }]);
+    if (!go) return;
+    const reason = input.value.trim();
     decide(p ? { action: "skip", post_id: p.post_id, reason } : { action: "skip", plan_date: planDate, reason });
   },
   async duplicate(p) {
     const date = await askDate("Duplicate", "Planned date for the copy", localDate(S.snap.now, tz()));
     if (date) decide({ action: "duplicate", post_id: p.post_id, date });
   },
-  cancel: (d) => act(() => api("DELETE", "/decisions/" + encodeURIComponent(d.decision_id)), "Decision cancelled."),
+  cancel: (d) => act({ method: "DELETE", path: "/decisions/" + encodeURIComponent(d.decision_id) }, "Decision cancelled.", "cancellation", d.post_id),
   async schedule(postId, slot) {
     const phrase = await typed(`SCHEDULE ${postId}`, `Publish ${postId} automatically at ${slot.local} — only while auto-publish is ON and the emergency stop is off.`);
-    if (phrase) act(() => api("POST", "/consents", { post_id: postId, slot_id: slot.slot_id, confirm: phrase }), "Scheduled.");
+    if (phrase) act({ method: "POST", path: "/consents", body: { post_id: postId, slot_id: slot.slot_id, confirm: phrase } }, "Scheduled.");
   },
   async revoke(c) {
     if (await confirmBox("Revoke", "Remove this post from its time slot? It stays approved.", "Revoke", "danger")) {
-      act(() => api("DELETE", "/consents/" + encodeURIComponent(c.consent_id)), "Unscheduled.");
+      act({ method: "DELETE", path: "/consents/" + encodeURIComponent(c.consent_id) }, "Unscheduled.", "unschedule", c.post_id);
     }
   },
   async postAction(postId, action, explain, extra) {
     const phrase = await typed(`${action.toUpperCase()} ${postId}`, explain);
-    if (phrase) act(() => api("POST", `/posts/${encodeURIComponent(postId)}/${action}`, { confirm: phrase, ...(extra || {}) }));
+    if (phrase) act({ method: "POST", path: `/posts/${encodeURIComponent(postId)}/${action}`, body: { confirm: phrase, ...(extra || {}) } }, "Done.", action, postId);
   },
   async reconcile(postId) {
     const url = await askText("Reconcile", "If the post IS on LinkedIn, paste its URL. Leave empty if it is NOT.", { required: false, max: 500 });
@@ -258,22 +349,22 @@ const A = {
   async autoPublish(on) {
     if (!on) {
       if (await confirmBox("Auto-publish OFF", "Scheduled posts will not be published until it is on again.", "Turn off", "danger")) {
-        act(() => api("PUT", "/settings", { auto_publish: false }), "Auto-publish is OFF.");
+        act({ method: "PUT", path: "/settings", body: { auto_publish: false } }, "Auto-publish is OFF.");
       }
       return;
     }
     const phrase = await typed("ENABLE AUTO-PUBLISH", "Scheduled posts will then be published automatically at their times.");
-    if (phrase) act(() => api("PUT", "/settings", { auto_publish: true, confirm: phrase }), "Auto-publish is ON.");
+    if (phrase) act({ method: "PUT", path: "/settings", body: { auto_publish: true, confirm: phrase } }, "Auto-publish is ON.");
   },
   async emergency(on) {
     if (on) {
       if (await confirmBox("Emergency stop", "Block every publication now (scheduled and manual)?", "Stop everything", "danger")) {
-        act(() => api("PUT", "/settings", { emergency_stop: true }), "Emergency stop is ON: nothing publishes.");
+        act({ method: "PUT", path: "/settings", body: { emergency_stop: true } }, "Emergency stop is ON: nothing publishes.");
       }
       return;
     }
     const phrase = await typed("RELEASE EMERGENCY STOP", "Publications become possible again (still only approved and scheduled posts with auto-publish ON, or a controlled test publish).");
-    if (phrase) act(() => api("PUT", "/settings", { emergency_stop: false, confirm: phrase }), "Emergency stop released.");
+    if (phrase) act({ method: "PUT", path: "/settings", body: { emergency_stop: false, confirm: phrase } }, "Emergency stop released.");
   },
 };
 
@@ -380,11 +471,12 @@ function planRow(i) {
         i.objective ? h("span", { class: "small muted" }, objectiveLabel(i.objective)) : null,
         i.note ? h("span", { class: "small muted" }, i.note) : null,
         refreshPill(p)),
+      outcomeLine(i.post_id ?? (i.plan_date ? "plan:" + i.plan_date : null)),
       p && !["PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) ? freshLine(freshOf(p, cloudPost(p.post_id), activeConsent(p.post_id))) : null,
       h("div", { class: "row-actions" },
         href ? link(href, "Open", "btn small") : null,
-        p?.state === "AWAITING_APPROVAL" ? h("button", { type: "button", class: "small primary", onclick: () => A.approve(p) }, "Approve") : null,
-        p && canRefresh(p, inCloud(p.post_id)) ? h("button", { type: "button", class: "small", onclick: () => A.refresh(p) }, "Refresh") : null,
+        p?.state === "AWAITING_APPROVAL" && !refreshPending(p) ? h("button", { type: "button", class: "small primary", onclick: () => A.approve(p) }, "Approve") : null,
+        p && canRefresh(p, inCloud(p.post_id)) && !refreshPending(p) ? h("button", { type: "button", class: "small", onclick: () => A.refresh(p) }, "Refresh") : null,
         p && i.status !== "SCHEDULED" && i.status !== "PUBLISHED" && p.text && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.edit(p) }, "Edit") : null,
         p && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.reschedule(p) }, "Reschedule") : null,
         !i.post_id && i.status === "PLANNED" ? h("button", { type: "button", class: "small", onclick: () => A.skip(null, i.plan_date) }, "Skip") : null,
@@ -552,8 +644,8 @@ function viewPost(id) {
   const editable = p && !queued && !["PUBLISHED", "REJECTED", "PUBLISHING", "NEEDS_RECONCILE"].includes(state);
   const voice = S.pipe?.voice;
   const controls = [
-    state === "AWAITING_APPROVAL" && !queued ? B("Approve", () => A.approve(p), "primary") : null,
-    p && canRefresh(p, queued) ? B("Refresh", () => A.refresh(p)) : null,
+    state === "AWAITING_APPROVAL" && !queued && !refreshPending(p) ? B("Approve", () => A.approve(p), "primary") : null,
+    p && canRefresh(p, queued) && !refreshPending(p) ? B("Refresh", () => A.refresh(p)) : null,
     editable && p.text ? B("Edit", () => A.edit(p)) : null,
     editable ? B("Reschedule", () => A.reschedule(p)) : null,
     editable ? B("Skip", () => A.skip(p)) : null,
@@ -571,6 +663,7 @@ function viewPost(id) {
   return [
     h("div", { class: "page-head" }, h("div", {}, link("#upcoming", "← Upcoming", "back"), h("h1", { class: "post-h1" }, hook(p?.text ?? c?.text, 90) ?? p?.topic ?? id))),
     d ? h("div", { class: "notice info" }, `Your ${d.action} decision is recorded (${fmtWhen(d.created_at)}). It is applied to the repository at the next private run, within about an hour. `, B("Cancel", () => A.cancel(d), "small")) : null,
+    outcomeLine(id, true),
     refreshBanner(p, d),
     stepper(code),
     h("div", { class: "detail" },
@@ -599,6 +692,23 @@ function viewPost(id) {
 }
 
 // ── LCE-041: refresh state, versions (previous → refreshed) ─────────
+// LCE-042: a refresh recorded in the cloud (not yet applied) already rejects this version: no Approve, no 2nd Refresh.
+const refreshPending = (p) => pendingFor(p.post_id)?.action === "refresh";
+
+// What happened to the owner's last action here: sending, recorded, or failed (never ambiguous).
+function outcomeLine(key, big = false) {
+  const o = key ? S.outcomes[key] : null;
+  if (!o) return null;
+  if (o.state === "sending") return h("div", { class: "outcome small muted" }, `Sending your ${o.label}…`);
+  if (o.state === "recorded") {
+    return h("div", { class: "outcome ok-text" + (big ? " notice info" : " small") }, `${cap(o.label)} requested — recorded ${localTime(o.at, tz())}`,
+      o.replayed ? " (already recorded on the first attempt)" : "", o.decision_id ? h("code", { class: "small" }, " " + o.decision_id.slice(0, 10)) : null);
+  }
+  return h("div", { class: "outcome notice err" + (big ? "" : " small"), role: "alert" },
+    h("strong", {}, `${cap(o.label)} failed — the request was not recorded. `), o.message ?? "",
+    o.retry ? [" ", h("button", { type: "button", class: "small", onclick: () => o.retry() }, "Try again")] : null);
+}
+
 function refreshPill(p) {
   const r = p ? refreshState(p, pendingFor(p.post_id)) : null;
   return r ? h("span", { class: "pill " + r.tone }, r.label) : null;

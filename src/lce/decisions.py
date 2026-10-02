@@ -171,6 +171,10 @@ def _skip(store, client, d) -> str:
     if pid:
         if _delegated(store, pid):
             raise Refused("the post is in the cloud publisher; withdraw it there first")
+        # LCE-042: Skip releases the slot and generates nothing (unlike Refresh)
+        post = store.load_post(pid)
+        if post.pop("refresh_request", None) is not None:
+            store.save_post(post)
         reject(store, pid, f"skipped: {reason}")
         plan, entry = _plan_entry(store, pid)
     else:
@@ -225,8 +229,8 @@ def _refresh(store, client, d) -> str:
                           note=(d.get("payload") or {}).get("note", ""), decision_id=d["decision_id"])
     except StoreError as exc:
         raise Refused(str(exc)) from exc
-    return ("refresh requested; a writing session produces the new version (text, sources, media), "
-            "which then needs your approval")
+    return ("current version rejected and archived; a writing session produces a new replacement "
+            "(text, sources, media), which then needs your approval")
 
 
 HANDLERS = {"approve": _approve, "reject": _reject, "edit": _edit, "regenerate": _regenerate,

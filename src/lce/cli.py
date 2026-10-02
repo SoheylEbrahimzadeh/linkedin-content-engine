@@ -316,7 +316,7 @@ def _push_freshness(client, rows):
 
 
 def cmd_refresh_manual(args):
-    """LCE-041: manual refresh of the whole post package (pending, package, keep)."""
+    """LCE-041/042: manual Refresh — pending requests, and a new replacement package."""
     from lce import repackage
 
     store = _store(args)
@@ -329,10 +329,6 @@ def cmd_refresh_manual(args):
         for r in [] if args.json else rows:
             print(f"{r['post_id']}  {r['state']}  planned {r.get('plan_date')}  requested {r['requested_at']}"
                   f" by {r.get('requested_by')}" + (f"  note: {r['note']}" if r.get("note") else ""))
-        return 0
-    if args.sub == "keep":
-        out = repackage.keep(store, args.post, reason=args.reason, by=args.by)
-        print(f"✓ {args.post}: current version kept ({out['reason']}); approval state unchanged")
         return 0
     pkg_path = Path(args.file)
     pkg = yaml.safe_load(pkg_path.read_text(encoding="utf-8")) or {}
@@ -1340,14 +1336,9 @@ def build_parser() -> argparse.ArgumentParser:
              "manual refresh: a new post package (text, sources, claims, media) through every check")
     p.add_argument("post")
     p.add_argument("--file", required=True, help="YAML: text|text_file, reason, sources [{url, title}], "
-                   "claims [{text, source_url}], media {spec: <file|dict> | keep: <reason> | "
+                   "claims [{text, source_url}], media {spec: <file|dict> | "
                    "text_only: {reason, rationale}}")
     p.add_argument("--as-of", dest="as_of", default=None)
-    p.add_argument("--by", default="session")
-    p = gcmd(g, "keep", cmd_refresh_manual,
-             "close a refresh request without a new version (only if the current one is complete and valid)")
-    p.add_argument("post")
-    p.add_argument("--reason", required=True)
     p.add_argument("--by", default="session")
     p = gcmd(g, "push", cmd_refresh, "send today's latest freshness records to the cloud gate")
     p.add_argument("--as-of", dest="as_of", default=None)

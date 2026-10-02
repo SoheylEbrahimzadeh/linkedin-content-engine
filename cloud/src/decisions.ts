@@ -35,7 +35,7 @@ type MirrorEntry = { date?: string; topic?: string; status?: string; draft_ref?:
 
 export type DecisionRow = { decision_id: string; post_id: string | null; plan_date: string | null; action: Action;
   content_hash: string | null; payload: string; status: string; created_at: string; created_by: string;
-  resolved_at: string | null; resolved_by: string | null; result: string | null };
+  resolved_at: string | null; resolved_by: string | null; result: string | null; request_id?: string | null };
 
 const phrase = (b: Record<string, unknown>, p: string) => {
   if (String(b.confirm ?? "").trim() !== p) throw new DecisionError(428, `type '${p}' to confirm`);
@@ -63,6 +63,17 @@ async function mirror(env: Env): Promise<{ posts: MirrorPost[]; calendar: Mirror
 export async function createDecision(env: Env, now: number, who: { subject: string; human: boolean },
                                      b: Record<string, unknown>) {
   if (!who.human) throw new DecisionError(403, "decisions need a person signed in through Cloudflare Access, not a service token");
+  // LCE-042: a retried action (same client request id) returns what was recorded the first time.
+  const requestId = b.request_id === undefined || b.request_id === null ? null : String(b.request_id);
+  if (requestId !== null && !/^[A-Za-z0-9-]{8,64}$/.test(requestId)) throw new DecisionError(400, "invalid request_id");
+  if (requestId) {
+    const prior = await env.DB.prepare("SELECT * FROM decisions WHERE request_id = ?").bind(requestId).first<DecisionRow>();
+    if (prior) {
+      if (prior.created_by !== who.subject) throw new DecisionError(409, "request_id already used");
+      return { decision_id: prior.decision_id, action: prior.action, post_id: prior.post_id, plan_date: prior.plan_date,
+        status: prior.status, replayed: true };
+    }
+  }
   const action = String(b.action ?? "") as Action;
   if (!ACTIONS.includes(action)) throw new DecisionError(400, `action must be one of ${ACTIONS.join(", ")}`);
   const { posts, calendar } = await mirror(env);
@@ -167,8 +178,8 @@ export async function createDecision(env: Env, now: number, who: { subject: stri
   await env.DB.batch([
     env.DB.prepare(`UPDATE decisions SET status = 'superseded', resolved_at = ?, resolved_by = ?
       WHERE status = 'pending' AND COALESCE(post_id, 'plan:' || plan_date) = ?`).bind(at, who.subject, key),
-    env.DB.prepare(`INSERT INTO decisions (decision_id, post_id, plan_date, action, content_hash, payload, status, created_at, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`).bind(id, postId, planDate, action, hash, JSON.stringify(payload), at, who.subject),
+    env.DB.prepare(`INSERT INTO decisions (decision_id, post_id, plan_date, action, content_hash, payload, status, created_at, created_by, request_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`).bind(id, postId, planDate, action, hash, JSON.stringify(payload), at, who.subject, requestId),
     event(env.DB, now, `decision.${action}`, who.subject, postId, { decision_id: id }),
   ]);
   return { decision_id: id, action, post_id: postId, plan_date: planDate, status: "pending" };

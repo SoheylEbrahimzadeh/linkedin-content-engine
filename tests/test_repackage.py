@@ -1,12 +1,12 @@
-"""LCE-041: manual Refresh regenerates the whole post package; nothing is overwritten,
-approved or published, and the approval is bound to the new text and image hashes."""
+"""LCE-041/042: Refresh rejects the current version and produces a genuinely new replacement
+(v1 -> v2 -> v3); nothing is overwritten, approved or published; Skip generates nothing."""
 
 import hashlib
 import json
 
 import pytest
 import yaml
-from conftest import GOOD_POST, awaiting_post
+from conftest import awaiting_post
 from test_images import png
 from test_media_pipeline import SPEC
 
@@ -18,10 +18,31 @@ from lce.textutil import content_hash
 
 URL = "https://example.com/report"
 CLAIM = "Manual triage dropped from about 40 minutes a day to about 10"
-NEW_TEXT = GOOD_POST.replace(
-    "Most small service teams do not need a model to sort tickets.",
-    "Before buying a triage model, try the rules you already understand.",
+NEW_TEXT = (
+    "Before buying a triage model, look at the rules your team already understands.\n\n"
+    "Manual triage dropped from about 40 minutes a day to about 10 in our pilot, and the work was plain "
+    "keyword matching.\n\n"
+    "A model is worth it when the rules stop covering the queue. Until then it adds cost and makes routing "
+    "harder to explain.\n\n"
+    "Which routing rule would you write first?\n"
 )
+THIRD_TEXT = (
+    "Keyword rules are boring, and that is their strength.\n\n"
+    "They cut manual triage from about 40 minutes a day to about 10 for us. Everyone on the team could read "
+    "them and fix them.\n\n"
+    "When a queue outgrows the rules, the misroutes show it first. That is the moment to test a model, not "
+    "before.\n\n"
+    "What do your misroutes tell you?\n"
+)
+SPEC3 = {
+    **SPEC,
+    "title": "When rules stop being enough",
+    "concept": "misroutes are the signal that a queue has outgrown its keyword rules",
+    "nodes": [{"label": "Keyword rules"}, {"label": "Misroutes rise"}, {"label": "Test a model"}],
+    "outcomes": ["Keep the rules", "Pilot a model"],
+    "alt_text": "Flow diagram: keyword rules lead to rising misroutes, which trigger a model test; two "
+    "outcomes, keep the rules or pilot a model.",
+}
 PKG = {
     "text": NEW_TEXT,
     "reason": "sharper hook; conceptual visual instead of a text checklist",
@@ -74,23 +95,35 @@ def files(store, pid):
     return {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
 
 
-def test_refresh_decision_only_records_the_request(store):
-    pid = legacy_post(store)
-    before = files(store, pid)
+def refresh_click(store, pid, note="", decision_id="d-1"):
+    """What the decisions workflow does with the owner's Refresh click."""
     d = {
-        "decision_id": "d-9",
+        "decision_id": decision_id,
         "action": "refresh",
         "post_id": pid,
         "created_by": "owner@example.com",
-        "payload": {"note": "the image just repeats the text"},
+        "payload": {"note": note},
     }
-    assert "refresh requested" in decisions._refresh(store, None, d)
+    return decisions._refresh(store, None, d)
+
+
+def test_refresh_click_rejects_and_deactivates_the_current_version(store):
+    pid = legacy_post(store)
+    old = files(store, pid)
+    assert "rejected" in refresh_click(store, pid, note="the image just repeats the text")
     post = store.load_post(pid)
-    assert post["state"] == "AWAITING_APPROVAL" and post["refresh_request"]["decision_id"] == "d-9"
+    # no longer the active, approvable version
+    assert post["state"] == "NEEDS_REVISION" and "approval" not in post
+    assert post["refresh_request"]["rejected_version"] == 1
     assert post["refresh_request"]["note"] == "the image just repeats the text"
-    assert {k: v for k, v in files(store, pid).items() if k != "post.yaml"} == {
-        k: v for k, v in before.items() if k != "post.yaml"
-    }
+    [v1] = versions.listing(store, pid)
+    assert v1["status"] == "rejected" and v1["approval_state"] == "pending"
+    for name in ("post.md", "image.png", "APPROVAL.md"):
+        assert (versions.folder(store, pid) / "v1" / name).read_bytes() == old[name]
+    # a second click before the replacement exists archives nothing more
+    refresh_click(store, pid, note="again", decision_id="d-2")
+    assert len(versions.listing(store, pid)) == 1
+    assert store.load_post(pid)["refresh_request"]["decision_id"] == "d-2"
     assert [r["post_id"] for r in repackage.pending(store)] == [pid]
 
 
@@ -105,69 +138,71 @@ def test_refresh_is_refused_for_published_and_cloud_posts(store):
     store.save_post(post)
     (store.post_dir(pid) / "delegation.json").write_text("{}")
     with pytest.raises(decisions.Refused, match="cloud publisher"):
-        decisions._refresh(
-            store, None, {"decision_id": "d", "post_id": pid, "created_by": "o", "payload": {}}
-        )
+        refresh_click(store, pid)
 
 
-def test_package_creates_a_new_version_bound_to_new_hashes_and_keeps_the_old_one(store):
+def test_replacement_is_a_new_package_bound_to_new_hashes(store):
     pid = legacy_post(store)
-    repackage.request(store, pid, by="cloud-access:owner@example.com", decision_id="d-1")
-    old = files(store, pid)
     old_post = store.load_post(pid)
+    refresh_click(store, pid)
     rec = repackage.package(store, pid, PKG, by="session")
     post = store.load_post(pid)
-    # new version, awaiting approval, bound to the new text and image
     assert post["state"] == "AWAITING_APPROVAL" and post["approval"]["state"] == "pending"
-    assert current_text(store, pid).startswith("Before buying a triage model")
+    assert current_text(store, pid) == NEW_TEXT
     doc = images.load(store, pid)
     assert doc["media_relevance"]["media_decision"] == "accepted"
     assert post["approval"]["image_hash"] == doc["sha256"] != old_post["approval"]["image_hash"]
     assert post["content_hash"] == content_hash(NEW_TEXT) != old_post["content_hash"]
     art = (store.post_dir(pid) / "APPROVAL.md").read_text()
     assert doc["sha256"] in art and content_hash(NEW_TEXT) in art
-    # the previous version is preserved byte for byte
-    [v1] = versions.listing(store, pid)
-    vdir = versions.folder(store, pid) / "v1"
-    for name in ("post.md", "image.png", "image.yaml", "APPROVAL.md"):
-        assert (vdir / name).read_bytes() == old[name]
-    assert (
-        v1["content_hash"] == old_post["content_hash"]
-        and v1["image_sha256"] == old_post["approval"]["image_hash"]
-    )
-    assert v1["approval_state"] == "pending" and v1["hook"].startswith("Most small service teams")
-    # recorded: request closed, refresh outcome, freshness record with before/after hashes
+    assert [v["version"] for v in versions.listing(store, pid)] == [1]  # archived once, by the click
+    assert all(s["accessed_at"] for s in post["sources"])  # sources re-checked now
     assert "refresh_request" not in post
     assert post["refresh"]["outcome"] == "refreshed" and post["refresh"]["previous_version"] == 1
-    assert post["refresh"]["decision_id"] == "d-1"
-    assert rec["mode"] == "manual" and rec["approval_effect"] == "invalidated"
-    assert rec["content_hash_before"] == old_post["content_hash"] and rec["image_sha256"] == doc["sha256"]
-    assert rec["steps"]["qa"] == "passed" and rec["steps"]["duplicate"]["status"] == "passed"
-    assert refresh.latest(store, pid)["mode"] == "manual"
+    assert rec["mode"] == "manual" and rec["image_sha256_before"] == old_post["approval"]["image_hash"]
 
 
-def test_refresh_invalidates_an_existing_approval_and_never_publishes(store):
+def test_repeated_refresh_makes_v3_and_keeps_every_version(store):
     pid = legacy_post(store)
+    refresh_click(store, pid)
+    repackage.package(store, pid, PKG)
+    v2_image = images.load(store, pid)["sha256"]
+    refresh_click(store, pid, note="still not right", decision_id="d-2")
+    assert store.load_post(pid)["state"] == "NEEDS_REVISION"
+    repackage.package(store, pid, {**PKG, "text": THIRD_TEXT, "media": {"spec": SPEC3}})
     post = store.load_post(pid)
-    post["state"] = "APPROVED"
-    post["approval"] = {**post["approval"], "state": "approved", "approved_hash": post["content_hash"]}
-    store.save_post(post)
-    rec = repackage.package(store, pid, PKG)
-    post = store.load_post(pid)
-    assert rec["approval_before"] == "approved" and rec["approval_effect"] == "invalidated"
-    assert post["state"] == "AWAITING_APPROVAL" and "approved_hash" not in post["approval"]
-    assert not (store.post_dir(pid) / "publication.json").exists()
-    assert cloud.load_delegation(store, pid) is None
-    # LCE-040: the scheduled-publish gate sees no same-day `current` check for the new text
-    row = refresh.cloud_rows(store, [pid])
-    assert all(r["status"] != "current" for r in row)
+    assert post["state"] == "AWAITING_APPROVAL" and current_text(store, pid) == THIRD_TEXT
+    vs = versions.listing(store, pid)
+    assert [(v["version"], v["status"]) for v in vs] == [(1, "rejected"), (2, "rejected")]
+    assert (versions.folder(store, pid) / "v2" / "post.md").read_text() == NEW_TEXT
+    assert vs[1]["image_sha256"] == v2_image != images.load(store, pid)["sha256"]
+    assert post["refresh"]["previous_version"] == 2
 
 
 @pytest.mark.parametrize(
     "change, match",
     [
-        ({"media": {"keep": "still fine"}}, "keep refused"),  # old text-dump image
-        ({"text": GOOD_POST.replace("about 10", "about 25")}, "QA failed"),  # unsupported number
+        ({"text": NEW_TEXT}, "hook is the same"),  # v3 repeats v2's hook
+        ({"text": "Keyword rules first.\n\n" + NEW_TEXT.split("\n\n", 1)[1]}, "repeats an earlier version"),
+        ({"text": THIRD_TEXT}, "identical to an earlier version's image"),  # same visual as v2
+    ],
+)
+def test_a_replacement_must_be_genuinely_new(store, change, match):
+    pid = legacy_post(store)
+    refresh_click(store, pid)
+    repackage.package(store, pid, PKG)
+    refresh_click(store, pid, decision_id="d-2")
+    before = files(store, pid)
+    with pytest.raises(StoreError, match=match):
+        repackage.package(store, pid, {**PKG, **change})
+    assert files(store, pid) == before and len(versions.listing(store, pid)) == 2
+
+
+@pytest.mark.parametrize(
+    "change, match",
+    [
+        ({"media": {"keep": "still fine"}}, "replaces the media too"),
+        ({"text": NEW_TEXT.replace("about 10", "about 25")}, "QA failed"),
         (
             {
                 "media": {
@@ -180,17 +215,30 @@ def test_refresh_invalidates_an_existing_approval_and_never_publishes(store):
 )
 def test_a_failing_refresh_rolls_back_exactly(store, change, match):
     pid = legacy_post(store)
+    refresh_click(store, pid)
     before = files(store, pid)
     with pytest.raises(StoreError, match=match):
         repackage.package(store, pid, {**PKG, **change})
     assert files(store, pid) == before
-    assert versions.listing(store, pid) == []
+    assert [v["version"] for v in versions.listing(store, pid)] == [1]
+
+
+def test_session_started_refresh_archives_and_rolls_back_its_own_archive(store):
+    pid = legacy_post(store)  # no click: a session refreshes on its own
+    before = files(store, pid)
+    with pytest.raises(StoreError, match="QA failed"):
+        repackage.package(store, pid, {**PKG, "text": NEW_TEXT.replace("about 10", "about 25")})
+    assert files(store, pid) == before and versions.listing(store, pid) == []
+    repackage.package(store, pid, PKG)
+    [v1] = versions.listing(store, pid)
+    assert v1["status"] == "replaced"
 
 
 def test_archive_duplicate_stops_the_refresh(store):
     from lce import dupcheck
 
     pid = legacy_post(store)
+    refresh_click(store, pid)
     dupcheck.import_external(store, "published-earlier", NEW_TEXT)
     before = files(store, pid)
     with pytest.raises(StoreError, match="duplicate check failed"):
@@ -210,35 +258,62 @@ def test_package_rejects_incomplete_packages(store):
             repackage.package(store, pid, bad)
 
 
-def test_keep_only_when_the_current_version_is_valid(store):
+def test_skip_releases_the_slot_and_generates_nothing(store):
     pid = legacy_post(store)
-    repackage.request(store, pid, by="o")
-    with pytest.raises(StoreError, match="cannot be kept"):
-        repackage.keep(store, pid, reason="looks fine")  # text-dump image
-    repackage.package(store, pid, PKG)
-    repackage.request(store, pid, by="o")
-    before = store.load_post(pid)["approval"]
-    out = repackage.keep(store, pid, reason="sources unchanged; visual still fits")
+    refresh_click(store, pid)
+    out = decisions._skip(
+        store,
+        None,
+        {
+            "decision_id": "d-3",
+            "action": "skip",
+            "post_id": pid,
+            "created_by": "owner@example.com",
+            "payload": {"reason": "not this week"},
+        },
+    )
     post = store.load_post(pid)
-    assert out["outcome"] == "kept" and post["approval"] == before and "refresh_request" not in post
+    assert out == "skipped" and post["state"] == "REJECTED" and "refresh_request" not in post
+    assert repackage.pending(store) == []
+    with pytest.raises(StoreError):
+        repackage.package(store, pid, PKG)  # nothing is regenerated after Skip
+
+
+def test_refresh_never_publishes_and_the_gate_needs_a_new_check(store):
+    pid = legacy_post(store)
+    post = store.load_post(pid)
+    post["state"] = "APPROVED"
+    post["approval"] = {**post["approval"], "state": "approved", "approved_hash": post["content_hash"]}
+    store.save_post(post)
+    refresh_click(store, pid)
+    rec = repackage.package(store, pid, PKG)
+    post = store.load_post(pid)
+    assert rec["approval_effect"] == "none"  # the click already discarded the approval
+    assert versions.listing(store, pid)[0]["approval_state"] == "approved"
+    assert post["state"] == "AWAITING_APPROVAL" and "approved_hash" not in post["approval"]
+    assert not (store.post_dir(pid) / "publication.json").exists()
+    assert cloud.load_delegation(store, pid) is None
+    assert all(r["status"] != "current" for r in refresh.cloud_rows(store, [pid]))
 
 
 def test_previous_versions_are_recoverable(store):
     pid = legacy_post(store)
     old_text = current_text(store, pid)
+    refresh_click(store, pid)
     repackage.package(store, pid, PKG)
     versions.restore(store, pid, 1, by="session")
     post = store.load_post(pid)
     assert current_text(store, pid) == old_text and post["state"] == "HUMANIZED"
-    assert "approval" not in post  # restored version needs approval again
-    assert [v["version"] for v in versions.listing(store, pid)] == [1, 2]  # nothing lost
+    assert "approval" not in post
+    vs = versions.listing(store, pid)
+    assert [(v["version"], v["status"]) for v in vs] == [(1, "rejected"), (2, "kept_before_restore")]
 
 
 def test_cli_package_pending_and_versions(store, tmp_path, capsys):
     from lce.cli import main
 
     pid = legacy_post(store)
-    repackage.request(store, pid, by="o")
+    refresh_click(store, pid)
     base = ["--data-dir", str(store.root)]
     assert main([*base, "refresh", "pending"]) == 0
     assert pid in capsys.readouterr().out
@@ -250,6 +325,8 @@ def test_cli_package_pending_and_versions(store, tmp_path, capsys):
     assert main([*base, "refresh", "package", pid, "--file", str(tmp_path / "pkg.yaml")]) == 0
     out = capsys.readouterr().out
     assert "previous version kept as v1" in out and "nothing was approved or published" in out
+    with pytest.raises(SystemExit):  # "keep" no longer exists: Refresh always replaces
+        main([*base, "refresh", "keep", pid, "--reason", "x"])
     assert main([*base, "versions", "list", pid]) == 0
     assert "v1" in capsys.readouterr().out
 
@@ -258,12 +335,13 @@ def test_snapshot_shows_versions_and_request(store):
     from lce.dashboard.snapshot import build_snapshot
 
     pid = legacy_post(store)
+    refresh_click(store, pid)
     repackage.package(store, pid, PKG)
-    repackage.request(store, pid, by="o", note="again")
+    refresh_click(store, pid, note="again", decision_id="d-2")
     view = next(p for p in build_snapshot(store, mode="real")["posts"] if p["post_id"] == pid)
-    assert view["versions"][0]["version"] == 1 and view["versions"][0]["text"].startswith("Most small")
-    assert view["refresh_request"]["note"] == "again" and view["refresh"]["outcome"] == "refreshed"
-    assert view["image"]["media_relevance"]["media_decision"] == "accepted"
+    assert [v["version"] for v in view["versions"]] == [1, 2]
+    assert view["versions"][1]["text"] == NEW_TEXT and view["versions"][1]["status"] == "rejected"
+    assert view["refresh_request"]["note"] == "again" and view["state"] == "NEEDS_REVISION"
 
 
 class VersionCloud:
@@ -283,6 +361,7 @@ class VersionCloud:
 def test_sync_uploads_previous_version_images(store):
     pid = legacy_post(store)
     old_sha = images.load(store, pid)["sha256"]
+    refresh_click(store, pid)
     repackage.package(store, pid, PKG)
     fake = VersionCloud()
     out = cloud.sync_version_media(store, CloudClient("https://lce.example", lambda: "x", fake))
