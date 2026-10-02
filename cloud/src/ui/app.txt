@@ -256,6 +256,14 @@ function postImage(postId, cls, img) {
   return el;
 }
 
+// LCE-039: thumbnail inside a list card: the real image, square, uncropped, never wrapped in a link
+// (a link around an image is what text renderers print as "[alt](url)"); clicking opens the post.
+function cardImage(postId, m) {
+  const frame = h("div", { class: "card-media", title: "Open post", onclick: () => { location.hash = `#post/${postId}`; } },
+    postImage(postId, "card-img", { alt: m.alt, ...(pipePost(postId)?.image ?? {}) }));
+  return frame;
+}
+
 function mediaView(p, m, big) {
   if (m.preview === "available") return postImage(p.post_id, big ? "media" : "thumb", { alt: m.alt, ...(pipePost(p.post_id)?.image ?? {}) });
   if (m.type.key === "image") {
@@ -294,9 +302,11 @@ function planRow(i) {
   }
   const p = i.post_id ? pipePost(i.post_id) : null;
   const href = i.post_id ? `#post/${i.post_id}` : null;
-  return h("div", { class: "row status-" + i.status.toLowerCase() },
+  const hasImage = i.media.preview === "available" && i.post_id;
+  return h("div", { class: "row status-" + i.status.toLowerCase() + (hasImage ? " has-media" : "") },
     h("div", { class: "row-time" }, i.time ?? "—", i.time && i.time_source === "planned slot" ? h("div", { class: "row-time-note" }, "planned") : null),
     h("div", { class: "row-main" },
+      hasImage ? cardImage(i.post_id, i.media) : null,
       h("div", { class: "row-title" }, href ? link(href, i.title) : i.title),
       h("div", { class: "meta" }, statusPill(i.status), typeChip(i.media.type),
         p && mediaSourceShort(p) ? h("span", { class: "small muted" }, mediaSourceShort(p)) : null,
@@ -309,8 +319,7 @@ function planRow(i) {
         p && i.status !== "SCHEDULED" && i.status !== "PUBLISHED" && p.text && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.edit(p) }, "Edit") : null,
         p && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.reschedule(p) }, "Reschedule") : null,
         !i.post_id && i.status === "PLANNED" ? h("button", { type: "button", class: "small", onclick: () => A.skip(null, i.plan_date) }, "Skip") : null,
-        i.status === "SCHEDULED" && i.consent_id ? h("button", { type: "button", class: "small", onclick: () => A.revoke({ consent_id: i.consent_id }) }, "Unschedule") : null)),
-    i.media.preview === "available" && p ? h("a", { class: "row-thumb", href }, mediaView(p, i.media, false)) : null);
+        i.status === "SCHEDULED" && i.consent_id ? h("button", { type: "button", class: "small", onclick: () => A.revoke({ consent_id: i.consent_id }) }, "Unschedule") : null)));
 }
 const inCloud = (id) => { const c = cloudPost(id); return Boolean(c && c.state !== "WITHDRAWN"); };
 
@@ -397,10 +406,10 @@ function viewPosts() {
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Posts"), h("p", { class: "muted" }, `${all.length} posts`))),
     all.length ? h("div", { class: "cards" }, all.map((i) => {
       const d = pendingFor(i.post_id);
-      return h("a", { class: "post-card", href: `#post/${i.post_id}` },
-        i.media.preview === "available" ? mediaView({ post_id: i.post_id }, i.media, false) : null,
+      return h("div", { class: "post-card" },
+        i.media.preview === "available" ? cardImage(i.post_id, i.media) : null,
         h("div", { class: "meta" }, h("span", { class: "small muted" }, fmtDate(i.date)), statusPill(i.status)),
-        h("div", { class: "post-card-title" }, i.title),
+        h("a", { class: "post-card-title", href: `#post/${i.post_id}` }, i.title),
         h("div", { class: "meta" }, typeChip(i.media.type), i.objective ? h("span", { class: "small muted" }, objectiveLabel(i.objective)) : null,
           d ? badge(`${d.action} pending`, "info") : null));
     })) : empty("No posts yet. Drafts appear here after the private pipeline syncs."),
