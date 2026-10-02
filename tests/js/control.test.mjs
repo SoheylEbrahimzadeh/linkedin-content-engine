@@ -86,3 +86,84 @@ test("routes", () => {
   assert.deepEqual(parseHash("#post/20261006-demo-a"), { view: "post", arg: "20261006-demo-a" });
   assert.deepEqual(parseHash("#upcoming/14"), { view: "upcoming", arg: "14" });
 });
+
+// ── LCE-037 content plan model ──
+const { contentPlan, displayStatus, media, humanizationRows, applyFilter } = lib;
+
+test("future planned posts appear before scheduling, distinct from scheduled ones", () => {
+  const cp = contentPlan({ pipeline, cloud, now: NOW, tz: "Europe/Berlin", days: 14 });
+  const a = cp.items.find((i) => i.post_id === "20261006-demo-a");
+  assert.equal(a.status, "AWAITING_APPROVAL");
+  assert.equal(a.date, "2026-10-06");
+  const b = cp.items.find((i) => i.post_id === "20261008-demo-b");
+  assert.equal(b.status, "SCHEDULED");
+  assert.equal(b.time, "08:30");
+  const planned = cp.items.find((i) => i.title === "Planned only");
+  assert.equal(planned.status, "PLANNED");
+  assert.equal(planned.note, "No post written yet");
+  assert.ok(cp.days.find((d) => d.date === "2026-10-06").items.some((i) => i.post_id === "20261006-demo-a"));
+  // a free slot is listed only where nothing occupies it
+  const slots = cp.days.flatMap((d) => d.items.filter((i) => i.kind === "slot").map((i) => i.slot_id));
+  assert.deepEqual(slots, ["2026-10-10-sat-1000"]);
+  assert.equal(cp.counts.SCHEDULED, 1);
+  assert.ok(cp.items.some((i) => i.title === "Too far"), "30-day items stay in the plan");
+});
+
+test("a free slot on the same day gives a planned post its planned time without hiding it", () => {
+  const c2 = { ...cloud, consents: [], upcoming_slots: [{ slot_id: "s6", utc: "2026-10-06T06:30:00Z" }] };
+  const cp = contentPlan({ pipeline, cloud: c2, now: NOW, tz: "Europe/Berlin", days: 7 });
+  const day = cp.days.find((d) => d.date === "2026-10-06");
+  assert.deepEqual(day.items.map((i) => i.kind), ["post"]);
+  assert.equal(day.items[0].time, "08:30");
+  assert.equal(day.items[0].time_source, "planned slot");
+});
+
+test("past planned posts that were never published are surfaced", () => {
+  const p2 = { posts: [{ post_id: "20260929-x", state: "APPROVED", text: "Old", plan_date: "2026-09-29" }],
+    calendar: [{ date: "2026-09-29", topic: "Old", status: "approved", draft_ref: "20260929-x" }] };
+  const cp = contentPlan({ pipeline: p2, cloud: {}, now: NOW, tz: "UTC", days: 7 });
+  assert.deepEqual(cp.pastDue.map((i) => [i.post_id, i.status]), [["20260929-x", "APPROVED"]]);
+});
+
+test("display statuses", () => {
+  assert.equal(displayStatus({ post: { state: "DRAFTED" } }), "PLANNED");
+  assert.equal(displayStatus({ post: { state: "NEEDS_REVISION" } }), "NEEDS_REGENERATION");
+  assert.equal(displayStatus({ post: { state: "AWAITING_APPROVAL" } }), "AWAITING_APPROVAL");
+  assert.equal(displayStatus({ post: { state: "READY_TO_PUBLISH" }, cloudPost: { state: "READY_TO_PUBLISH" } }), "APPROVED");
+  assert.equal(displayStatus({ post: { state: "READY_TO_PUBLISH" }, consent: { slot_id: "x" } }), "SCHEDULED");
+  assert.equal(displayStatus({ publication: { state: "published" } }), "PUBLISHED");
+  assert.equal(displayStatus({ cloudPost: { state: "PUBLISH_FAILED" } }), "FAILED");
+  assert.equal(displayStatus({ cloudPost: { state: "NEEDS_RECONCILE" } }), "NEEDS_RECONCILE");
+  assert.equal(displayStatus({ planStatus: "skipped" }), "SKIPPED");
+  assert.equal(displayStatus({ post: { state: "REJECTED" } }), "REJECTED");
+  assert.equal(applyFilter({ kind: "post", status: "SCHEDULED" }, "scheduled"), true);
+  assert.equal(applyFilter({ kind: "slot" }, "scheduled"), false);
+  assert.equal(applyFilter({ kind: "slot" }, "all"), true);
+});
+
+test("media: real preview only when an image is actually stored", () => {
+  const post = { post_id: "p1", image: { kind: "diagram", sha256: "s1", file: "image.png" } };
+  assert.equal(media(post, {}).preview, "missing");
+  assert.equal(media(post, { preview_media: [{ post_id: "p1", sha256: "other" }] }).preview, "missing");
+  assert.equal(media(post, { preview_media: [{ post_id: "p1", sha256: "s1" }] }).preview, "available");
+  assert.equal(media({ post_id: "p2", image: { kind: "none" } }, {}).type.key, "text");
+  assert.equal(media({ post_id: "p3", format: "video" }, {}).type.implemented, false);
+});
+
+test("humanization rows claim only what is recorded", () => {
+  const voice = { objectives: [{ id: "share-lesson", label: "Share a lesson learned" }] };
+  const legacy = humanizationRows({ qa: { status: "passed" } }, voice);
+  assert.equal(legacy[0].value, "not recorded");
+  assert.equal(legacy.find((r) => r.label === "Objective").value, "not recorded");
+  assert.equal(legacy.find((r) => r.label === "Tone & positioning").value, "your review");
+  const rec = humanizationRows({ objective: "share-lesson", humanization: { source: "session", voice_version: 2, profile_current: true,
+    checklist: { passed: 9, failed: 0, review: 2 } } }, voice);
+  assert.equal(rec[0].value, "applied (v2)");
+  assert.equal(rec[1].value, "9 passed");
+  assert.equal(rec.find((r) => r.label === "Objective").value, "Share a lesson learned");
+  const stale = humanizationRows({ humanization: { source: "session", voice_version: 2, profile_current: false, checklist: {} } }, voice);
+  assert.equal(stale[0].tone, "warn");
+  const edit = humanizationRows({ humanization: { source: "owner_edit", checklist: { failed: 1 } } }, voice);
+  assert.equal(edit[0].value, "owner edit");
+  assert.equal(edit[1].tone, "err");
+});

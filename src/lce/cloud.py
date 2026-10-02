@@ -12,6 +12,7 @@ The LinkedIn token lives only in the Worker's encrypted secret.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -773,9 +774,47 @@ def leak_problems(store: DataStore, text: str, remote: str = "") -> list[str]:
     return out
 
 
+MAX_PREVIEW_BYTES = 1_500_000
+
+
+def sync_preview_media(store: DataStore, client: CloudClient) -> dict:
+    """LCE-037: upload each post's recorded image (the exact file its image decision
+    names, sha-checked) so the Control Center shows the real thumbnail before the
+    post is approved or scheduled. Owner-only behind Access; nothing is published."""
+    import base64
+
+    from lce import images
+
+    have = {m["post_id"]: m["sha256"] for m in client.call("GET", "/preview-media").get("media", [])}
+    sent, skipped = [], []
+    for pid in store.post_ids():
+        doc = images.load(store, pid)
+        if not doc or doc.get("kind", images.NO_IMAGE) == images.NO_IMAGE or not doc.get("file"):
+            continue
+        path = store.post_dir(pid) / doc["file"]
+        if not path.exists():
+            skipped.append((pid, "file missing"))
+            continue
+        data = path.read_bytes()
+        sha = hashlib.sha256(data).hexdigest()
+        if have.get(pid) == sha:
+            continue
+        if len(data) > MAX_PREVIEW_BYTES:
+            skipped.append((pid, f"larger than {MAX_PREVIEW_BYTES} bytes"))
+            continue
+        client.call("PUT", f"/preview-media/{pid}", {"data_base64": base64.b64encode(data).decode(),
+                                                     "sha256": sha, "alt_text": doc.get("alt_text") or ""})
+        sent.append(pid)
+    return {"uploaded": sent, "skipped": skipped}
+
+
 def sync(store: DataStore, client: CloudClient, verify: bool = False) -> dict:
     snap = sync_payload(store)
     out = client.call("PUT", "/pipeline", snap)
+    try:
+        out["media"] = sync_preview_media(store, client)
+    except CloudError as exc:   # an older Worker without the route: the mirror still syncs
+        out["media"] = {"uploaded": [], "skipped": [], "error": str(exc)}
     store.log_event("cloud.synced", bytes=out.get("bytes"), sha256=out.get("sha256"))
     if verify:
         out["checks"] = verify_sync(store, client, snap, out)

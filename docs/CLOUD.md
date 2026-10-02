@@ -67,7 +67,8 @@ The dashboard/API exposes only `token_present` and `token_expires_at`.
 `POST /api/consents` · `DELETE /api/consents/:id` · `PUT /api/settings` ·
 `GET /api/linkedin/identity` · `GET|POST /api/decisions` ·
 `POST /api/decisions/:id/resolve` (CLI) · `DELETE /api/decisions/:id` ·
-`POST /api/posts/:id/publish-now` · `GET /api/posts/:id/image`.
+`POST /api/posts/:id/publish-now` · `GET /api/posts/:id/image` ·
+`GET /api/preview-media` · `PUT /api/preview-media/:id` (CLI).
 Every mutation is written to `events` with the Access identity.
 
 ### LinkedIn identity (LCE-035)
@@ -129,6 +130,15 @@ auto-publish, needs a person and a typed phrase (`RELEASE EMERGENCY STOP`,
 `ENABLE AUTO-PUBLISH`). Optional display settings `display_name` and
 `profile_url` come from the private `config/linkedin.yaml` via
 `lce cloud configure`.
+
+Content plan (LCE-037): Overview and Upcoming read the private content plan
+(`/api/pipeline`, the git source of truth) and add cloud facts (scheduled
+consents, publications, free slots up to 31 days). A planned post is visible
+before it is approved or scheduled; a free slot never hides it. Images recorded
+for posts are uploaded by `lce cloud sync` into `preview_media` (CLI only,
+sha-checked, ≤ 1.5 MB, migration 0005) so previews show the real image; the
+publish queue's approved image always wins. Humanization status per post: see
+[HUMANIZATION.md](HUMANIZATION.md).
 
 Media: text-only and text + one image (PNG/JPEG/GIF, ≤ 1.5 MB in the cloud)
 are implemented. Video, document/PDF, article/link, multi-image and polls are

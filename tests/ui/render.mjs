@@ -1,0 +1,90 @@
+// LCE-037: renders the Control Center (synthetic data, mocked API) in Chromium at desktop and
+// phone width; fails on console errors, empty views, horizontal overflow or a dialog that does not open.
+// Run: PW_ROOT=$(npm root -g) CHROMIUM=/path/to/chrome [OUT=dir] node tests/ui/render.mjs
+// Fictional data only.
+import http from "node:http";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+const require = createRequire((process.env.PW_ROOT || process.cwd() + "/node_modules") + "/");
+const { chromium } = require("playwright");
+const UI = new URL("../../cloud/src/ui/", import.meta.url).pathname;
+const now = new Date().toISOString();
+const day = (n, t = "06:30:00") => new Date(Date.now() + n * 86400e3).toISOString().slice(0, 10) + "T" + t + "Z";
+const ymd = (n) => day(n).slice(0, 10);
+const TEXT = "Most ITSM teams think the barrier to agentic AI is the model.\n\nIt is not. It is data quality, governance and skills.\n\nWhat I keep seeing in operations teams:\n- tickets without clean categories\n- no owner for automation decisions\n\n#ITSM #AgenticAI #Automation";
+const snap = {
+  mode: "cloud", now, schedule_error: null,
+  settings: { auto_publish: false, provider: "linkedin_api", timezone: "Europe/Berlin", api_version: "202609",
+    person_urn: "urn:li:person:TestPerson1", visibility: "PUBLIC", token_present: true, emergency_stop: false,
+    display_name: "Test Person", profile_url: "https://www.linkedin.com/in/test-person/", max_lateness_minutes: 180 },
+  next_scheduled_publication: { consent_id: "c1", post_id: "20261008-demo-b", slot_id: "s1", slot_utc: day(3) },
+  upcoming_slots: [{ slot_id: "s1", utc: day(3), local: "x" }, { slot_id: "s2", utc: day(5, "08:00:00"), local: "Sat 10:00" }],
+  posts: [{ post_id: "20261008-demo-b", state: "READY_TO_PUBLISH", text: TEXT, approved_hash: "a".repeat(64), plan_date: ymd(3), image: null },
+          { post_id: "20261012-demo-c", state: "READY_TO_PUBLISH", text: "Second approved fictional post.\n\n#Ops", approved_hash: "b".repeat(64), plan_date: ymd(7), image: { sha256: "c", bytes: 20480 } }],
+  consents: [{ consent_id: "c1", post_id: "20261008-demo-b", slot_id: "s1", slot_utc: day(3), status: "active" }],
+  jobs: [], publications: [{ post_id: "20260920-old", state: "published", url: "https://www.linkedin.com/feed/update/urn:li:share:1/", remote_id: "urn:li:share:1", published_at: day(-5), verified_by: "api_response", idempotency_key: "k".repeat(64) }],
+  events: [{ at: day(-1), event: "consent.created", actor: "owner@example.com", post_id: "20261008-demo-b", detail: '{"consent_id":"c1"}' }],
+  decisions: [{ decision_id: "d-1", action: "approve", post_id: "20261006-demo-a", status: "pending", created_at: day(0), created_by: "owner@example.com", payload: {} },
+              { decision_id: "d-2", action: "edit", post_id: "20261010-demo-d", status: "refused", result: "the text changed", created_at: day(-1), created_by: "owner@example.com", payload: {} }],
+};
+const pipe = { meta: { mirror: { received_at: day(0) } },
+  posts: [{ post_id: "20261006-demo-a", state: "AWAITING_APPROVAL", text: TEXT, actual_hash: "d".repeat(64), plan_date: ymd(1), topic: "Agentic AI in ITSM", qa: { status: "passed" }, image: null, sources: [{ url: "https://example.com/report", title: "Example report" }], history: [{ at: day(-2), state: "AWAITING_APPROVAL" }] },
+          { post_id: "20261008-demo-b", state: "READY_TO_PUBLISH", text: TEXT, actual_hash: "a".repeat(64), plan_date: ymd(3), topic: "B", image: { kind: "diagram", file: "diagram.png", alt_text: "A diagram", sha256: "e" } },
+          { post_id: "20261010-demo-d", state: "NEEDS_REVISION", text: "Needs work.", actual_hash: "f".repeat(64), plan_date: ymd(4), format: "video", topic: "D" }],
+  calendar: [{ date: ymd(1), topic: "Agentic AI in ITSM", status: "awaiting_approval", draft_ref: "20261006-demo-a" },
+             { date: ymd(3), topic: "B", status: "ready_to_publish", draft_ref: "20261008-demo-b" },
+             { date: ymd(4), topic: "D", status: "in_progress", draft_ref: "20261010-demo-d", format: "video" },
+             { date: ymd(6), topic: "A planned topic without a post", status: "planned", format: "document" }] };
+pipe.voice = { version: 2, tone: ["Natural", "Practical", "Direct"], point_of_view: { person: "first", first_person: "Observations and opinions in first person; experience only from PUBLIC stories" },
+  individual_voice: "One practitioner speaking, never a company page", technical_depth: "mixed", evidence: "Every number sourced", hashtag_policy: { max: 3, placement: "end" },
+  avoid_phrases: [], avoid_patterns: ["generic closers"], review: { status: "pending_owner_review", fields: ["technical_depth", "point_of_view"] },
+  objectives: [{ id: "demonstrate-expertise", label: "Demonstrate practical expertise" }, { id: "share-lesson", label: "Share a lesson learned" }] };
+pipe.posts[0].objective = "demonstrate-expertise";
+pipe.posts[0].humanization = { at: day(-2), by: "pipeline session", source: "session", voice_version: 2, profile_current: true, checklist: { passed: 10, failed: 0, review: 2 } };
+pipe.posts[0].duplicate = { status: "passed" };
+pipe.posts.push({ post_id: "20260929-old-approved", state: "APPROVED", text: "An approved fictional post whose date passed.\n\nBody.", actual_hash: "9".repeat(64), plan_date: ymd(-3), topic: "Old", image: { kind: "none" } });
+pipe.calendar.unshift({ date: ymd(-3), topic: "Old", status: "approved", draft_ref: "20260929-old-approved" });
+snap.preview_media = [{ post_id: "20261008-demo-b", sha256: "e", bytes: 100, mime: "image/png" }];
+const identity = { ok: true, status: "verified", person_urn: "urn:li:person:TestPerson1", configured_person_urn: "urn:li:person:TestPerson1", person_urn_matches: true, api_version: "202609", api_version_valid: true };
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+const files = { "/": ["index.html", "text/html"], "/app.js": ["app.txt", "text/javascript"], "/lib.js": ["lib.txt", "text/javascript"], "/app.css": ["app.css", "text/css"] };
+const srv = http.createServer((req, res) => {
+  const u = new URL(req.url, "http://x");
+  const j = (o, s = 200) => { res.writeHead(s, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
+  if (files[u.pathname]) { const [f, t] = files[u.pathname]; res.writeHead(200, { "content-type": t, "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" }); return res.end(readFileSync(UI + f)); }
+  if (u.pathname === "/api/snapshot") return j(snap);
+  if (u.pathname === "/api/pipeline") return j(pipe);
+  if (u.pathname === "/api/migrations") return j({ applied: ["0001", "0002", "0003", "0004"], pending: [] });
+  if (u.pathname === "/api/linkedin/identity") return j(identity);
+  if (u.pathname.endsWith("/image")) { res.writeHead(200, { "content-type": "image/png" }); return res.end(PNG); }
+  j({ error: "not found" }, 404);
+}).listen(0);
+const port = srv.address().port;
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
+const errors = [];
+for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", { width: 390, height: 844 }]]) {
+  const page = await browser.newPage({ viewport: vp });
+  page.on("console", (m) => { if (m.type() === "error") errors.push(`${name}: ${m.text()}`); });
+  page.on("pageerror", (e) => errors.push(`${name} pageerror: ${e.message}`));
+  for (const view of ["overview", "upcoming", "posts", "post/20261006-demo-a", "post/20261008-demo-b", "post/20260929-old-approved", "test/20261012-demo-c", "history", "system"]) {
+    await page.goto(`http://127.0.0.1:${port}/#${view}`);
+    await page.waitForTimeout(400);
+    const text = await page.locator("main").innerText();
+    if (!text.trim() || text.includes("Could not load")) errors.push(`${name} ${view}: empty or failed: ${text.slice(0, 200)}`);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    if (overflow) errors.push(`${name} ${view}: horizontal overflow`);
+    if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-${view.replace("/", "_")}.png`, fullPage: true });
+  }
+  // open a dialog
+  await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
+  await page.waitForTimeout(300);
+  await page.getByRole("button", { name: "Approve", exact: true }).first().click();
+  await page.waitForTimeout(200);
+  if (!(await page.locator("dialog[open]").count())) errors.push(`${name}: approve dialog did not open`);
+  if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-dialog.png` });
+  await page.close();
+}
+await browser.close(); srv.close();
+const real = errors.filter((e) => !e.includes("404 (Not Found)"));   // favicon
+console.log(real.length ? "ERRORS:\n" + real.join("\n") : "OK no errors");
+process.exit(real.length ? 1 : 0);

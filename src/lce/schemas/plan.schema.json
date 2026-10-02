@@ -91,6 +91,10 @@
               "unknown"
             ],
             "description": "unknown = the publish request may or may not have reached LinkedIn (needs reconciliation)."
+          },
+          "objective": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$"
           }
         }
       }

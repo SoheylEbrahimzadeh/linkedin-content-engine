@@ -70,9 +70,18 @@ def save_draft(store: DataStore, post_id: str, text: str) -> dict:
     return set_state(store, post, S.DRAFTED, "draft saved")
 
 
-def save_humanized(store: DataStore, post_id: str, text: str) -> dict:
-    """Store the humanized candidate text (HUMANIZED). Clears QA, duplicate and approval."""
+def save_humanized(store: DataStore, post_id: str, text: str, *, source: str = "session",
+                   by: str = "pipeline session") -> dict:
+    """Store the humanized candidate text (HUMANIZED). Clears QA, duplicate and approval.
+
+    LCE-037: records what the text was written against (voice/profile/brand file
+    hashes, objective, machine-checkable voice rules). A drafting session must
+    set the post's objective first when voice.yaml defines objectives; an owner
+    edit from the Control Center is recorded as such."""
     post = store.load_post(post_id)
+    if (source == "session" and store.voice().get("objectives") and not post.get("objective")):
+        raise StoreError("set the post's content objective first (voice.yaml objectives): "
+                         "lce post objective <post> <objective>")
     state = PostState(post["state"])
     if state not in EDITABLE or state == S.SELECTED:
         raise StoreError(
@@ -84,7 +93,43 @@ def save_humanized(store: DataStore, post_id: str, text: str) -> dict:
     store.write_text(store.post_dir(post_id) / "post.md", normalize_text(text))
     post["content_hash"] = content_hash(text)
     _invalidate_checks(post)
-    return set_state(store, post, S.HUMANIZED, "candidate text saved")
+    post["humanization"] = _humanization_record(store, post, text, source=source, by=by)
+    return set_state(store, post, S.HUMANIZED,
+                     "candidate text saved" + (" (owner edit)" if source == "owner_edit" else ""))
+
+
+def _humanization_record(store: DataStore, post: dict, text: str, *, source: str, by: str) -> dict:
+    from lce import voice
+    from lce.privacy.scan import load_denylist
+    from lce.qa import run_checks
+    from lce.rules import RulesetNotReady, ready_ruleset
+
+    try:
+        findings = run_checks(text, rules=ready_ruleset(post["language"]), voice=store.voice(),
+                              profile=store.profile(), post=post, stories=store.stories(),
+                              denylist=load_denylist(), brand=store.brand())
+    except RulesetNotReady:
+        findings = []
+    return voice.record(store, post, findings, source=source, by=by)
+
+
+def set_objective(store: DataStore, post_id: str, objective: str) -> dict:
+    """Record the content objective (an id from voice.yaml objectives) before drafting."""
+    from lce import voice
+
+    ids = voice.objectives(store)
+    if objective not in ids:
+        raise StoreError(f"unknown objective {objective!r}; voice.yaml defines: {', '.join(ids) or 'none'}")
+    post = store.load_post(post_id)
+    post["objective"] = objective
+    store.save_post(post)
+    plan = store.plan()
+    entry = next((e for e in plan.get("entries", []) if e.get("draft_ref") == post_id), None)
+    if entry is not None:
+        entry["objective"] = objective
+        store.write_doc(store.plan_path, "plan", plan)
+    store.log_event("post.objective", post_id=post_id, objective=objective)
+    return post
 
 
 def reopen(store: DataStore, post_id: str, reason: str) -> dict:

@@ -53,6 +53,9 @@ class Finding:
         return f"  [{self.severity}] {self.code}: {self.message}"
 
 
+CORPORATE_RE = re.compile(r"\bwe at \w+|\bour (?:company|firm|team|clients|customers|agency)\b", re.I)
+
+
 def _phrase_re(phrase: str) -> re.Pattern:
     return re.compile(rf"(?<!\w){re.escape(phrase)}(?!\w)", re.I)
 
@@ -130,6 +133,16 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
     ):
         if _phrase_re(term).search(body):
             add("topic.forbidden", ERROR, "mentions a topic/claim on your avoid list")
+    # ── voice profile (LCE-037) ───────────────────────────────────────
+    if voice.get("individual_voice") and CORPORATE_RE.search(body):
+        add("voice.corporate_voice", WARNING,
+            "company-page voice ('we at …', 'our company/team/clients'); write as one person")
+    objective_ids = {o.get("id") for o in voice.get("objectives", [])}
+    if objective_ids:
+        if not post.get("objective"):
+            add("voice.objective_missing", WARNING, "no content objective recorded (voice.yaml objectives)")
+        elif post["objective"] not in objective_ids:
+            add("voice.objective_unknown", ERROR, f"objective {post['objective']!r} is not in voice.yaml")
     for phrase in rules.get("lexicon", []):
         if _phrase_re(phrase).search(body):
             add("phrase.ai_tell", WARNING, f"AI-typical wording: {phrase!r}")

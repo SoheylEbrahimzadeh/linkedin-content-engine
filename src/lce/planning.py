@@ -109,7 +109,7 @@ def _new_post_id(store: DataStore, plan_date: date, topic: str) -> str:
 def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt: str,
            plan_date: date, topic: str | None = None, stories: list[str] | None = None,
            theme: str | None = None, evidence: str | None = None,
-           chapter: str | None = None) -> dict:
+           chapter: str | None = None, objective: str | None = None) -> dict:
     """Create a post from a research candidate: RESEARCHED → SELECTED (or NEEDS_INPUT).
 
     Brand placement: an optional theme and career chapter from brand.yaml, and an
@@ -129,6 +129,10 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
         raise StoreError(f"candidate {candidate_id} does not exist")
     if cand.get("status") != "new":
         raise StoreError(f"candidate {candidate_id} is already {cand.get('status')}")
+    if objective is not None:
+        from lce import voice
+        if objective not in voice.objectives(store):
+            raise StoreError(f"unknown objective {objective!r} (voice.yaml objectives)")
     profile = store.profile()
     if pillar not in {p["id"] for p in profile.get("pillars", [])}:
         raise StoreError(f"unknown pillar {pillar!r}")
@@ -166,6 +170,7 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
         "claims": cand.get("claims", []),
         "stories_used": usable,
         "brand": placement,
+        **({"objective": objective} if objective else {}),
         "state": S.RESEARCHED.value,
         "history": [{"at": now_iso(), "state": S.RESEARCHED.value, "note": "from candidate"}],
     }
@@ -182,6 +187,8 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
         entry = next(e for e in plan["entries"] if e == entry)
     entry.update({"topic": topic, "angle": angle, "candidate_id": candidate_id,
                   "draft_ref": post["post_id"], "sources": [s["url"] for s in post["sources"]]})
+    if objective:
+        entry["objective"] = objective
     if fmt:
         entry["format"] = fmt
     store.write_doc(store.plan_path, "plan", plan)

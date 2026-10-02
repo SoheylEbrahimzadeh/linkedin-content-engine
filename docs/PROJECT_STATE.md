@@ -173,6 +173,15 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   approved hash + identity match; independent of auto-publish); emergency stop;
   only text and text + one image are implemented media types. Publishing target
   is the personal profile (person URN), never a company page.
+- LCE-037: Upcoming/Overview driven by the content plan (pipeline mirror =
+  git source of truth) with cloud facts layered on: statuses Planned →
+  Awaiting approval → Approved → Scheduled → Published (+ rejected, needs
+  regeneration, skipped, failed, needs reconcile), filters, 7/14/30 days,
+  past-due section, planned times from free slots; redesigned UI; real image
+  thumbnails via `preview_media` (migration 0005, uploaded by `lce cloud
+  sync`). Humanization audit and design in [HUMANIZATION.md](HUMANIZATION.md):
+  voice profile v2 with sources/review, post objective, humanization record
+  and voice checklist.
 
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →

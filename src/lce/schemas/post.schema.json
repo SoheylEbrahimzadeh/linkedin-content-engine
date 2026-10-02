@@ -289,6 +289,82 @@
     "duplicated_from": {
       "type": "string",
       "description": "post_id this post was copied from (LCE-036)."
+    },
+    "objective": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Id from voice.yaml objectives (LCE-037)."
+    },
+    "humanization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "source"
+      ],
+      "description": "What the humanized text was written against (LCE-037).",
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "session",
+            "owner_edit"
+          ]
+        },
+        "voice_version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "voice_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "profile_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "brand_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "objective": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checklist": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "passed": {
+              "type": "integer"
+            },
+            "failed": {
+              "type": "integer"
+            },
+            "review": {
+              "type": "integer"
+            }
+          }
+        }
+      }
     }
   }
 }

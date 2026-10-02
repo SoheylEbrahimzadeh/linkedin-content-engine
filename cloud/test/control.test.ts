@@ -222,3 +222,39 @@ describe("post image", () => {
     expect((await call("GET", "/posts/20261006-none/image")).status).toBe(404);
   });
 });
+
+describe("preview media (LCE-037)", () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 8, 7, 6]);
+  const b64png = btoa(String.fromCharCode(...png));
+  async function sha(d: Uint8Array) {
+    return [...new Uint8Array(await crypto.subtle.digest("SHA-256", d))].map((x) => x.toString(16).padStart(2, "0")).join("");
+  }
+  it("is uploaded by the CLI only, sha-checked, and served for the preview", async () => {
+    const h = await sha(png);
+    const body = { data_base64: b64png, sha256: h, alt_text: "A fictional diagram" };
+    expect((await call("PUT", "/preview-media/20261006-demo-awaiting", body, SERVICE, fakeFetch(), "dashboard")).status).toBe(403);
+    expect((await call("PUT", "/preview-media/20261006-demo-awaiting", { ...body, sha256: "0".repeat(64) }, SERVICE, fakeFetch(), "cli")).status).toBe(409);
+    const ok = await call("PUT", "/preview-media/20261006-demo-awaiting", body, SERVICE, fakeFetch(), "cli");
+    expect(ok.status).toBe(200);
+    expect((await call("GET", "/preview-media", undefined, SERVICE)).body!.media).toMatchObject([{ post_id: "20261006-demo-awaiting", sha256: h, mime: "image/png" }]);
+    const img = await call("GET", "/posts/20261006-demo-awaiting/image");
+    expect(img.status).toBe(200);
+    expect(new Uint8Array(await img.res.arrayBuffer())).toEqual(png);
+    const snap = await call("GET", "/snapshot");
+    expect(snap.body!.preview_media).toHaveLength(1);
+  });
+  it("the approved publish-queue image wins over the preview copy", async () => {
+    await insertPost(e, READY);
+    const queued = new Uint8Array([0xff, 0xd8, 0xff, 1]);
+    await e.DB.prepare("INSERT INTO post_images (post_id, data, sha256, bytes, alt_text) VALUES (?, ?, 'x', 4, 'alt')").bind(READY, queued).run();
+    await call("PUT", `/preview-media/${READY}`, { data_base64: b64png, sha256: await sha(png), alt_text: "x" }, SERVICE, fakeFetch(), "cli");
+    const img = await call("GET", `/posts/${READY}/image`);
+    expect(img.res.headers.get("content-type")).toBe("image/jpeg");
+  });
+  it("lists free publishing slots for the next 31 days", async () => {
+    await enableAll(e);
+    const snap = await call("GET", "/snapshot");
+    const last = Math.max(...snap.body!.upcoming_slots.map((s: { utc: string }) => Date.parse(s.utc)));
+    expect(last - NOW).toBeGreaterThan(25 * 86400e3);
+  });
+});
