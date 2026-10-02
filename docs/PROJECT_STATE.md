@@ -182,6 +182,15 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   sync`). Humanization audit and design in [HUMANIZATION.md](HUMANIZATION.md):
   voice profile v2 with sources/review, post objective, humanization record
   and voice checklist.
+  **VERIFIED in production** (engine `c8e4d17`, Workers Builds version
+  `ab6cfdb3`; lce-data `2ef0e6f` cloud-sync 2026-10-02T15:59:34Z): migration
+  0005 applied through the Worker (only this build embeds it); doctor all ok
+  (identity matches person URN, provider linkedin_api, auto-publish OFF);
+  smoke: `/privacy` 200, every other route 302 incl. decisions and
+  publish-now. Decisions workflow (lce-data `f437574`, 16:48:40Z): service
+  token through Access, 0 pending, nothing committed. Not yet exercised in
+  production: an owner decision end to end (needs the owner's browser login),
+  a real image preview (no post in the private data has an image yet).
 
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →
