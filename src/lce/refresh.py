@@ -431,10 +431,22 @@ def finish(store: DataStore, post_id: str, *, as_of: date, by: str = "session") 
 
     post = store.load_post(post_id)
     text = current_text(store, post_id)
-    if S(post["state"]) == S.HUMANIZED:
-        run_qa(store, post_id)
+    # The update this finishes: its "before" hashes are the version that was replaced.
+    prev = latest(store, post_id) or {}
+    qa = (
+        run_qa(store, post_id)["status"]
+        if S(post["state"]) == S.HUMANIZED
+        else (post.get("qa") or {}).get("status")
+    )
+    dup = None
     if S(store.load_post(post_id)["state"]) == S.QA_PASSED:
-        run_dupcheck(store, post_id)
+        d = run_dupcheck(store, post_id)
+        dup = {
+            "status": d["status"],
+            "compared_against": d["compared_against"],
+            "exact": len(d["exact"]),
+            "near": len(d["near"]),
+        }
     media = media_check(store, post_id, text)
     if S(store.load_post(post_id)["state"]) == S.DUPLICATE_CHECKED and media["status"] in {
         "still_relevant",
@@ -456,8 +468,11 @@ def finish(store: DataStore, post_id: str, *, as_of: date, by: str = "session") 
         "sources": [],
         "claims": [],
         "media": media,
+        "steps": {"qa": qa, "duplicate": dup, "media": media["status"]},
         "content_hash": content_hash(text),
+        "content_hash_before": prev.get("content_hash_before", prev.get("content_hash")),
         "image_sha256": media.get("sha256"),
+        "image_sha256_before": prev.get("image_sha256_before", prev.get("image_sha256")),
         "approval": _approval(post),
         "approval_effect": "none",
         "state": post["state"],

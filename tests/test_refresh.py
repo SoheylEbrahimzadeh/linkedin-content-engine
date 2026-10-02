@@ -166,6 +166,10 @@ def test_image_is_re_evaluated_and_a_stale_diagram_blocks_approval(store):
     assert rec["status"] == "update_awaiting_approval"
     assert post["approval"]["image_hash"] == new_doc["sha256"]
     assert new_doc["sha256"] != doc["sha256"]
+    # the finishing record shows the replaced version → the new one
+    assert rec["image_sha256_before"] == doc["sha256"] and rec["image_sha256"] == new_doc["sha256"]
+    assert rec["content_hash_before"] != rec["content_hash"]
+    assert rec["steps"]["media"] == "still_relevant"
 
 
 def test_media_change_on_an_approved_post_discards_the_approval(store):
