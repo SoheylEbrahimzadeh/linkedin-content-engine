@@ -148,6 +148,18 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
 - LCE-033: doctor treats an unconfigured schedule as a setup step; the private
   workflow sends timezone/cadence with `lce cloud configure` (never the kill
   switch or a token).
+- LCE-034 (PR #46): public `/privacy` page (LinkedIn Developer Portal). Verified
+  2026-10-02 (lce-data PR #21): 200 without credentials after the owner moved
+  `/privacy` into its own Access application; every other path still 302.
+- LCE-035: read-only LinkedIn identity check in the Worker,
+  `GET /api/linkedin/identity` (Access-protected): one `GET /v2/userinfo` with
+  the runtime `LINKEDIN_TOKEN` secret, `sub` validated, `urn:li:person:{sub}`
+  derived and compared with the D1 setting; never returns the token or profile
+  data, writes nothing. Doctor check `linkedin identity`; `lce cloud identity
+  [--write]` records the URN in the private `config/linkedin.yaml`; smoke checks
+  the route is refused without credentials. Endpoint/claims/version re-checked
+  against LinkedIn's docs on 2026-10-02 (userinfo is still the OIDC `/v2`
+  endpoint, unversioned; latest `Linkedin-Version` 202609).
 
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →
@@ -221,11 +233,11 @@ See GitHub; merged when green (no holds).
 
 The cloud path is verified up to publishing. Remaining gates:
 
-1. **LinkedIn credential (owner):** LinkedIn developer app (Share on LinkedIn +
-   OpenID Connect), `config/linkedin.yaml` (api_version, person_urn via
-   `lce linkedin whoami`), and the Worker secret `LINKEDIN_TOKEN`
-   (`npx wrangler secret put LINKEDIN_TOKEN`). The private workflow then sends the
-   LinkedIn settings with `lce cloud configure` and doctor shows provider/token ✓.
+1. **LinkedIn config:** the Worker secret `LINKEDIN_TOKEN` is present (doctor,
+   2026-10-02). Next: doctor's `linkedin identity` verifies it with LinkedIn;
+   `config/linkedin.yaml` (api_version, person_urn from `lce cloud identity`)
+   in the private repo; the private workflow then sends it with
+   `lce cloud configure` and doctor shows settings/provider ✓.
 2. **First live post (live gate, 4D):** [LIVE_TEST.md](LIVE_TEST.md), only with the
    owner's explicit approval.
 3. **Content:** PUBLIC stories for experience-based themes; drafting resumes on

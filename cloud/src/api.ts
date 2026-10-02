@@ -7,6 +7,8 @@ import { event, isSchemaMissing, loadSettings, SETTING_KEYS, type ConsentRow, ty
 import { isoUtc, loadSchedule, parseIsoUtc, ScheduleError, slotById, slotsBetween } from "./schedule";
 import { applyMigrations, MigrationConflict, migrationStatus } from "./migrations";
 import { contentHash, sha256Bytes } from "./text";
+import { IDENTITY_HTTP, linkedinIdentity } from "./identity";
+import type { FetchLike } from "./linkedin";
 
 const POST_ID_RE = /^\d{8}-[a-z0-9-]{1,56}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -61,7 +63,8 @@ async function body(request: Request): Promise<Record<string, unknown>> {
 }
 
 export async function handleApi(request: Request, env: Env, now: number,
-                                certs?: CertsFetcher): Promise<Response> {
+                                certs?: CertsFetcher,
+                                fetchImpl: FetchLike = (input, init) => fetch(input, init)): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname === "/api/health" && request.method === "GET") return json(200, { ok: true });
   try {
@@ -72,6 +75,10 @@ export async function handleApi(request: Request, env: Env, now: number,
     let r: RegExpExecArray | null;
     if (request.method === "GET" && url.pathname === "/api/snapshot") return json(200, await snapshot(env, now));
     if (request.method === "GET" && url.pathname === "/api/pipeline") return await getPipeline(env);
+    if (request.method === "GET" && url.pathname === "/api/linkedin/identity") {
+      const report = await linkedinIdentity(env.LINKEDIN_TOKEN, await loadSettings(env.DB), fetchImpl);
+      return json(IDENTITY_HTTP[report.status], report);
+    }
     if (request.method === "GET" && url.pathname === "/api/migrations") return json(200, await migrationStatus(env.DB));
     if (request.method === "POST" && url.pathname === "/api/migrations") return json(200, await migrate(env, now, actor, await body(request)));
     if (request.method === "PUT" && url.pathname === "/api/pipeline") return json(200, await putPipeline(env, now, actor, request));

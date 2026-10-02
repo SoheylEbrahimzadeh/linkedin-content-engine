@@ -814,6 +814,26 @@ def cmd_cloud(args):
         # 0 all ok · 1 only owner actions open · 2 something is broken
         statuses = {c["status"] for c in checks}
         return 2 if cloud.FAIL in statuses else 1 if cloud.ACTION in statuses else 0
+    if args.sub == "identity":
+        base = cloud.load_cloud_config(store)["api_base"].rstrip("/")
+        r = cloud.linkedin_identity(cloud.UrllibCloudTransport(), base, cloud.default_access(base))
+        b = r.body
+        if r.status != 200 or b.get("ok") is not True:
+            why = b.get("reason") or b.get("error") or b.get("_raw") or ""
+            what = b.get("status") or f"HTTP {r.status}"
+            print(f"✗ LinkedIn identity not verified: {what} {why}".strip())
+            fix = cloud.IDENTITY_FIX.get(str(b.get("status", "")))
+            if fix:
+                print(f"    {fix}")
+            return 2
+        print(f"✓ token verified with LinkedIn (read-only userinfo); person_urn: {b['person_urn']}")
+        print(f"  settings person_urn: {b.get('configured_person_urn') or 'not set'}"
+              + {True: " (matches)", False: " (DIFFERENT)", None: ""}[b.get("person_urn_matches")])
+        if args.write:
+            doc = cloud.write_person_urn(store, b["person_urn"], args.api_version)
+            print(f"✓ config/linkedin.yaml: person_urn recorded (api_version {doc['api_version']}); "
+                  "next: commit it, then lce cloud configure")
+        return 0
     client = cloud.make_client(store)
     if args.sub == "configure":
         out = cloud.configure(store, client)
@@ -1152,6 +1172,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = gcmd(g, "sync", cmd_cloud, "mirror the private pipeline to the cloud dashboard (read-only view)")
     p.add_argument("--verify", action="store_true",
                    help="read the mirror back: same sha256 and posts, no leaks")
+    p = gcmd(g, "identity", cmd_cloud,
+             "verify LINKEDIN_TOKEN with LinkedIn through the Worker (read-only) and show the person URN")
+    p.add_argument("--write", action="store_true", help="record the person URN in config/linkedin.yaml")
+    p.add_argument("--api-version", default=None,
+                   help="Linkedin-Version (YYYYMM) when config/linkedin.yaml has none yet")
     p = gcmd(g, "configure", cmd_cloud, "send timezone, cadence and LinkedIn settings (no secrets)")
     p.add_argument("--dry-run", action="store_true")
 

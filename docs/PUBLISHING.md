@@ -21,10 +21,10 @@ READY_TO_PUBLISH ──lce publish (you)──► PUBLISHING ──► PUBLISHED
 | Scheduling | `lifecycleState` must be `PUBLISHED` on create: no scheduling on LinkedIn | [Post schema](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/post-api-schema) |
 | Reading posts | needs `r_member_social`, **restricted** — this app cannot look posts up | Posts API |
 | Text format | `commentary` uses *little*: `\| { } @ [ ] ( ) < > # \ * _ ~` must be escaped | [little format](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/little-text-format) |
-| Author | `urn:li:person:{sub}`; `sub` from `GET /v2/userinfo` (OpenID Connect) | [OIDC](https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2) |
+| Author | `urn:li:person:{id}`; the id is the `sub` claim of `GET https://api.linkedin.com/v2/userinfo` (OpenID Connect, `Authorization: Bearer`, scope `openid`; unversioned, no `Linkedin-Version` header). Response claims: `sub`, `name`, `given_name`, `family_name`, `picture`, `locale` (+ `email`, `email_verified` with the `email` scope). Re-checked 2026-10-02 (LCE-035) | [OIDC](https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2), [Posts API](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api) |
 | Token | access tokens last 60 days; programmatic refresh only for approved partners | [Refresh tokens](https://learn.microsoft.com/en-us/linkedin/shared/authentication/programmatic-refresh-tokens) |
 | Rate limits | Share on LinkedIn: 150 requests/member/day; reset at midnight UTC; `429` when exceeded | [Share on LinkedIn](https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin) |
-| Versions | monthly; each supported ≥ 12 months; the header is mandatory | [Versioning](https://learn.microsoft.com/en-us/linkedin/marketing/versioning) |
+| Versions | monthly; each supported ≥ 12 months; the header is mandatory on `/rest` APIs; `202609` is the latest version as of 2026-10-02 | [Versioning](https://learn.microsoft.com/en-us/linkedin/marketing/versioning) |
 | Automation | bots/automated posting outside the API are prohibited (User Agreement 8.2) | [User Agreement](https://www.linkedin.com/legal/user-agreement) |
 
 Not yet verified against a live account (checked in the first controlled test):
@@ -53,7 +53,8 @@ again while an attempt is `publishing` or `needs_reconcile`.
 
 ```bash
 lce linkedin status                       # config, token presence (never the value), expiry
-lce linkedin whoami                       # GET /v2/userinfo → your person URN (network call)
+lce linkedin whoami                       # GET /v2/userinfo → your person URN (Keychain token, local)
+lce cloud identity [--write]              # same check by the Worker with its LINKEDIN_TOKEN secret (no Mac needed)
 lce publish <post> --dry-run              # exact request; reads no token, sends and writes nothing
 lce publish <post>                        # interactive: type "PUBLISH <post>"
 lce publish reconcile <post> --published-url https://www.linkedin.com/feed/update/urn:li:share:…/

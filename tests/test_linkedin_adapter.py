@@ -121,6 +121,14 @@ def test_whoami_builds_person_urn():
     assert t.calls[0]["url"] == "https://api.linkedin.com/v2/userinfo"
 
 
+@pytest.mark.parametrize("body", [b"not json", b"[]", b'{"name": "x"}', b'{"sub": 5}', b'{"sub": ""}',
+                                  b'{"sub": "a:b"}'])
+def test_whoami_rejects_malformed_userinfo(body):
+    p, _ = pub(HttpResponse(200, {}, body))
+    with pytest.raises(CredentialError):
+        p.whoami()
+
+
 def test_token_never_leaks_through_repr_or_results():
     s = Secret(FAKE_TOKEN)
     assert FAKE_TOKEN not in repr(s) and FAKE_TOKEN not in str(s)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import urllib.error
 import urllib.request
@@ -517,6 +518,73 @@ def _migrations_check(transport: CloudTransport, base: str, credential) -> dict:
                   if pending else "")
 
 
+IDENTITY_FIX = {
+    "token_rejected": "LinkedIn rejected LINKEDIN_TOKEN (invalid, expired or revoked): create a new "
+                      "token and replace the Worker secret",
+    "forbidden": "the token lacks the openid scope: create it with openid, profile, w_member_social",
+    "token_missing": "add LINKEDIN_TOKEN to the production Worker as type Secret",
+}
+
+
+def linkedin_identity(transport: CloudTransport, base: str, credential) -> CloudResponse:
+    """GET /api/linkedin/identity: the Worker's read-only userinfo check (LCE-035)."""
+    return transport.request("GET", f"{base}/api/linkedin/identity",
+                             {**access_headers(credential), "x-lce-client": "cli"}, None)
+
+
+def _identity_check(transport: CloudTransport, base: str, credential, settings: dict) -> dict:
+    """LinkedIn authentication with the Worker's runtime token, and person_urn validation."""
+    r = linkedin_identity(transport, base, credential)
+    b = r.body
+    if r.status == 404:
+        return _check("linkedin identity", ACTION, "the deployed Worker has no /api/linkedin/identity",
+                      "deploy the engine version with LCE-035 (Workers Builds on main)")
+    status = str(b.get("status", ""))
+    if r.status == 200 and b.get("ok") is True:
+        urn, configured = b.get("person_urn"), settings.get("person_urn")
+        if not configured:
+            return _check("linkedin identity", ACTION,
+                          f"token verified with LinkedIn; member {urn}; person_urn not set",
+                          f"set person_urn: {urn} in config/linkedin.yaml (lce cloud identity --write), "
+                          "then lce cloud configure")
+        if b.get("person_urn_matches") is not True:
+            return _check("linkedin identity", FAIL,
+                          f"settings person_urn {configured} is not the token's member {urn}",
+                          f"set person_urn: {urn} in config/linkedin.yaml (lce cloud identity --write), "
+                          "then lce cloud configure; or use the token of the intended account")
+        return _check("linkedin identity", OK, f"token verified with LinkedIn; {urn} matches settings")
+    why = b.get("reason") or b.get("error") or b.get("_raw") or ""
+    detail = f"{status or 'HTTP ' + str(r.status)}: {why}"
+    if b.get("http_status"):
+        detail += f" (LinkedIn HTTP {b['http_status']})"
+    return _check("linkedin identity", FAIL, detail.strip(),
+                  IDENTITY_FIX.get(status, "retry later; check LinkedIn status if it persists"))
+
+
+# Same rules as lce.publish.linkedin (not imported: only the CLI may reach the publishing path).
+PERSON_URN_RE = re.compile(r"^urn:li:person:[A-Za-z0-9_-]+$")
+VERSION_RE = re.compile(r"^\d{6}$")
+
+
+def write_person_urn(store: DataStore, person_urn: str, api_version: str | None = None) -> dict:
+    """Record the verified person URN in config/linkedin.yaml (private data repo).
+    Keeps every other key; a new file needs an explicit api_version."""
+    if not PERSON_URN_RE.match(person_urn or ""):
+        raise CloudError(f"not a person URN: {person_urn!r}")
+    path = store.root / "config" / "linkedin.yaml"
+    doc = store.read_doc(path)
+    if api_version:
+        doc["api_version"] = api_version
+    if not VERSION_RE.match(str(doc.get("api_version", ""))):
+        raise CloudError("config/linkedin.yaml needs api_version (YYYYMM): pass --api-version")
+    doc["api_version"] = str(doc["api_version"])
+    doc["person_urn"] = person_urn
+    doc.setdefault("visibility", "PUBLIC")
+    store.write_doc(path, "linkedin", doc)
+    store.log_event("linkedin.person_urn_recorded", source="cloud identity")
+    return doc
+
+
 def migrate(client: CloudClient, apply: bool = False) -> dict:
     if not apply:
         return client.call("GET", "/migrations")
@@ -647,6 +715,8 @@ def doctor(store: DataStore, transport: CloudTransport | None = None,
                               "present" + (f", {days} day(s) left" if days is not None else
                                            ", expiry unknown (lce cloud configure sends it)"),
                               "" if days is None or days > 7 else "renew the token soon"))
+    if s.get("token_present"):
+        out.append(_identity_check(transport, base, credential, s))
     if snap.body.get("schedule_error"):
         # Without timezone/cadence the schedule cannot load: an open setup step, not a fault.
         unset = not s.get("timezone") or not s.get("cadence")
@@ -736,7 +806,8 @@ def verify_sync(store: DataStore, client: CloudClient, sent: dict, stored: dict)
 # 302 to its login page, which must count as "refused", not as the login HTML.
 PROTECTED = [("GET", "/", None), ("GET", "/pipeline/", None), ("GET", "/api/snapshot", None),
              ("GET", "/api/pipeline", None), ("PUT", "/api/settings", {"auto_publish": True}),
-             ("POST", "/api/consents", {}), ("PUT", "/api/pipeline", {"schema": 1, "meta": {"mode": "real"}})]
+             ("GET", "/api/linkedin/identity", None), ("POST", "/api/consents", {}),
+             ("PUT", "/api/pipeline", {"schema": 1, "meta": {"mode": "real"}})]
 
 
 class StatusTransport:

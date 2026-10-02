@@ -64,8 +64,32 @@ The dashboard/API exposes only `token_present` and `token_expires_at`.
 
 `GET /api/health` (public, no data) · `GET /api/snapshot` ·
 `PUT /api/posts/:id` · `POST /api/posts/:id/withdraw|rearm|reconcile` ·
-`POST /api/consents` · `DELETE /api/consents/:id` · `PUT /api/settings`.
+`POST /api/consents` · `DELETE /api/consents/:id` · `PUT /api/settings` ·
+`GET /api/linkedin/identity`.
 Every mutation is written to `events` with the Access identity.
+
+### LinkedIn identity (LCE-035)
+
+`GET /api/linkedin/identity` proves that the runtime `LINKEDIN_TOKEN` secret
+works and derives the person URN, without the macOS Keychain. It sends exactly
+one `GET https://api.linkedin.com/v2/userinfo` (OpenID Connect; sources in
+[PUBLISHING.md](PUBLISHING.md)) and writes nothing, at LinkedIn or in D1. The
+answer never contains the token or the profile (name, picture, email); only:
+
+| field | meaning |
+|---|---|
+| `ok`, `status` | `verified`, `token_missing` (503), `token_rejected` (LinkedIn 401), `forbidden` (403, missing `openid`), `rate_limited`, `malformed_response`, `linkedin_error` (502), `timeout` (504), `network_error` |
+| `http_status` | LinkedIn's status, when it answered |
+| `person_urn` | `urn:li:person:{sub}`, only when verified |
+| `configured_person_urn`, `person_urn_matches` | the D1 setting and whether it is the token's member (`null` when unset) |
+| `api_version`, `api_version_valid` | the configured `Linkedin-Version` and whether it is `YYYYMM` |
+
+`lce cloud doctor` runs it whenever the token is present (`linkedin identity`:
+ok when the URN matches, action when person_urn is unset, fail on a different
+member or a refused token). `lce cloud identity --write [--api-version 202609]`
+records the URN in the private `config/linkedin.yaml`; commit that file and run
+`lce cloud configure`. The route is behind Access like every other API route
+(`lce cloud smoke` checks that it is refused without credentials).
 
 Mutation safety: every non-GET request needs the header `x-lce-client`
 (`cli` or `dashboard`), which forces a CORS preflight that is never granted,
@@ -153,8 +177,9 @@ request is wall time, not CPU. Expected cost: €0/month.
 `<api_base>/privacy` is the only page the Worker serves without its own Access
 check: static HTML (no scripts, no data), required by the LinkedIn Developer
 Portal. It describes exactly what the project processes (`cloud/src/public/privacy.html`).
-Cloudflare Access must not cover that path: add an Access application for
-`<hostname>/privacy` with a **Bypass** policy (Include: Everyone). `lce cloud
+Cloudflare Access must not cover that path: a separate Access application for
+`<hostname>/privacy` with a **Bypass** policy (Include: Everyone); a path can
+belong to only one Access application, so it is not a policy on the main one. `lce cloud
 smoke` reports the page as ok, behind Access, or missing.
 
 ### Full pipeline on any device (LCE-013)
@@ -244,7 +269,9 @@ Menu names can change; follow the current Cloudflare dashboard.
 9. **LinkedIn token (credential gate):** set the Worker secret with
    `npx wrangler secret put LINKEDIN_TOKEN` or in the Cloudflare dashboard;
    never in a file, variable, issue or chat. The Cloud Control Center then
-   shows "token present".
+   shows "token present". `lce cloud doctor` then verifies it with LinkedIn
+   (`linkedin identity`); `lce cloud identity --write` records the person URN
+   in `config/linkedin.yaml`, then repeat step 8.
 10. **First live publication (live gate, 4D):** only with the owner's explicit
     authorization: `lce cloud push <post>`, schedule it in a slot (dashboard or
     `lce cloud consent`), turn auto-publish on with its phrase, and afterwards

@@ -51,6 +51,7 @@ IMAGE_URN_RE = re.compile(r"^urn:li:image:[A-Za-z0-9_-]+$")
 MAX_ALT_TEXT = 4086
 USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 PERSON_URN_RE = re.compile(r"^urn:li:person:[A-Za-z0-9_-]+$")
+SUB_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")  # same rule as cloud/src/identity.ts
 VERSION_RE = re.compile(r"^\d{6}$")
 POST_URN_RE = re.compile(r"^urn:li:(share|ugcPost):\d+$")
 DEFAULT_MAX_CHARS = 3000  # LinkedIn's post limit; the API answers 400 FIELD_LENGTH_TOO_LONG
@@ -292,6 +293,11 @@ class LinkedInPublisher:
                                       self.config.timeout_seconds)
         if resp.status != 200:
             raise CredentialError(f"userinfo failed with HTTP {resp.status} {_error_text(resp)}")
-        data = json.loads(resp.body.decode("utf-8"))
-        sub = str(data.get("sub", ""))
+        try:
+            data = json.loads(resp.body.decode("utf-8"))
+        except ValueError as exc:
+            raise CredentialError("userinfo answered with a body that is not JSON") from exc
+        sub = data.get("sub") if isinstance(data, dict) else None
+        if not isinstance(sub, str) or not SUB_RE.match(sub):
+            raise CredentialError("userinfo has no usable `sub` claim")
         return {"sub": sub, "name": data.get("name"), "person_urn": f"urn:li:person:{sub}"}
