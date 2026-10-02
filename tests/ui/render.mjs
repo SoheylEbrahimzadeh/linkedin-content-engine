@@ -77,6 +77,8 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
     await page.waitForTimeout(400);
     const text = await page.locator("main").innerText();
     if (!text.trim() || text.includes("Could not load")) errors.push(`${name} ${view}: empty or failed: ${text.slice(0, 200)}`);
+    if (await page.locator("main a img").count()) errors.push(`${name} ${view}: an image is wrapped in a link`);
+    if (text.includes("/api/posts/")) errors.push(`${name} ${view}: image URL rendered as text`);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     if (overflow) errors.push(`${name} ${view}: horizontal overflow`);
     if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-${view.replace("/", "_")}.png`, fullPage: true });
@@ -89,6 +91,15 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   for (const want of ["Content hash", "Pipeline", "Voice profile", "Humanization", "no record", "Media", "No media decision recorded", "Sources", "QA", "Duplicate check"]) {
     if (!tech.includes(want)) errors.push(`${name}: technical details lack ${want}`);
   }
+  // Upcoming: the image post shows its real thumbnail first in the card, square and uncropped
+  await page.goto(`http://127.0.0.1:${port}/#upcoming`);
+  await page.waitForTimeout(500);
+  const row = page.locator(".row.has-media").first();
+  const ubox = await row.locator("img.card-img").boundingBox();
+  const order = await row.evaluate((r) => [...r.querySelector(".row-main").children].map((c) => c.className));
+  if (!ubox || ubox.width < 150 || Math.abs(ubox.width - ubox.height) > 2) errors.push(`${name}: upcoming thumbnail not a visible square (${JSON.stringify(ubox)})`);
+  if (order[0] !== "card-media" || order[1] !== "row-title") errors.push(`${name}: upcoming card order is ${order}`);
+  if (await page.locator(".row:not(.has-media) img").count()) errors.push(`${name}: text-only row shows an image area`);
   // an image that cannot load shows a visible diagnostic, not bare alt text
   await page.goto(`http://127.0.0.1:${port}/#test/20261012-demo-c`);
   await page.waitForTimeout(800);
