@@ -24,6 +24,7 @@ import hashlib
 import html
 import json
 import re
+import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -40,6 +41,7 @@ from lce.store import DataStore, StoreError, dump_yaml
 UA = "lce-radar/0.1 (linkedin-content-engine; feed reader; +https://github.com/SoheylEbrahimzadeh/linkedin-content-engine)"
 MAX_BYTES = 4_000_000
 MAX_ITEMS = 2000
+REDDIT_PAUSE = 3  # seconds between Reddit feeds; one retry after 4x this on HTTP 429
 EXCERPT = 700
 KINDS = ("feed", "reddit", "github_releases")
 QUALITY = ("analyst", "vendor", "standards", "news", "community", "research")
@@ -268,7 +270,12 @@ def collect(store: DataStore, *, transport: Transport = http_get, now=None) -> d
         url = feed_url(src)
         rec = {"id": src["id"], "name": src.get("name", src["id"]), "url": url, "checked_at": iso_utc(now)}
         try:
+            if transport is http_get and src.get("kind") == "reddit":
+                time.sleep(REDDIT_PAUSE)  # Reddit rate-limits bursts from one address (HTTP 429)
             code, body = transport(url)
+            if code == 429 and transport is http_get:
+                time.sleep(REDDIT_PAUSE * 4)
+                code, body = transport(url)
             rec["http"] = code
             entries = parse(body) if code == 200 and body else []
             rec["status"] = "ok" if code == 200 else "unreachable"
