@@ -175,6 +175,14 @@ export async function createDecision(env: Env, now: number, who: { subject: stri
   const id = `d-${crypto.randomUUID()}`;
   const at = isoUtc(now);
   const key = postId ?? `plan:${planDate}`;
+  // LCE-042: never drop a pending decision silently. Replacing one of another kind (e.g. a pending Refresh by a
+  // Skip) needs the owner's explicit confirmation (replace_pending: true); the same kind still replaces itself.
+  const open = await env.DB.prepare(`SELECT decision_id, action, created_at FROM decisions
+    WHERE status = 'pending' AND COALESCE(post_id, 'plan:' || plan_date) = ?`).bind(key).first<{ decision_id: string; action: string; created_at: string }>();
+  if (open && open.action !== action && b.replace_pending !== true) {
+    throw new DecisionError(409, `pending_conflict: your ${open.action} (recorded ${open.created_at}) is still pending for this post; ` +
+      `confirm to replace it with ${action}, or cancel it first`);
+  }
   await env.DB.batch([
     env.DB.prepare(`UPDATE decisions SET status = 'superseded', resolved_at = ?, resolved_by = ?
       WHERE status = 'pending' AND COALESCE(post_id, 'plan:' || plan_date) = ?`).bind(at, who.subject, key),

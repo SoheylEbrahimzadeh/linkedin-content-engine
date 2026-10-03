@@ -88,6 +88,10 @@ const srv = http.createServer(async (req, res) => {
   if (req.method === "POST" && u.pathname === "/api/decisions") {
     const b = JSON.parse((await readBody(req)) || "{}");
     attempts.push(b.request_id);
+    if (redirectMode === "conflict") {
+      if (!b.replace_pending) return j({ error: "pending_conflict: your refresh (recorded 2026-10-02T22:26:01+00:00) is still pending for this post; confirm to replace it with skip, or cancel it first" }, 409);
+      return j({ decision_id: "d-replaced", status: "pending" }, 201);
+    }
     if (reauthed && redirectMode === "once") { reauthed = false; return j({ decision_id: "d-retried", status: "pending" }, 201); }
     res.writeHead(302, { location: "https://access.example.invalid/login" }); return res.end();
   }
@@ -216,6 +220,20 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   if (!fail.includes("Skip failed — the request was not recorded") || !(await page.getByRole("button", { name: "Try again" }).count())) errors.push(`${name}: failed action not shown as not recorded`);
   if (attempts.length !== 2) errors.push(`${name}: expected one retry, got ${attempts.length} attempts`);
   if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-skip-not-recorded.png` });
+  // a pending Refresh is never replaced silently by another decision: the owner is asked first
+  attempts.length = 0; redirectMode = "conflict";
+  await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
+  await page.waitForTimeout(400);
+  await page.locator("section.card", { hasText: "Controls" }).getByRole("button", { name: "Skip", exact: true }).click();
+  await page.waitForTimeout(200);
+  await page.locator("dialog[open]").getByRole("button", { name: "Skip and release the slot" }).click();
+  await page.waitForTimeout(600);
+  const cdlg = await page.locator("dialog[open]").innerText().catch(() => "");
+  if (!cdlg.includes("Replace your pending decision?") || !cdlg.includes("Your refresh")) errors.push(`${name}: no confirmation before replacing a pending refresh (${cdlg.slice(0, 160)})`);
+  await page.locator("dialog[open]").getByRole("button", { name: "Cancel" }).click();
+  await page.waitForTimeout(300);
+  if (!(await page.locator("main").innerText()).includes("Skip not sent — your pending refresh stays")) errors.push(`${name}: keeping the pending refresh not shown`);
+  if (attempts.length !== 1) errors.push(`${name}: a replacement was sent without confirmation (${attempts.length})`);
   redirectMode = "once";
   // a scheduled (cloud-queued) post has no Refresh; the requested one says so
   await page.goto(`http://127.0.0.1:${port}/#upcoming`);
@@ -239,6 +257,6 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   await page.close();
 }
 await browser.close(); srv.close();
-const real = errors.filter((e) => !e.includes("404 (Not Found)"));   // favicon
+const real = errors.filter((e) => !e.includes("404 (Not Found)") && !e.includes("409 (Conflict)"));   // favicon; the expected pending_conflict
 console.log(real.length ? "ERRORS:\n" + real.join("\n") : "OK no errors");
 process.exit(real.length ? 1 : 0);

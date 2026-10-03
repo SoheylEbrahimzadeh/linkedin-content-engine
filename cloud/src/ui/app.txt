@@ -197,6 +197,17 @@ async function mutate(req, { label, key = null, ok = "Done." } = {}) {
       action: label, result: r.kind, status: r.status ?? null });
   }
   await flushReports();
+  // LCE-042: another decision is still pending for this post — never replace it without asking.
+  if (r.kind === "http" && r.status === 409 && /^pending_conflict/.test(r.error) && req.body && !req.body.replace_pending) {
+    const what = (r.error.match(/your (\w+)/) ?? [])[1] ?? "earlier decision";
+    const when = (r.error.match(/recorded ([0-9T:+-]+)/) ?? [])[1];
+    const yes = await dialog("Replace your pending decision?", h("p", {},
+      `Your ${what}${when ? ` (recorded ${localTime(when, tz())})` : ""} is still waiting to be applied. ` +
+      `Replace it with this ${label}? If you keep it, nothing else changes.`),
+      [{ label: `Replace with ${label}`, cls: "danger", value: () => true }]);
+    if (!yes) { setOutcome(key, { state: "kept", label, message: `your pending ${what} stays` }); return null; }
+    return mutate({ ...req, body: { ...req.body, replace_pending: true } }, { label, key, ok });
+  }
   if (r.kind === "ok") {
     setOutcome(key, { state: "recorded", label, decision_id: r.data?.decision_id ?? null, replayed: Boolean(r.data?.replayed) });
     toast(ok, "ok");
@@ -700,6 +711,7 @@ function outcomeLine(key, big = false) {
   const o = key ? S.outcomes[key] : null;
   if (!o) return null;
   if (o.state === "sending") return h("div", { class: "outcome small muted" }, `Sending your ${o.label}…`);
+  if (o.state === "kept") return h("div", { class: "outcome small muted" }, `${cap(o.label)} not sent — ${o.message}.`);
   if (o.state === "recorded") {
     return h("div", { class: "outcome ok-text" + (big ? " notice info" : " small") }, `${cap(o.label)} requested — recorded ${localTime(o.at, tz())}`,
       o.replayed ? " (already recorded on the first attempt)" : "", o.decision_id ? h("code", { class: "small" }, " " + o.decision_id.slice(0, 10)) : null);
