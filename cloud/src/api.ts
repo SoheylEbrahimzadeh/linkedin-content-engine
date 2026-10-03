@@ -10,6 +10,7 @@ import { contentHash, sha256Bytes } from "./text";
 import { IDENTITY_HTTP, linkedinIdentity } from "./identity";
 import { cancelDecision, createDecision, DecisionError, listDecisions, resolveDecision } from "./decisions";
 import { localDate, publishNow } from "./runner";
+import { UI_BUILD } from "./ui";
 import type { FetchLike } from "./linkedin";
 
 const POST_ID_RE = /^\d{8}-[a-z0-9-]{1,56}$/;
@@ -430,6 +431,7 @@ export async function snapshot(env: Env, now: number) {
     publications: publications.map((p) => ({ ...p, attempts: JSON.parse(String(p.attempts ?? "[]")) })),
     events,
     decisions: (await listDecisions(env, null)).decisions.slice(0, 100),
+    ui_build: UI_BUILD,
     preview_media: (await previewMediaList(env)).media,
     // LCE-041: tolerated until migration 0007 is applied (cloud-sync applies it after a deploy).
     ...(await evidence(env)),

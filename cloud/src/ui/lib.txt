@@ -263,6 +263,23 @@ export function displayStatus({ post = null, cloudPost = null, consent = null, p
   return "PLANNED";
 }
 
+/** LCE-045: what the owner's last action here amounts to NOW. A "recorded" click is only shown as
+ * recorded while D1 still has that decision pending; once resolved, its real fate is shown instead
+ * (a page left open must never claim a decision that was later refused or replaced is in effect). */
+export function outcomeNow(o, decisions = []) {
+  if (!o || o.state !== "recorded" || !o.decision_id) return o ? { kind: o.state } : null;
+  const d = (decisions ?? []).find((x) => x.decision_id === o.decision_id);
+  if (!d) return { kind: "recorded" };   // not in the snapshot (yet): nothing proves otherwise
+  if (d.status === "pending") return { kind: "recorded" };
+  const fate = {
+    applied: "applied to the repository",
+    refused: `not applied${d.result ? ": " + d.result : ""}`,
+    cancelled: "cancelled (undone)",
+    superseded: "replaced by a later decision",
+  }[d.status] ?? d.status;
+  return { kind: "resolved", status: d.status, text: fate, at: d.resolved_at ?? null };
+}
+
 /** LCE-043: decisions that end this version as a candidate. While one is pending, nothing may act on the
  * version (no Approve, Refresh, Edit, Reschedule, Skip or Reject); only Cancel undoes it. */
 export const CLOSING = new Set(["skip", "reject", "refresh"]);
