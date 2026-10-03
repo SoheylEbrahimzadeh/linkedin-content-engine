@@ -172,3 +172,45 @@ def test_cli_lists_and_applies(store, monkeypatch, capsys):
     assert "1 pending" in capsys.readouterr().out
     assert cli.main(["--data-dir", str(store.root), "cloud", "decisions", "--apply"]) == 0
     assert "✓ regenerate" in capsys.readouterr().out
+
+
+def _override(store, did, then=None):
+    o = {"decision_id": did, "reason": "owner decided in chat: treat as Refresh",
+         "decided_at": "2026-10-03T01:00:00+00:00", "decided_by": "owner"}
+    if then:
+        o["then"] = then
+    (store.root / "decisions").mkdir(exist_ok=True)
+    store.write_doc(store.root / "decisions" / "overrides.yaml", "decision_overrides", {"overrides": [o]})
+
+
+def test_overridden_skip_is_refused_and_the_refresh_applies_instead(store):
+    """LCE-043: a recorded skip the owner withdrew is resolved `refused` (never applied),
+    and the refresh the owner chose instead archives the version as rejected."""
+    pid = awaiting_post(store)
+    d = decision("skip", pid, reason="")
+    _override(store, d["decision_id"], {"action": "refresh", "by": "owner (chat)", "note": "i dont like it"})
+    inbox, out = run(store, d)
+    assert out[0]["status"] == "refused" and "overridden by the owner" in out[0]["result"]
+    assert inbox.resolved[d["decision_id"]]["status"] == "refused"
+    post = store.load_post(pid)
+    assert post["state"] == "NEEDS_REVISION"
+    assert post["refresh_request"]["note"] == "i dont like it"
+    from lce import versions
+    assert [v["status"] for v in versions.listing(store, pid)] == ["rejected"]
+
+
+def test_override_without_follow_up_only_withdraws(store):
+    pid = awaiting_post(store)
+    d = decision("skip", pid)
+    _override(store, d["decision_id"], {"action": "none"})
+    _, out = run(store, d)
+    assert out[0]["status"] == "refused"
+    assert store.load_post(pid)["state"] == "AWAITING_APPROVAL"
+
+
+def test_override_file_is_validated(store):
+    from lce.store import StoreError
+    (store.root / "decisions").mkdir(exist_ok=True)
+    with pytest.raises(StoreError):
+        store.write_doc(store.root / "decisions" / "overrides.yaml", "decision_overrides",
+                        {"overrides": [{"decision_id": "x", "reason": "short"}]})

@@ -92,6 +92,11 @@ const srv = http.createServer(async (req, res) => {
       if (!b.replace_pending) return j({ error: "pending_conflict: your refresh (recorded 2026-10-02T22:26:01+00:00) is still pending for this post; confirm to replace it with skip, or cancel it first" }, 409);
       return j({ decision_id: "d-replaced", status: "pending" }, 201);
     }
+    if (redirectMode === "record") {      // LCE-043: recorded; the next snapshot carries it as pending (as D1 does)
+      const d = { decision_id: "d-skip-recorded", status: "pending", action: b.action, post_id: b.post_id ?? null, plan_date: b.plan_date ?? null, created_at: new Date().toISOString(), payload: {} };
+      (snap.decisions ||= []).unshift(d);
+      return j({ decision_id: d.decision_id, action: b.action, post_id: d.post_id, status: "pending" }, 201);
+    }
     if (reauthed && redirectMode === "once") { reauthed = false; return j({ decision_id: "d-retried", status: "pending" }, 201); }
     res.writeHead(302, { location: "https://access.example.invalid/login" }); return res.end();
   }
@@ -234,6 +239,31 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   await page.waitForTimeout(300);
   if (!(await page.locator("main").innerText()).includes("Skip not sent — your pending refresh stays")) errors.push(`${name}: keeping the pending refresh not shown`);
   if (attempts.length !== 1) errors.push(`${name}: a replacement was sent without confirmation (${attempts.length})`);
+  // LCE-043: a recorded Skip ends the version at once: slot released, no Approve/Refresh/Edit/Reschedule, only Undo
+  attempts.length = 0; redirectMode = "record";
+  await page.locator("section.card", { hasText: "Controls" }).getByRole("button", { name: "Skip", exact: true }).click();
+  await page.waitForTimeout(200);
+  await page.locator("dialog[open]").getByRole("button", { name: "Skip and release the slot" }).click();
+  await page.waitForTimeout(400);
+  if (await page.locator("dialog[open]").count()) await page.locator("dialog[open]").getByRole("button", { name: /Replace|Skip/ }).first().click();
+  await page.waitForTimeout(900);
+  const ctl2 = await page.locator("section.card", { hasText: "Controls" }).innerText();
+  const main2 = await page.locator("main").innerText();
+  for (const gone of ["Approve", "Refresh", "Edit", "Reschedule", "Reject"]) {
+    if (await page.locator("section.card", { hasText: "Controls" }).getByRole("button", { name: gone, exact: true }).count()) errors.push(`${name}: "${gone}" still offered after a recorded skip (${ctl2})`);
+  }
+  if (!/skipped · slot released/i.test(main2)) errors.push(`${name}: status after a recorded skip is not "Skipped · slot released"`);
+  if (!(await page.getByRole("button", { name: "Undo skip" }).count())) errors.push(`${name}: no Undo skip after a recorded skip`);
+  if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-skip-recorded.png`, fullPage: true });
+  await page.goto(`http://127.0.0.1:${port}/#upcoming`);
+  await page.waitForTimeout(400);
+  const skRow = page.locator(".row", { has: page.locator('a[href="#post/20261006-demo-a"]') }).first();
+  const rowText = await skRow.innerText();
+  if (!/skipped · slot released/i.test(rowText)) errors.push(`${name}: upcoming row not released after skip (${rowText.slice(0, 160)})`);
+  for (const gone of ["Approve", "Refresh", "Edit", "Reschedule"]) if (await skRow.getByRole("button", { name: gone, exact: true }).count()) errors.push(`${name}: upcoming row still offers ${gone} after skip`);
+  if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-upcoming-after-skip.png`, fullPage: true });
+  snap.decisions = (snap.decisions || []).filter((d) => d.decision_id !== "d-skip-recorded");   // the owner undid it
+  await page.reload();
   redirectMode = "once";
   // a scheduled (cloud-queued) post has no Refresh; the requested one says so
   await page.goto(`http://127.0.0.1:${port}/#upcoming`);

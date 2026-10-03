@@ -97,6 +97,21 @@ describe("decision inbox", () => {
     const ok = await call("POST", "/decisions", { action: "skip", post_id: AWAITING, reason: "x", replace_pending: true });
     expect(ok.status).toBe(201);
   });
+  it("a pending Skip ends the version: nothing else is recorded until it is undone (LCE-043)", async () => {
+    await awaitingMirror();
+    const skip = await call("POST", "/decisions", { action: "skip", post_id: AWAITING, reason: "" });
+    expect(skip.status).toBe(201);
+    for (const body of [{ action: "refresh" }, { action: "refresh", replace_pending: true }, { action: "reschedule", date: "2026-10-12", replace_pending: true }]) {
+      const r = await call("POST", "/decisions", { post_id: AWAITING, ...body });
+      expect(r.status).toBe(409);
+      expect(r.body!.error).toContain("post_closed: your skip");
+    }
+    expect((await rows<Record<string, string>>(e, "SELECT action, status FROM decisions")).map((d) => `${d.action}:${d.status}`))
+      .toEqual(["skip:pending"]);
+    const id = (skip.body as { decision_id: string }).decision_id;
+    expect((await call("DELETE", `/decisions/${id}`)).status).toBe(200);
+    expect((await call("POST", "/decisions", { action: "refresh", post_id: AWAITING })).status).toBe(201);
+  });
   it("a newer decision supersedes the pending one for the same post when confirmed", async () => {
     const h = await awaitingMirror();
     await call("POST", "/decisions", { action: "regenerate", post_id: AWAITING, reason: "sharper hook" });

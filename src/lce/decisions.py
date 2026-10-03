@@ -241,14 +241,42 @@ def pending(client: cloud.CloudClient) -> list[dict]:
     return client.call("GET", "/decisions?status=pending").get("decisions", [])
 
 
+def load_overrides(store: DataStore) -> dict[str, dict]:
+    """decisions/overrides.yaml: decisions the owner withdrew after recording them (by decision id),
+    with what to do instead. Reviewed in git like every other change; nothing is deleted."""
+    path = store.root / "decisions" / "overrides.yaml"
+    if not path.exists():
+        return {}
+    doc = store.read_doc(path)
+    return {o["decision_id"]: o for o in doc.get("overrides", [])}
+
+
 def apply_all(store: DataStore, client: cloud.CloudClient) -> list[dict]:
     """Apply every pending decision, oldest first; resolve each in the cloud."""
     done = _applied_ids(store)
+    overrides = load_overrides(store)
     out = []
     for d in pending(client):
         did = d["decision_id"]
         if did in done:                      # applied before, resolve failed: only resolve now
             status, result = "applied", done[did] or "applied earlier"
+        elif did in overrides:
+            # LCE-043: the owner decided otherwise after recording this decision (reviewed in git)
+            o, then = overrides[did], overrides[did].get("then") or {}
+            try:
+                if then.get("action") == "refresh" and d.get("post_id"):
+                    from lce import repackage
+
+                    repackage.request(store, d["post_id"], by=then.get("by", "owner"),
+                                      note=then.get("note", ""), decision_id=then.get("decision_id", ""))
+                status, result = "refused", f"overridden by the owner: {o['reason']}"
+                store.log_event("cloud.decision_overridden", decision_id=did, action=d.get("action"),
+                                post_id=d.get("post_id"), reason=o["reason"], then=then.get("action"))
+            except (StoreError, InvalidTransition) as exc:
+                store.log_event("cloud.decision_retry", decision_id=did, reason=str(exc))
+                out.append({"decision_id": did, "action": d.get("action"), "post_id": d.get("post_id"),
+                            "status": "pending", "result": str(exc)})
+                continue
         else:
             handler = HANDLERS.get(d.get("action"))
             try:

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lce/decision_overrides.schema.json",
+  "title": "Decision overrides",
+  "description": "LCE-043: recorded Control Center decisions the owner withdrew afterwards, and what to do instead.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "overrides"
+  ],
+  "properties": {
+    "overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "decision_id",
+          "reason",
+          "decided_at",
+          "decided_by"
+        ],
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "pattern": "^d-[0-9a-f-]{8,64}$"
+          },
+          "action": {
+            "type": "string"
+          },
+          "post_id": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5
+          },
+          "decided_at": {
+            "type": "string"
+          },
+          "decided_by": {
+            "type": "string"
+          },
+          "then": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "enum": [
+                  "refresh",
+                  "none"
+                ]
+              },
+              "note": {
+                "type": "string"
+              },
+              "by": {
+                "type": "string"
+              },
+              "decision_id": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

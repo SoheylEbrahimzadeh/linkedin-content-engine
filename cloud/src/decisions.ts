@@ -179,6 +179,12 @@ export async function createDecision(env: Env, now: number, who: { subject: stri
   // Skip) needs the owner's explicit confirmation (replace_pending: true); the same kind still replaces itself.
   const open = await env.DB.prepare(`SELECT decision_id, action, created_at FROM decisions
     WHERE status = 'pending' AND COALESCE(post_id, 'plan:' || plan_date) = ?`).bind(key).first<{ decision_id: string; action: string; created_at: string }>();
+  // LCE-043: a pending Skip or Reject has already ended this version for the owner (the Dashboard shows it released);
+  // nothing else may be recorded on it until that decision is cancelled, so it can never be silently replaced.
+  if (open && open.action !== action && (open.action === "skip" || open.action === "reject")) {
+    throw new DecisionError(409, `post_closed: your ${open.action} (recorded ${open.created_at}) is pending for this post; ` +
+      `undo it first if you want to ${action} instead`);
+  }
   if (open && open.action !== action && b.replace_pending !== true) {
     throw new DecisionError(409, `pending_conflict: your ${open.action} (recorded ${open.created_at}) is still pending for this post; ` +
       `confirm to replace it with ${action}, or cancel it first`);
