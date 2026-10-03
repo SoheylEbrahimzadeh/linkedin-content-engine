@@ -54,6 +54,8 @@ owner's note and the rejected version). For each one:
        relevance_reason: "<why this image belongs to this post>"
        relation: "<how the image supports the post>"
        alt_text: "<describe the image itself>"
+       required_terms: ["<term every file must name>"]   # optional
+       min_matches: 2                  # default: 2 when 3+ subject terms
        candidates: ["File:….jpg"]
        search: ["<query>"]
    # or: media: {text_only: {reason: no_suitable_licensed_image, rationale: "…"}}
@@ -70,7 +72,13 @@ owner's note and the rejected version). For each one:
    package and push again. Where Commons is reachable locally you can also run
    `lce refresh package <id> --file <pkg.yaml>` yourself.
 7. Look at the attached image (Read tool) and the media record before telling
-   the owner what is new. Nothing is approved or published.
+   the owner what is new. Nothing is approved or published. If the image is not
+   actually about the post (metadata can match words without matching meaning),
+   correct it before the owner reviews: commit `refresh/packages/<id>.yaml` with
+   `mode: media`, `post_id`, `by`, `reason` and a new `media` (stricter terms, or
+   text-only). The workflow runs `lce refresh media`: the text stays, the wrong
+   package is kept in History as `replaced` with the reason, and a new approval
+   artifact is prepared. Never for a version the owner already approved.
 
 Skip is different: the owner releases the slot and nothing is generated. Never
 write a replacement for a skipped (REJECTED) post.

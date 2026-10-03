@@ -337,6 +337,15 @@ def cmd_refresh_manual(args):
         return 0
     pkg_path = Path(args.file)
     pkg = yaml.safe_load(pkg_path.read_text(encoding="utf-8")) or {}
+    if args.sub == "media":
+        rec = repackage.replace_media(store, args.post, pkg.get("media") or {}, reason=pkg.get("reason", ""),
+                                      by=args.by)
+        kept = rec["version_before"]
+        old, new = rec["image_sha256_before"] or "none", rec["image_sha256"] or "none"
+        print(f"✓ {args.post}: media replaced → AWAITING_APPROVAL (previous package kept as v{kept})")
+        print(f"    image {old[:12]} → {new[:12]}  ({rec['media']['note']})")
+        print("    nothing was approved or published")
+        return 0
     if "text_file" in pkg:
         pkg["text"] = (pkg_path.parent / pkg.pop("text_file")).read_text(encoding="utf-8")
     spec = (pkg.get("media") or {}).get("spec")
@@ -1345,6 +1354,12 @@ def build_parser() -> argparse.ArgumentParser:
                    "claims [{text, source_url}], media {spec: <file|dict> | "
                    "text_only: {reason, rationale}}")
     p.add_argument("--as-of", dest="as_of", default=None)
+    p.add_argument("--by", default="session")
+    p = gcmd(g, "media", cmd_refresh_manual,
+             "replace only the media of the current (unapproved) candidate; the text stays, "
+             "the current package is kept as a version")
+    p.add_argument("post")
+    p.add_argument("--file", required=True, help="YAML: media {commons: … | text_only: …}, reason")
     p.add_argument("--by", default="session")
     p = gcmd(g, "unskip", cmd_refresh_manual,
              "the owner skipped a post but meant Refresh: reopen the slot and request a replacement")

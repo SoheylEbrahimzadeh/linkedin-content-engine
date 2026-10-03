@@ -91,6 +91,8 @@ def _info(title: str, page: dict) -> dict | None:
         "object_name": field("ObjectName"),
         "categories": [c for c in field("Categories").split("|") if c],
         "attribution_required": field("AttributionRequired").lower() == "true",
+        # e.g. "personality" (identifiable people), "trademarked": restrictions beyond copyright
+        "restrictions": [r for r in field("Restrictions").replace(",", "|").split("|") if r.strip()],
     }
 
 
@@ -164,6 +166,8 @@ def _fetch(info: dict, transport=None) -> tuple[bytes, str, dict]:
             },
         )
     url = info.get("thumb_url") or ""
+    if not url.startswith(UPLOAD_PREFIX) and info.get("title"):
+        url = lookup(info["title"], transport).get("thumb_url") or ""  # search results may omit it
     if not url.startswith(UPLOAD_PREFIX):
         raise StoreError("no Commons thumbnail for this file")
     data = _get(url, transport)
@@ -275,6 +279,10 @@ def select(
         "searched_at": now_iso(),
     }
     max_tries = int(spec.get("max_tries", 25))
+    # LCE-043b: one generic word is not relevance ("office workers" matched a 1997 post office).
+    required = [t.strip() for t in spec.get("required_terms") or [] if t and t.strip()]
+    min_matches = int(spec.get("min_matches", 2 if len(terms) >= 3 else 1))
+    record.update({"required_terms": required, "min_matches": min_matches})
 
     def infos():
         for t in spec.get("candidates") or []:
@@ -302,6 +310,7 @@ def select(
         row = {"title": info["title"], "license": info["license"] or None, "url": info["description_url"]}
         usage = license_usage(info["license"])
         matched = semantic_match(info, terms)
+        missing = [t for t in required if not semantic_match(info, [t])]
         why = None
         if usage is None:
             lic = info["license"] or "unknown"
@@ -310,6 +319,12 @@ def select(
             why = f"unsupported type {info['mime']}"
         elif not matched:
             why = "its title, description and categories name none of the subject terms"
+        elif missing:
+            why = f"its metadata does not name the required term(s): {', '.join(missing)}"
+        elif len(matched) < min_matches:
+            why = f"too weak a match: only {', '.join(matched)} of the subject terms (needs {min_matches})"
+        elif any("personality" in r.lower() for r in info.get("restrictions") or []):
+            why = "identifiable people (personality rights restriction); not used for a social post"
         elif info["title"] in exclude_titles:
             why = "an earlier version of this post used this file"
         if why:
@@ -329,7 +344,14 @@ def select(
                 {**row, "outcome": "refused", "why": "unreadable or too large for LinkedIn"}
             )
             continue
-        record["tried"].append({**row, "outcome": "selected", "matched_terms": matched})
+        record["tried"].append(
+            {
+                **row,
+                "outcome": "selected",
+                "matched_terms": matched,
+                **({"restrictions": info["restrictions"]} if info.get("restrictions") else {}),
+            }
+        )
         record["selected"] = info["title"]
         prov = _provenance(info, usage, got)
         with tempfile.TemporaryDirectory() as tmp:
