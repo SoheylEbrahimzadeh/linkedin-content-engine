@@ -43,7 +43,7 @@ class Worker:
 class Pages:
     """Dashboard pages behind Access: 200 with the expected markers when credentials are sent."""
 
-    PAGES = {"/": b"<title>LCE Cloud Control Center</title>",
+    PAGES = {"/": b"<title>Content Control Center</title>",
              "/pipeline/": b"<title>LCE Control Center</title>",
              "/pipeline/config.js": b'window.LCE_CONFIG = {"mode": "real", "snapshotUrl": "/api/pipeline"};'}
 
