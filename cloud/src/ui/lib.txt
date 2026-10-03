@@ -218,6 +218,7 @@ export function parseHash(hash) {
 // One status per post, in publishing order. Derived only from recorded data.
 export const STATUSES = {
   PLANNED: { label: "Planned", tone: "muted" },
+  OPEN_SLOT: { label: "Open slot · candidate being prepared", tone: "muted" },
   AWAITING_APPROVAL: { label: "Awaiting approval", tone: "info" },
   APPROVED: { label: "Approved", tone: "ok" },
   SCHEDULED: { label: "Scheduled", tone: "accent" },
@@ -248,6 +249,7 @@ export function displayStatus({ post = null, cloudPost = null, consent = null, p
   if (cs === "PUBLISH_FAILED") return "FAILED";
   if (consent) return "SCHEDULED";
   if (planStatus === "skipped") return "SKIPPED";
+  if (planStatus === "open" && !post) return "OPEN_SLOT";     // LCE-049: reserved by the rolling calendar
   // LCE-043: a recorded Skip / Reject / Refresh takes effect for the owner at once; the repository
   // catches up at the next private run (the decision is pending there, never in doubt here).
   if (pending?.action === "skip") return "SKIPPED";
@@ -295,7 +297,10 @@ export function refreshProgress(st, nowMs = Date.now()) {
   const post = st.mirror?.post ?? null;
   const ev = (st.events ?? []).filter((e) => !e.decision_id || e.decision_id === d.decision_id);
   const at = (stage) => ev.filter((e) => e.stage === stage).at(-1)?.at ?? null;
-  const ready = Boolean(post?.refresh?.decision_id === d.decision_id && !post?.refresh_request) || Boolean(at("replacement_ready") && !post?.refresh_request);
+  const auto = d.origin === "freshness";   // LCE-049: requested by the freshness check, not by a click
+  const ready = auto
+    ? Boolean(!post?.refresh_request && post?.refresh?.requested_at === d.created_at)
+    : Boolean(post?.refresh?.decision_id === d.decision_id && !post?.refresh_request) || Boolean(at("replacement_ready") && !post?.refresh_request);
   const failedAt = at("failed");
   const failed = !ready && failedAt && ev.at(-1)?.stage === "failed";
   const started = at("worker_started");
@@ -332,7 +337,8 @@ export function refreshProgress(st, nowMs = Date.now()) {
       note = `The writing session has reported nothing for ${Math.round(mins(lastEvent))} minutes (last: ${ev.at(-1).stage}).`;
     }
   }
-  return { decision_id: d.decision_id, phase, stalled, note, steps, ready, failed: Boolean(failed),
+  if (auto) steps[0].label = "Found stale by the freshness check";
+  return { decision_id: d.decision_id, auto, phase, stalled, note, steps, ready, failed: Boolean(failed),
     started_at: d.created_at, elapsed: fmtElapsed(((ready || failed ? ms(lastEvent ?? d.created_at) : nowMs) - ms(d.created_at)) / 1000),
     events: ev };
 }
@@ -434,7 +440,9 @@ export function contentPlan({ pipeline, cloud, now, tz, days = 14 }) {
     items.push({ kind: "post", post_id: postId, date, time, time_source: timeSource, status,
       title: hook(text) ?? entry?.topic ?? post?.topic ?? postId ?? UNKNOWN, topic: entry?.topic ?? post?.topic ?? null,
       objective: post?.objective ?? entry?.objective ?? null, media: media(post ?? cp ?? { post_id: postId, format: entry?.format }, cloud),
-      note: closedBy(pending) ? "recorded; the repository is updated at the next private run" : draftingNote(post ?? (cp ? { state: "APPROVED" } : null)),
+      note: closedBy(pending) ? "recorded; the repository is updated at the next private run"
+        : status === "OPEN_SLOT" ? `Reserved by the rolling calendar (pillar ${entry?.pillar ?? "?"}); the writing Routine prepares a candidate, which then needs your approval`
+          : draftingNote(post ?? (cp ? { state: "APPROVED" } : null)),
       pending: pending ? { decision_id: pending.decision_id, action: pending.action, created_at: pending.created_at, post_id: pending.post_id ?? null, plan_date: pending.plan_date ?? null } : null, consent_id: consent?.consent_id ?? null,
       plan_date: entry?.date ?? post?.plan_date ?? null, sources: post?.sources ?? (entry?.sources ?? []).map((u) => ({ url: u })) });
   };
@@ -641,12 +649,22 @@ export function refreshState(post, pending = null) {
     return { key: "recorded", label: "Refresh requested", tone: "info",
       note: "Recorded in the cloud; the private workflow adds it to the repository within about an hour." };
   }
+  if (post?.refresh_request?.origin === "freshness") {   // LCE-049
+    const rr = post.refresh_request, v = rr.rejected_version;
+    return { key: "stale", label: "Sources changed · writing an updated version", tone: "info", auto: true,
+      note: `The freshness check before this slot found: ${rr.stale?.reason ?? "the content is out of date"}. ` +
+        `${v ? `The earlier version is kept as v${v} and its approval no longer applies. ` : ""}` +
+        "A writing session is producing an updated post for the same slot; it will need your approval." };
+  }
   if (post?.refresh_request) {
     const v = post.refresh_request.rejected_version;
     return { key: "requested", label: "Refresh requested · writing a replacement", tone: "info",
       note: `${v ? `The rejected version is kept as v${v}. ` : ""}A writing session (the scheduled Routine, every 2 hours, or a manual session) is producing a new replacement; it will need your approval.` };
   }
   const r = post?.refresh;
+  if (r?.outcome === "refreshed" && r.origin === "freshness" && post.state === "AWAITING_APPROVAL") {
+    return { key: "refreshed", label: "Updated for current sources · Awaiting approval", tone: "warn", note: r.reason ?? null };
+  }
   if (r?.outcome === "refreshed" && post.state === "AWAITING_APPROVAL") {
     return { key: "refreshed", label: "Refreshed · Awaiting approval", tone: "warn", note: r.reason ?? null };
   }

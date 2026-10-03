@@ -382,6 +382,71 @@ def cmd_versions(args):
     return 0
 
 
+def _refresh_window(store, args):
+    """LCE-049: the schedule-derived freshness window (checks, stale -> same-slot replacement)."""
+    from lce import refresh
+
+    if args.list:
+        rows = refresh.window(store)
+    else:
+        rows = refresh.run_window(store, by=args.by, dry_run=args.dry_run)
+    if args.json:
+        print(json.dumps(rows, indent=2, ensure_ascii=False, default=str))
+        return 0
+    if not rows:
+        print("no post inside its freshness window")
+    for r in rows:
+        res = r.get("result") or {}
+        print(f"{r['post_id']}  slot {r['slot_local']}  window from {r['window_opens_at']}  "
+              f"{r['action']} ({r['why']})" + ("  research due" if r.get("needs_research") else ""))
+        if res:
+            print(f"    {res['decision']} → {res['status']}: {res['reason']}")
+        if r.get("escalation"):
+            e = r["escalation"]
+            print("    " + ("stale → same-slot replacement requested (version kept, approval discarded)"
+                          if e["escalated"] else "not escalated: " + e["why"]))
+        if os.environ.get("GITHUB_ACTIONS") == "true" and (res or r.get("escalation")):
+            print(f"::notice title=freshness window {r['post_id']}::{r['action']}: "
+                  f"{res.get('decision')} → {res.get('status')}: {res.get('reason', '')[:400]}"
+                  + (" | REPLACEMENT REQUESTED" if (r.get("escalation") or {}).get("escalated") else ""))
+    return 0
+
+
+def cmd_plan_roll(args):
+    """LCE-049: reserve the cadence slots inside the rolling horizon."""
+    from lce import rolling
+
+    store = _store(args)
+    if args.sub == "slots":
+        rows = rolling.open_slots(store)
+        if args.json:
+            print(json.dumps(rows, indent=2, ensure_ascii=False))
+            return 0
+        if not rows:
+            print("no open slot")
+        for e in rows:
+            print(f"{e['date']}  pillar {e['pillar']}" + ("  (passed: missed)" if e["missed"] else ""))
+        return 0
+    if args.sub == "fill":
+        pkg_path = Path(args.file)
+        pkg = yaml.safe_load(pkg_path.read_text(encoding="utf-8")) or {}
+        if "text_file" in pkg:
+            pkg["text"] = (pkg_path.parent / pkg.pop("text_file")).read_text(encoding="utf-8")
+        out = rolling.fill(store, pkg, by=args.by)
+        print(f"✓ {out['plan_date']}: new candidate {out['post_id']} → {out['state']} "
+              "(QA, duplicate check, media and approval artifact done; nothing approved or published)")
+        return 0
+    out = rolling.roll(store, dry_run=args.dry_run)
+    print(f"rolling calendar: {out['slots']} cadence slot(s) in the next {out['horizon_days']} days "
+          f"(through {out['through']}); {len(out['added'])} newly reserved")
+    for e in out["added"]:
+        print(f"    + {e['date']} ({e['slot_local']})  open · pillar {e['pillar']}")
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"::notice title=rolling calendar::through {out['through']}; reserved "
+              + (", ".join(e["date"] for e in out["added"]) or "nothing new"))
+    return 0
+
+
 def cmd_refresh(args):
     from lce import refresh
 
@@ -413,9 +478,17 @@ def cmd_refresh(args):
                  if c.get("status") == "active" and refresh.localdate(store, c["slot_utc"]) == as_of}
         _push_freshness(client, refresh.cloud_rows(store, refresh.due_posts(store, as_of, extra)))
         return 0
+    if args.sub == "window":
+        return _refresh_window(store, args)
     if args.sub == "research":
         rec = refresh.research(store, args.post, as_of=as_of, sources=args.source, note=args.note,
                                material=args.material == "yes", by=args.by)
+        if rec["material_change"]:
+            from lce.jobs import automation_config
+
+            if automation_config(store)["freshness_escalate"]:
+                esc = refresh.escalate(store, args.post, rec, by=args.by)
+                print(f"    replacement for the same slot: {'requested' if esc['escalated'] else esc['why']}")
     elif args.sub == "apply":
         rec = refresh.apply_update(store, args.post, as_of=as_of, text=_read_file(args.file),
                                    reason=args.reason, sources=args.source, by=args.by)
@@ -1254,6 +1327,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--format", default="")
     p.add_argument("--angle", default="")
     gcmd(g, "list", cmd_plan_list, "list plan entries")
+    p = gcmd(g, "roll", cmd_plan_roll,
+             "rolling calendar: reserve every cadence slot inside the horizon (never overwrites an entry)")
+    p.add_argument("--dry-run", action="store_true")
+    p = gcmd(g, "slots", cmd_plan_roll, "open slots that still need a candidate, nearest first")
+    p.add_argument("--json", action="store_true")
+    p = gcmd(g, "fill", cmd_plan_roll,
+             "write the candidate for one open slot (research, text, media) through every check")
+    p.add_argument("--file", required=True, help="YAML: plan_date, topic, angle, candidate {title, summary, "
+                   "sources, claims}, text|text_file, sources, claims, media, reason")
+    p.add_argument("--by", default="session")
 
     g = group("select", "topic selection")
     p = gcmd(g, "list", cmd_select_list, "rank new candidates")
@@ -1357,6 +1440,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="print the record, write nothing")
     p.add_argument("--push", action="store_true", help="include cloud-scheduled posts and send the results")
     p.add_argument("--by", default="workflow")
+    p = gcmd(g, "window", cmd_refresh,
+             "freshness window before each slot: check what is due; a stale post gets a same-slot "
+             "replacement request (never approves or publishes)")
+    p.add_argument("--list", action="store_true", help="only list the posts in their window")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--by", default="freshness window")
     p = gcmd(g, "research", cmd_refresh, "record a session's fresh research result")
     p.add_argument("post")
     p.add_argument("--source", action="append", default=[], required=True)

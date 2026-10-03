@@ -391,6 +391,18 @@
             "integer",
             "null"
           ]
+        },
+        "origin": {
+          "enum": [
+            "owner",
+            "freshness"
+          ],
+          "description": "owner = Refresh in the Control Center; freshness = the schedule-derived freshness check found the post stale (LCE-049)"
+        },
+        "stale": {
+          "type": "object",
+          "description": "what the freshness check found (reason, missing claims, slot)",
+          "additionalProperties": true
         }
       }
     },
@@ -430,6 +442,12 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "origin": {
+          "enum": [
+            "owner",
+            "freshness"
           ]
         }
       }

@@ -89,6 +89,7 @@
       "enum": [
         "rejected",
         "replaced",
+        "stale",
         "kept_before_restore"
       ],
       "description": "why this version stopped being active (LCE-042)"

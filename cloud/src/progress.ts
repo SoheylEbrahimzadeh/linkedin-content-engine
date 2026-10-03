@@ -32,11 +32,35 @@ type Mirror = { meta?: { generated_at?: string }; posts?: Array<Record<string, u
 
 /** Everything the page needs to show one post's Refresh truthfully: the request, the reported
  *  events since it was made, and what the mirror (GitHub's state) says about the post now. */
+type Req = { decision_id: string | null; status: string; created_at: string; resolved_at: string | null; result: string | null; origin?: string };
+
+/** LCE-049: a replacement the freshness check requested on its own (no D1 decision): the request in
+ *  the mirror stands in for the decision, from the time it was recorded in the repository. */
+function freshnessRequest(p: Record<string, any> | null, after: string): Req | null {
+  const rr = p?.refresh_request, done = p?.refresh;
+  const at = rr?.origin === "freshness" ? rr.requested_at : !rr && done?.origin === "freshness" ? done.requested_at : null;
+  if (!at || at <= after) return null;
+  return { decision_id: null, status: "applied", created_at: at, resolved_at: at, result: null, origin: "freshness" };
+}
+
 export async function refreshStatus(env: Env, now: number, postId: string) {
   if (!POST_ID.test(postId)) throw new ProgressError(400, "bad post id");
-  const decision = await env.DB.prepare(`SELECT decision_id, status, created_at, resolved_at, result FROM decisions
+  const owner = await env.DB.prepare(`SELECT decision_id, status, created_at, resolved_at, result FROM decisions
     WHERE post_id = ? AND action = 'refresh' AND status IN ('pending', 'applied') ORDER BY created_at DESC LIMIT 1`)
-    .bind(postId).first<{ decision_id: string; status: string; created_at: string; resolved_at: string | null; result: string | null }>();
+    .bind(postId).first<Req>();
+  const row = await env.DB.prepare("SELECT body, received_at FROM pipeline_snapshot WHERE id = 1").first<{ body: string; received_at: string }>();
+  let mirror: Record<string, unknown> | null = null;
+  let mpost: Record<string, any> | null = null;
+  if (row) {
+    const snap = JSON.parse(row.body) as Mirror;
+    mpost = (snap.posts ?? []).find((x) => x.post_id === postId) ?? null;
+    mirror = {
+      generated_at: snap.meta?.generated_at ?? null, received_at: row.received_at,
+      post: mpost ? { state: mpost.state, refresh_request: mpost.refresh_request ?? null, refresh: mpost.refresh ?? null,
+        versions: Array.isArray(mpost.versions) ? mpost.versions.length : 0, actual_hash: mpost.actual_hash ?? null } : null,
+    };
+  }
+  const decision: Req | null = freshnessRequest(mpost, owner?.created_at ?? "") ?? owner ?? null;
   let events: Array<Record<string, unknown>> = [];
   if (decision) try {
     const since = decision.created_at;
@@ -44,17 +68,6 @@ export async function refreshStatus(env: Env, now: number, postId: string) {
       WHERE post_id = ? AND at >= ? ORDER BY at, id`).bind(postId, since).all<Record<string, unknown>>()).results;
   } catch (e) {
     if (!String(e).includes("no such table")) throw e;   // until migration 0009 is applied
-  }
-  const row = await env.DB.prepare("SELECT body, received_at FROM pipeline_snapshot WHERE id = 1").first<{ body: string; received_at: string }>();
-  let mirror: Record<string, unknown> | null = null;
-  if (row) {
-    const snap = JSON.parse(row.body) as Mirror;
-    const p = (snap.posts ?? []).find((x) => x.post_id === postId) ?? null;
-    mirror = {
-      generated_at: snap.meta?.generated_at ?? null, received_at: row.received_at,
-      post: p ? { state: p.state, refresh_request: p.refresh_request ?? null, refresh: p.refresh ?? null,
-        versions: Array.isArray(p.versions) ? p.versions.length : 0, actual_hash: p.actual_hash ?? null } : null,
-    };
   }
   return { now: isoUtc(now), post_id: postId, decision: decision ?? null, events, mirror };
 }

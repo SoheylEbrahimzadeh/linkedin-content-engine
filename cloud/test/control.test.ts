@@ -451,6 +451,19 @@ describe("refresh progress (LCE-048)", () => {
     expect(s.body!.mirror.post.state).toBe("AWAITING_APPROVAL");
     expect(s.body!.mirror.post.refresh_request).toEqual({ decision_id: "x" });
   });
+  it("shows a replacement the freshness check requested on its own (LCE-049, no D1 decision)", async () => {
+    const at = "2026-10-05T03:00:00+00:00";
+    await awaitingMirror({ state: "NEEDS_REVISION", refresh_request: { requested_at: at, origin: "freshness", rejected_version: 2 } });
+    await e.DB.prepare("DELETE FROM refresh_progress").run();
+    await call("PUT", `/refresh-progress/${AWAITING}`, { stage: "worker_started", note: "routine" }, SERVICE, fakeFetch(), "cli");
+    const s = await call("GET", `/refresh-status/${AWAITING}`);
+    expect(s.body!.decision).toMatchObject({ decision_id: null, origin: "freshness", status: "applied", created_at: at });
+    expect(s.body!.events.map((x: { stage: string }) => x.stage)).toEqual(["worker_started"]);
+    // once written, the completed refresh still identifies the request (so the page can reveal it)
+    await awaitingMirror({ refresh: { origin: "freshness", requested_at: at, completed_at: "2026-10-05T05:00:00+00:00", outcome: "refreshed" } });
+    const done = await call("GET", `/refresh-status/${AWAITING}`);
+    expect(done.body!.decision).toMatchObject({ origin: "freshness", created_at: at });
+  });
   it("has no request when the post was never refreshed", async () => {
     await awaitingMirror();
     const s = await call("GET", `/refresh-status/${AWAITING}`);

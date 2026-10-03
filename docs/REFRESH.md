@@ -1,4 +1,47 @@
-# Refresh (LCE-040 same-day check, LCE-041 manual Refresh)
+# Refresh (LCE-040 same-day check, LCE-041 manual Refresh, LCE-049 window + rolling calendar)
+
+## Freshness before the slot and the rolling calendar (LCE-049)
+
+Timing comes from the real schedule, never from a fixed date. A post's slot is
+its `plan_date` at the cadence time for that weekday (settings `cadence`,
+`timezone`). Tuning lives in the private `config/automation.yaml`:
+
+| key | default | meaning |
+| --- | --- | --- |
+| `freshness_lead_hours` | 36 | the window opens this long before the slot: time for research, writing, QA and the owner's approval |
+| `freshness_recheck_hours` | 12 | inside the window, checked again when the last check is older (or the text changed) |
+| `freshness_escalate` | true | a stale post gets a same-slot replacement request automatically |
+| `plan_horizon_days` | 28 | the rolling calendar reserves every cadence slot this far ahead |
+
+Every hour the private `freshness` workflow runs:
+
+1. `lce plan roll`: every cadence slot inside the horizon without a calendar
+   entry becomes an `open` entry (origin `rolling`, a target pillar that keeps
+   the mix balanced). An existing entry is never touched (planned, written,
+   approved, published or skipped by the owner); a date is never reserved twice.
+   The horizon moves with the clock, so the calendar extends by itself.
+2. `lce refresh window`: for each unpublished post whose window is open, the
+   sources are re-read (the Internet Archive's newest capture when the publisher
+   refuses automated clients, recorded as such), every claim and the media are
+   re-checked. **Current** → kept, approval untouched. **Stale** (a claim no
+   longer supported, media stale or invalid) → `repackage.request(origin:
+   freshness)`: the version is archived as `stale` in History, its approval is
+   discarded at once (an APPROVED post goes back too), the post waits in
+   NEEDS_REVISION with `refresh_request.stale` (reason, missing claims, slot).
+
+The refresh worker (Routine, `lce-refresh` skill) then does one unit per run:
+a pending replacement (owner or freshness) → fresh research for posts in their
+window (`--material yes` requests a replacement too) → a candidate for the
+nearest open slot (`lce plan fill`, package `mode: new`). Each goes through
+humanization, QA, the duplicate check, the source-first media decision and a
+new approval artifact, and waits in AWAITING_APPROVAL. Nothing is approved or
+published automatically. A post already in the cloud publisher is never
+withdrawn automatically: the same-day gate holds it and the owner decides.
+
+The Control Center shows an automatic replacement as "Sources changed ·
+writing an updated version" with the same live progress as a Refresh (the
+request in the mirror stands in for a D1 decision), and an open slot as
+"Open slot · candidate being prepared".
 
 ## Manual Refresh (LCE-041, semantics LCE-042, media and state LCE-043)
 

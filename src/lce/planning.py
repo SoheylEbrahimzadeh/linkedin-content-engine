@@ -176,8 +176,9 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
     }
     store.save_post(post)
     entry = next((e for e in store.plan().get("entries", [])
-                  if e["date"] == plan_date.isoformat() and e.get("status") == "planned"
-                  and e["pillar"] == pillar), None)
+                  if e["date"] == plan_date.isoformat()
+                  and ((e.get("status") == "planned" and e["pillar"] == pillar)
+                       or (e.get("status") == "open" and not e.get("draft_ref")))), None)
     plan = store.plan()
     if entry is None:
         add_plan_entry(store, plan_date=plan_date, topic=topic, pillar=pillar, fmt=fmt, angle=angle)
@@ -185,7 +186,7 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
         entry = plan["entries"][-1]
     else:
         entry = next(e for e in plan["entries"] if e == entry)
-    entry.update({"topic": topic, "angle": angle, "candidate_id": candidate_id,
+    entry.update({"topic": topic, "pillar": pillar, "angle": angle, "candidate_id": candidate_id,
                   "draft_ref": post["post_id"], "sources": [s["url"] for s in post["sources"]]})
     if objective:
         entry["objective"] = objective
