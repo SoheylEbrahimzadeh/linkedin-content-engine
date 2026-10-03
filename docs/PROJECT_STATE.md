@@ -328,6 +328,18 @@ NOT_VERIFIED until an Access service token is stored in GitHub.
   resolves the existing D1 `lce` by name for deploys and `--remote` migrations
   (the placeholder made `migrations apply lce --remote` target a nonexistent id).
 
+## LCE-044 (2026-10-03): images chosen by visual review, several sources
+
+Engine #72; lce-data #53–#55. Verified in production (dashboard-check PASS, rights record and History visible).
+- `lce image search` (Commons + Openverse APIs, PD/CC0/CC BY/CC BY-SA only; previews and licence
+  records, nothing attached) → the session views the previews → `media.reviewed` (refetched, licence
+  re-checked at the source, hashed, attached with depicts / why / reviewer). Unsplash/Pexels not
+  searched (API key would be a new secret; no scraping).
+- Gartner v4 (text, hook, claims, sources unchanged): image = GAO-25-108519 figure 1 "Properties that
+  Characterize AI Systems as More Agentic" (U.S. GAO, public domain, sha256 a62f8440…), chosen from 160
+  candidates (37 viewed). History: v4 = post-office photo (replaced), v5 = iceBw screenshot (replaced).
+  AWAITING_APPROVAL; nothing approved or published.
+
 ## LCE-043 (2026-10-03): Skip/Refresh as real transitions; real licensed images
 
 Engine PRs #68, #69, #70; lce-data PRs #49–#52. Verified in production (dashboard-check PASS, run after #52).
@@ -352,8 +364,7 @@ Engine PRs #68, #69, #70; lce-data PRs #49–#52. Verified in production (dashbo
     with a 1997 post-office photo. The photo matched one generic term, so v4 is kept
     as `replaced`.
   - Current: same text with File:IceB-iceBw screenshot.png (CC BY-SA 4.0, Appsoft4),
-    an accounting/ERP application. Relevance is weak: Ukrainian UI, no AI shown.
-    Owner decision pending: approve, text-only, or another search.
+    an accounting/ERP application. The owner rejected it as weakly related; replaced in LCE-044.
   - The current text has its credit line after the hashtags (voice warning). Fixed for
     future packages in #70.
 - Owner actions open:
