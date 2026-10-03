@@ -154,7 +154,13 @@ def inspect(url: str, out_dir: Path, transport=None) -> dict:
                 a_body,
                 "Internet Archive capture (the publisher refused the request)",
             )
+    if body[:2] == b"\x1f\x8b":
+        import gzip
+
+        body = gzip.decompress(body)
     rec["reachable"] = status == 200 and bool(body)
+    rec["page_bytes"] = len(body)
+    rec["img_tags"] = body.lower().count(b"<img")
     if not rec["reachable"]:
         return rec
     page = _Page()
@@ -211,6 +217,7 @@ def inspect(url: str, out_dir: Path, transport=None) -> dict:
             v["fetch"] = str(exc)[:200]
         rec["visuals"].append(v)
     rec["figure_captions"] = page.captions[:10]
+    rec["text_excerpt"] = text.strip()[:600]   # what the inspected page actually says (diagnosis)
     for kind, rx in RIGHTS_PATTERNS:
         for m in rx.finditer(text + " " + " ".join(page.links)):
             snippet = m.group(0).strip()[:300]
