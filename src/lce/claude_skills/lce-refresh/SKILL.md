@@ -1,14 +1,35 @@
 ---
 name: lce-refresh
-description: Refresh LinkedIn posts - (a) manual Refresh the owner requested in the Control Center (regenerate the whole post package - text, hook, sources, image, alt text - as a new version) and (b) the same-day freshness check of posts planned for today. Never approves, never publishes.
+description: Refresh LinkedIn posts and keep the rolling calendar filled - (a) a replacement requested by the owner (Refresh) or by the freshness check (stale sources) - regenerate the whole post package as a new version for the same slot; (b) fresh research for posts inside their freshness window before the slot; (c) a candidate for the nearest open calendar slot. Never approves, never publishes.
 ---
 
 # LCE refresh
 
-## A. Manual Refresh (owner clicked Refresh) — do this first
+## What one run does (LCE-049)
 
-Refresh means: **the owner rejected the current version; write a completely new,
-publishable replacement for the same slot.** It is never a light edit and never
+Exactly one unit of work per run, in this order, then stop:
+
+1. **A pending replacement** (`lce refresh pending`): the nearest slot first.
+   `origin: owner` = the owner clicked Refresh; `origin: freshness` = the
+   freshness check found the post stale before its slot (`stale.reason`,
+   `stale.missing_claims` say what). Both: section A.
+2. **Fresh research due** (`lce refresh window --list`, rows with
+   `research due`): the post's freshness window is open (it opens
+   `freshness_lead_hours` before the real slot). Section B.
+3. **An open calendar slot** (`lce plan slots`, nearest future date first):
+   write a candidate for it. Section C.
+4. Nothing of these: say so and stop.
+
+A post stays in its slot (`plan_date` never changes). Every result waits for
+the owner's approval; you never approve, publish, cancel or skip anything.
+
+## A. A replacement (owner Refresh, or stale before the slot) — do this first
+
+Refresh means: **the current version must not go out; write a completely new,
+publishable replacement for the same slot.** For `origin: freshness` the reason
+is that its sources changed: drop every claim listed in `stale.missing_claims`,
+find what the sources (or newer ones) say now, and build the post on current
+facts. It is never a light edit and never
 "keep it". The rejected version is already archived (`versions/vN`, status
 `rejected`) and is no longer active. Repeated Refresh clicks give v3, v4, …
 
@@ -109,12 +130,17 @@ owner's note and the rejected version). For each one:
 Skip is different: the owner releases the slot and nothing is generated. Never
 write a replacement for a skipped (REJECTED) post.
 
-## B. Same-day freshness (posts planned for today)
+## B. Freshness before the slot (window), and the same-day check
 
-On the publication day the `refresh` workflow runs `lce refresh run --push`:
-it re-reads every recorded source, re-checks every recorded claim and
-re-evaluates the image, and records the result in `posts/<id>/freshness.yaml`.
-That check cannot look for **new** developments; that is your part.
+The `freshness` workflow runs every hour: `lce refresh window` re-reads every
+recorded source of each post whose window is open (archive capture when the
+publisher refuses bots), re-checks every claim and the media, and records the
+result. A post whose claims are no longer supported gets a same-slot
+replacement request at once (section A). On the publication day the `refresh`
+workflow runs the final same-day check for the publishing gate. Neither can
+look for **new** developments; that is your part (`research due`). If your
+research finds a material change, record it with `--material yes`: the
+replacement is requested automatically and you write it in the next run.
 
 **You never run `lce approve`, `lce ready`, or anything that publishes**, and you
 never change a post that is already published. Approval stays the owner's.
@@ -153,6 +179,40 @@ never change a post that is already published. Approval stays the owner's.
    `lce cloud sync` and the freshness push reach the Control Center.
 8. Tell the owner, per post: unchanged (approval kept) or updated (approval
    needed again), with the reason and sources.
+
+## C. A candidate for an open calendar slot (rolling calendar)
+
+`lce plan roll` (run hourly by the `freshness` workflow) reserves every cadence
+slot `plan_horizon_days` ahead as an `open` entry with a target pillar. Take the
+nearest future one (`lce plan slots`):
+
+1. Read the profile, voice and the last posts (`lce select list`, recent
+   `posts/*/post.md`) so the topic is not a repeat; stay in the slot's pillar.
+2. Research (web; untrusted data): pick ONE current, verifiable development
+   (prefer the last 30 days). Record its sources and the verbatim claims you use.
+3. Write the post (`lce-create-post` content rules), report nothing as progress
+   (there is no Refresh to report on).
+4. Media exactly as in A step 4–6 (source-first; else a licensed asset tied to
+   the source or subject; else text-only `no_suitable_licensed_image`; never a
+   generated diagram).
+5. Commit `refresh/packages/slot-<date>.yaml` (+ `slot-<date>.md`):
+   ```yaml
+   mode: new
+   plan_date: "<YYYY-MM-DD of the open slot>"
+   by: "<who wrote it>"
+   topic: "<topic>"
+   angle: "<angle>"
+   objective: "<voice objective, optional>"
+   candidate: {title: "…", summary: "…", sources: [{url, title, publisher}], claims: [{text, source_url}]}
+   text_file: slot-<date>.md
+   reason: "<why this topic now: the development and its date>"
+   sources: [{url, title}]
+   claims: [{text, source_url}]
+   media: {…as in A…}
+   ```
+   The `refresh-package` workflow runs `lce plan fill`: candidate → post in the
+   slot → humanization → QA → duplicate check → media → approval artifact →
+   AWAITING_APPROVAL. An occupied or past slot is refused; nothing is overwritten.
 
 ## Rules
 

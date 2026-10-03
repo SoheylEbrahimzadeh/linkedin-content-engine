@@ -41,6 +41,7 @@
           },
           "status": {
             "enum": [
+              "open",
               "planned",
               "selected",
               "needs_input",
@@ -95,6 +96,16 @@
           "objective": {
             "type": "string",
             "pattern": "^[a-z0-9-]+$"
+          },
+          "origin": {
+            "enum": [
+              "manual",
+              "rolling"
+            ],
+            "description": "rolling = a cadence slot reserved by the rolling calendar (LCE-049)"
+          },
+          "reserved_at": {
+            "type": "string"
           }
         }
       }

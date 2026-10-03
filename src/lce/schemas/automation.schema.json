@@ -48,6 +48,28 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 10
+    },
+    "plan_horizon_days": {
+      "type": "integer",
+      "minimum": 7,
+      "maximum": 120,
+      "description": "rolling calendar: cadence slots this far ahead are reserved and filled with candidates (LCE-049)"
+    },
+    "freshness_lead_hours": {
+      "type": "integer",
+      "minimum": 6,
+      "maximum": 168,
+      "description": "the freshness window opens this long before a post's slot, leaving time for research, writing, QA and approval"
+    },
+    "freshness_recheck_hours": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 72,
+      "description": "inside the window, a post is checked again when its last check is older than this"
+    },
+    "freshness_escalate": {
+      "type": "boolean",
+      "description": "a stale post automatically gets a same-slot replacement request (never approved or published automatically)"
     }
   }
 }

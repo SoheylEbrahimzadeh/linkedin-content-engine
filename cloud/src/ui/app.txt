@@ -783,7 +783,8 @@ function progressPanel(p, d) {
   const st = S.progress[p.post_id];
   const pr = refreshProgress(st);
   if (!pr || pr.ready) return null;
-  const title = pr.failed ? "Refresh failed — no replacement was created" : "Refresh requested · writing a replacement";
+  const title = pr.failed ? "Refresh failed — no replacement was created"
+    : pr.auto ? "Sources changed · writing an updated version" : "Refresh requested · writing a replacement";
   const phaseLabel = { queued: "Queued: waiting for the private run", waiting: "Waiting for writing session",
     working: "Claude Code is actively processing", failed: "Failed" }[pr.phase];
   const stepRow = (s) => h("li", { class: "pstep " + s.state },
@@ -799,7 +800,8 @@ function progressPanel(p, d) {
     pr.failed ? B2("Try again", () => A.refresh(p), "primary") : null,
     h("details", { class: "small" }, h("summary", {}, "Diagnostics"),
       h("ul", { class: "list small" },
-        h("li", {}, `Request ${pr.decision_id} recorded ${fmtWhen(st.decision.created_at)} — ${st.decision.status}${st.decision.resolved_at ? " " + fmtWhen(st.decision.resolved_at) : ""}`),
+        h("li", {}, pr.auto ? `Requested automatically by the freshness check ${fmtWhen(st.decision.created_at)}`
+          : `Request ${pr.decision_id} recorded ${fmtWhen(st.decision.created_at)} — ${st.decision.status}${st.decision.resolved_at ? " " + fmtWhen(st.decision.resolved_at) : ""}`),
         st.mirror ? h("li", {}, `Mirror (GitHub state) generated ${fmtWhen(st.mirror.generated_at)}; post ${st.mirror.post?.state ?? "?"}${st.mirror.post?.refresh_request ? ", replacement requested" : ""}`) : null,
         pr.events.length ? pr.events.map((e) => h("li", {}, `${fmtWhen(e.at)} · ${e.stage}${e.note ? " — " + e.note : ""} (${e.reported_by})`))
           : h("li", {}, "No progress reported by any writing session yet."),

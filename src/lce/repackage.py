@@ -49,24 +49,42 @@ def _refreshable(store: DataStore, post_id: str) -> dict:
     return post
 
 
-def request(store: DataStore, post_id: str, *, by: str, note: str = "", decision_id: str = "") -> dict:
-    """The owner rejected the current version: archive it (status `rejected`) and
-    deactivate it now; a writing session produces the replacement."""
+def request(
+    store: DataStore,
+    post_id: str,
+    *,
+    by: str,
+    note: str = "",
+    decision_id: str = "",
+    origin: str = "owner",
+    stale: dict | None = None,
+) -> dict:
+    """The current version must be replaced: archive it and deactivate it now (its
+    approval is discarded); a writing session produces the replacement for the same slot.
+
+    origin `owner`: the owner rejected it (Refresh; archived as `rejected`).
+    origin `freshness` (LCE-049): the freshness check before the slot found it stale
+    (archived as `stale`, with what was found)."""
     from lce.posts import reopen, set_state
 
     post = _refreshable(store, post_id)
+    why = (
+        "rejected by the owner (Refresh)"
+        if origin == "owner"
+        else "stale before publication: " + ((stale or {}).get("reason") or note or "sources changed")[:300]
+    )
     already = bool(post.get("refresh_request"))
     archived = None
     if not already and (store.post_dir(post_id) / "post.md").exists():
         archived = versions.snapshot(
-            store, post_id, reason="rejected by the owner (Refresh)", by=by, status="rejected"
+            store, post_id, reason=why, by=by, status="rejected" if origin == "owner" else "stale"
         )["version"]
     state = S(post["state"])
     if state in {S.AWAITING_APPROVAL, S.APPROVED, S.READY_TO_PUBLISH}:
-        reopen(store, post_id, "rejected by the owner (Refresh)")
+        reopen(store, post_id, why)
         state = S.HUMANIZED
     if state == S.DUPLICATE_CHECKED:
-        set_state(store, store.load_post(post_id), S.HUMANIZED, "rejected by the owner (Refresh)")
+        set_state(store, store.load_post(post_id), S.HUMANIZED, why)
         state = S.HUMANIZED
     post = store.load_post(post_id)
     prev = post.get("refresh_request") or {}
@@ -76,11 +94,15 @@ def request(store: DataStore, post_id: str, *, by: str, note: str = "", decision
         **({"note": note.strip()} if note.strip() else {}),
         **({"decision_id": decision_id} if decision_id else {}),
         "rejected_version": archived if archived is not None else prev.get("rejected_version"),
+        "origin": origin,
+        **({"stale": stale} if stale else {}),
     }
     store.save_post(post)
     if state in {S.HUMANIZED, S.QA_PASSED}:
         set_state(store, post, S.NEEDS_REVISION, "Refresh: replacement requested")
-    store.log_event("post.refresh_requested", post_id=post_id, by=by, rejected_version=archived)
+    store.log_event(
+        "post.refresh_requested", post_id=post_id, by=by, rejected_version=archived, origin=origin
+    )
     return store.load_post(post_id)["refresh_request"]
 
 
@@ -249,6 +271,8 @@ def _progress(store, post_id, stage, req, note=""):
     """LCE-048: a real stage reached (sent only where cloud credentials exist)."""
     from lce import cloud
 
+    if not req:  # a new slot candidate (LCE-049) has no Refresh to report on
+        return
     cloud.report_progress(store, post_id, stage, note=note, decision_id=(req or {}).get("decision_id") or "")
 
 
@@ -288,7 +312,12 @@ def package(
     _validate_package(pkg)
     as_of = as_of or refresh.today_local(store)
     req = post.get("refresh_request") or {}
-    before_text = current_text(store, post_id)
+    # LCE-049: a rolling-calendar candidate is a post without text yet (SELECTED); it is
+    # written through exactly the same checks, it just has no earlier version to keep.
+    is_new = not (store.post_dir(post_id) / "post.md").exists()
+    if is_new and S(post["state"]) != S.SELECTED:
+        raise StoreError(f"a post without text must be SELECTED to be written (it is {post['state']})")
+    before_text = "" if is_new else current_text(store, post_id)
     before_doc = images.load(store, post_id) or {}
     before = {
         "content_hash": content_hash(before_text),
@@ -298,14 +327,16 @@ def package(
     }
     history = versions.listing(store, post_id)
     last_before = history[-1]["version"] if history else 0
-    if not media_only:
+    if not media_only and not is_new:
         novelty_check_text(store, post_id, pkg["text"], before_text)
     with tempfile.TemporaryDirectory() as tmp:
         versions.backup(store, post_id, Path(tmp))
         try:
             # The version being replaced is in history once: the Refresh decision archived it
             # already (status rejected); a session-started refresh archives it here.
-            if not history or history[-1]["content_hash"] != before["content_hash"]:
+            if is_new:
+                pass
+            elif not history or history[-1]["content_hash"] != before["content_hash"]:
                 history.append(
                     versions.snapshot(
                         store,
@@ -315,7 +346,7 @@ def package(
                         status="replaced",
                     )
                 )
-            kept = history[-1]
+            kept = history[-1] if history else None
             if S(post["state"]) in {S.AWAITING_APPROVAL, S.APPROVED, S.READY_TO_PUBLISH}:
                 reopen(store, post_id, "manual refresh")
             post = store.load_post(post_id)
@@ -393,25 +424,27 @@ def package(
     doc = images.load(store, post_id) or {}
     rel = images.relevance_now(store, post_id, doc)
     post.pop("refresh_request", None)
-    post["refresh"] = {
-        "completed_at": now_iso(),
-        "by": by,
-        "reason": pkg["reason"].strip(),
-        "outcome": "refreshed",
-        "previous_version": kept["version"],
-        "requested_at": req.get("requested_at"),
-        "decision_id": req.get("decision_id"),
-    }
+    if not is_new:
+        post["refresh"] = {
+            "completed_at": now_iso(),
+            "by": by,
+            "reason": pkg["reason"].strip(),
+            "outcome": "refreshed",
+            "previous_version": kept["version"],
+            "requested_at": req.get("requested_at"),
+            "decision_id": req.get("decision_id"),
+            "origin": req.get("origin") or "owner",
+        }
     store.save_post(post)
     record = {
         "checked_at": now_iso(),
         "check_date": as_of.isoformat(),
-        "mode": "manual",
+        "mode": "new" if is_new else "manual",
         "by": by,
-        "decision": "updated",
-        "status": "update_awaiting_approval",
+        "decision": "created" if is_new else "updated",
+        "status": "current" if is_new else "update_awaiting_approval",
         "material_change": True,
-        "reason": "manual refresh: " + pkg["reason"].strip(),
+        "reason": ("new candidate for the slot: " if is_new else "manual refresh: ") + pkg["reason"].strip(),
         "sources": [{"url": s["url"], "status": "checked_by_session"} for s in pkg["sources"]],
         "claims": [
             {"text": c["text"], "source_url": c["source_url"], "status": "recorded"}
@@ -453,13 +486,13 @@ def package(
         "approval_effect": "invalidated" if before["approval"] in {"pending", "approved"} else "none",
         "state_before": before["state"],
         "state": post["state"],
-        "version_before": kept["version"],
+        "version_before": kept["version"] if kept else None,
     }
     refresh._append(store, post_id, record)
     store.log_event(
         "post.refreshed",
         post_id=post_id,
-        previous_version=kept["version"],
+        previous_version=kept["version"] if kept else None,
         content_hash=record["content_hash"],
         image_sha256=record["image_sha256"],
     )

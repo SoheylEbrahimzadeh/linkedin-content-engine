@@ -402,3 +402,32 @@ test("refresh progress comes only from recorded events", () => {
   assert.equal(p.steps.at(-1).state, "done");
   assert.equal(lib.refreshProgress({ decision: null }), null);
 });
+
+test("LCE-049: an automatic freshness replacement is shown as such, with real progress, and revealed when written", () => {
+  const at = "2026-10-07T03:00:00+00:00";
+  const post = { post_id: "p1", state: "NEEDS_REVISION", text: "x",
+    refresh_request: { requested_at: at, origin: "freshness", rejected_version: 2, stale: { reason: "1 recorded claim(s) no longer found in their source" } } };
+  const r = lib.refreshState(post);
+  assert.equal(r.key, "stale");
+  assert.match(r.label, /Sources changed/);
+  assert.match(r.note, /no longer found/);
+  assert.match(r.note, /kept as v2/);
+  assert.equal(lib.displayStatus({ post }), "REPLACEMENT_PENDING");
+  const st = { decision: { decision_id: null, origin: "freshness", status: "applied", created_at: at, resolved_at: at },
+    events: [{ stage: "worker_started", at: "2026-10-07T03:37:10+00:00" }], mirror: { post: { refresh_request: post.refresh_request } } };
+  let p = lib.refreshProgress(st, Date.parse("2026-10-07T03:40:00+00:00"));
+  assert.equal(p.auto, true);
+  assert.equal(p.phase, "working");
+  assert.equal(p.ready, false);
+  assert.equal(p.steps[0].label, "Found stale by the freshness check");
+  p = lib.refreshProgress({ ...st, mirror: { post: { refresh_request: null, refresh: { origin: "freshness", requested_at: at, outcome: "refreshed" } } } });
+  assert.equal(p.ready, true);
+  const done = lib.refreshState({ state: "AWAITING_APPROVAL", refresh: { origin: "freshness", outcome: "refreshed", reason: "updated" } });
+  assert.match(done.label, /Updated for current sources/);
+});
+
+test("LCE-049: a rolling-calendar slot without a post is an open slot, never a fake post", () => {
+  assert.equal(lib.displayStatus({ planStatus: "open" }), "OPEN_SLOT");
+  assert.equal(lib.displayStatus({ planStatus: "open", post: { state: "AWAITING_APPROVAL" } }), "AWAITING_APPROVAL");
+  assert.equal(lib.displayStatus({ planStatus: "skipped" }), "SKIPPED");
+});

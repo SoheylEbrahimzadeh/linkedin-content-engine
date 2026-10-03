@@ -30,7 +30,7 @@ import re
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -192,8 +192,10 @@ def check(
     fetch: Fetcher = http_fetch,
     by: str = "workflow",
     dry_run: bool = False,
+    context: dict | None = None,
 ) -> dict:
-    """Deterministic same-day check. Never changes the post text, image or approval."""
+    """Deterministic check (same day, or inside the freshness window before the slot).
+    Never changes the post text, image or approval."""
     post = store.load_post(post_id)
     text = current_text(store, post_id)
     sources = []
@@ -210,6 +212,19 @@ def check(
             else:
                 item["status"] = "blocked" if status in (401, 403, 429) else "unreachable"
                 pages[url] = None
+                if item["status"] == "blocked":
+                    # LCE-049: the publisher refuses automated clients (Gartner answers 403 to
+                    # GitHub Actions). Read the Internet Archive's latest capture instead, and say so.
+                    arch = _archived(url, fetch, as_of)
+                    if arch:
+                        pages[url] = page_text(arch["body"])
+                        item.update(
+                            status="ok_archive",
+                            via="Internet Archive capture (the publisher refused the request)",
+                            archive_url=arch["url"],
+                            capture=arch.get("capture"),
+                            content_sha256=hashlib.sha256(arch["body"]).hexdigest(),
+                        )
         except FetchError as exc:
             item.update(status="unreachable", error=str(exc))
             pages[url] = None
@@ -242,6 +257,12 @@ def check(
     else:
         decision, status, material = "unchanged", "current", False
         reason = "every recorded claim is still stated in its source"
+        archived = [x for x in sources if x.get("status") == "ok_archive"]
+        if archived:
+            reason += " (" + ", ".join(
+                f"{x['url'].split('/')[2]} via its archive capture {x.get('capture') or ''}".strip()
+                for x in archived
+            ) + ")"
     media = media_check(store, post_id, text)
     if media["status"] in {"stale", "invalid"}:
         decision, status = "update_required", "update_required"
@@ -267,8 +288,25 @@ def check(
         "approval": _approval(post),
         "approval_effect": "preserved",
         "new_developments": "not machine-checked: fresh research is a session step (lce refresh research)",
+        **(context or {}),
     }
     return record if dry_run else _append(store, post_id, record)
+
+
+ARCHIVE = "https://web.archive.org/web/"
+
+
+def _archived(url: str, fetch: Fetcher, as_of: date) -> dict | None:
+    """The Internet Archive's capture closest to `as_of` (its newest, in practice)."""
+    try:
+        status, final, body = fetch(f"{ARCHIVE}{as_of:%Y%m%d}id_/{url}")
+    except (FetchError, OSError, KeyError):
+        return None
+    if status != 200 or not body:
+        return None
+    m = re.search(r"/web/(\d{8})\d*id_/", final or "")
+    capture = f"{m.group(1)[:4]}-{m.group(1)[4:6]}-{m.group(1)[6:]}" if m else None
+    return {"url": final, "body": body, "capture": capture}
 
 
 def research(
@@ -450,6 +488,169 @@ def finish(store: DataStore, post_id: str, *, as_of: date, by: str = "session") 
         "state": post["state"],
     }
     return _append(store, post_id, record)
+
+
+# ── schedule-derived freshness window (LCE-049) ───────────────────────
+# The same-day check alone comes too late to replace a stale post (research,
+# writing, QA and the owner's approval all need time). So every planned post is
+# also checked inside a window that opens `freshness_lead_hours` before its real
+# slot (plan date at the cadence time of that weekday, in the configured time
+# zone), and again every `freshness_recheck_hours` until the slot. A post found
+# stale gets a same-slot replacement request at once (its version is archived as
+# `stale`, its approval discarded); the refresh worker writes the replacement.
+# Nothing here approves or publishes.
+def slot_of(store: DataStore, post: dict) -> dict | None:
+    from lce.schedule import DAYS, ScheduleError, load_schedule, slot_for
+
+    if not post.get("plan_date"):
+        return None
+    try:
+        sched = load_schedule(store.settings())
+    except ScheduleError:
+        return None
+    if not sched.slots:
+        return None
+    day = date.fromisoformat(post["plan_date"])
+    spec = next((x for x in sched.slots if x.day == DAYS[day.weekday()]), None)
+    source = "plan date at the cadence time for that weekday"
+    if spec is None:
+        spec = sched.slots[0]
+        source = "plan date (no cadence slot on that weekday; the first cadence time)"
+    slot = slot_for(sched, spec, day)
+    return {"utc": slot.utc, "local": slot.local.isoformat(), "source": source}
+
+
+WRITTEN_MODES = {"research", "new", "manual", "update"}
+
+
+def window(store: DataStore, now=None) -> list[dict]:
+    """Every unpublished post whose freshness window is open now, and what is due for it."""
+    from lce.clock import iso_utc, parse_iso
+    from lce.jobs import automation_config
+
+    now = now or clock.now()
+    cfg = automation_config(store)
+    lead = timedelta(hours=cfg["freshness_lead_hours"])
+    recheck = timedelta(hours=cfg["freshness_recheck_hours"])
+    out = []
+    for pid in store.post_ids():
+        post = store.load_post(pid)
+        st = S(post["state"])
+        if st in CLOSED or st in {S.RESEARCHED, S.SELECTED, S.NEEDS_INPUT}:
+            continue
+        slot = slot_of(store, post)
+        if slot is None:
+            continue
+        opens = slot["utc"] - lead
+        if not (opens <= now < slot["utc"]):
+            continue
+        recs = history(store, pid)
+        checks = [r for r in recs if r.get("mode") == "check" and not r.get("test_mode")]
+        last = checks[-1] if checks else None
+        last_at = parse_iso(last["checked_at"]) if last else None
+        has_text = (store.post_dir(pid) / "post.md").exists()
+        item = {
+            "post_id": pid,
+            "state": post["state"],
+            "slot_utc": iso_utc(slot["utc"]),
+            "slot_local": slot["local"],
+            "slot_source": slot["source"],
+            "window_opens_at": iso_utc(opens),
+            "last_check_at": last["checked_at"] if last else None,
+            "last_check_status": last["status"] if last else None,
+        }
+        if post.get("refresh_request"):
+            item.update(action="writing", why="a replacement for this slot is already requested")
+        elif not has_text:
+            item.update(action="writing", why="no candidate text yet")
+        elif last_at is None or last_at < opens:
+            item.update(action="check", why="first check inside the window")
+        elif last.get("content_hash") != content_hash(current_text(store, pid)):
+            item.update(action="check", why="the text changed since the last check")
+        elif now - last_at >= recheck:
+            item.update(action="check", why=f"last check older than {cfg['freshness_recheck_hours']} h")
+        else:
+            item.update(action="wait", why=f"checked at {last['checked_at']}")
+        researched = any(
+            r.get("mode") in WRITTEN_MODES and parse_iso(r["checked_at"]) >= opens for r in recs
+        )
+        item["needs_research"] = item["action"] != "writing" and not researched
+        out.append(item)
+    return sorted(out, key=lambda x: x["slot_utc"])
+
+
+def escalate(store: DataStore, post_id: str, record: dict, *, by: str = "freshness check") -> dict:
+    """A stale post: request its same-slot replacement now (approval discarded)."""
+    from lce import cloud, repackage
+
+    post = store.load_post(post_id)
+    if post.get("refresh_request"):
+        return {"escalated": False, "why": "a replacement is already requested"}
+    if cloud.load_delegation(store, post_id):
+        return {
+            "escalated": False,
+            "why": "the post is in the cloud publisher; the publishing gate holds it until the owner "
+            "withdraws it there (nothing is withdrawn automatically)",
+        }
+    stale = {
+        "reason": record["reason"][:500],
+        "checked_at": record["checked_at"],
+        "mode": record.get("mode"),
+        "missing_claims": [c["text"] for c in record.get("claims") or [] if c.get("status") == "missing"],
+        "media": (record.get("media") or {}).get("status"),
+        **({"slot_utc": record["window"]["slot_utc"]} if record.get("window") else {}),
+    }
+    req = repackage.request(
+        store, post_id, by=by, note="found stale before publication", origin="freshness", stale=stale
+    )
+    return {
+        "escalated": True,
+        "rejected_version": req.get("rejected_version"),
+        "requested_at": req["requested_at"],
+    }
+
+
+def run_window(
+    store: DataStore,
+    *,
+    now=None,
+    fetch: Fetcher = http_fetch,
+    by: str = "freshness window",
+    dry_run: bool = False,
+) -> list[dict]:
+    """Check what is due in the window; escalate what is stale. Returns one row per post."""
+    from lce.jobs import automation_config
+
+    cfg = automation_config(store)
+    rows = []
+    for item in window(store, now):
+        row = dict(item)
+        if item["action"] == "check":
+            approval_before = _approval(store.load_post(item["post_id"]))
+            win = {k: item[k] for k in ("slot_utc", "slot_local", "window_opens_at")}
+            rec = check(
+                store,
+                item["post_id"],
+                as_of=today_local(store),
+                fetch=fetch,
+                by=by,
+                dry_run=True,
+                context={"trigger": "window", "window": win},
+            )
+            row["result"] = {k: rec[k] for k in ("decision", "status", "reason")}
+            if not dry_run:
+                if rec["decision"] == "update_required" and cfg["freshness_escalate"]:
+                    esc = escalate(store, item["post_id"], rec)
+                    rec["escalation"] = esc
+                    if esc["escalated"]:
+                        rec["approval_effect"] = (
+                            "invalidated" if approval_before in {"pending", "approved"} else "none"
+                        )
+                        rec["approval"] = _approval(store.load_post(item["post_id"]))
+                    row["escalation"] = esc
+                _append(store, item["post_id"], rec)
+        rows.append(row)
+    return rows
 
 
 def cloud_rows(store: DataStore, post_ids: list[str]) -> list[dict]:

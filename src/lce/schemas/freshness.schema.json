@@ -38,7 +38,8 @@
               "check",
               "research",
               "update",
-              "manual"
+              "manual",
+              "new"
             ]
           },
           "by": {
@@ -50,7 +51,8 @@
               "update_required",
               "unverifiable",
               "confirmed",
-              "updated"
+              "updated",
+              "created"
             ]
           },
           "status": {
