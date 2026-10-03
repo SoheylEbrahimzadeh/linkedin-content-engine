@@ -320,6 +320,11 @@ def cmd_refresh_manual(args):
     from lce import repackage
 
     store = _store(args)
+    if args.sub == "unskip":
+        out = repackage.unskip_as_refresh(store, args.post, by=args.by, note=args.note or "")
+        print(f"✓ {args.post}: skip undone; v{out['rejected_version']} archived as rejected; "
+              "replacement requested (the refresh worker writes it; nothing approved or published)")
+        return 0
     if args.sub == "pending":
         rows = repackage.pending(store)
         if args.json:
@@ -1340,6 +1345,11 @@ def build_parser() -> argparse.ArgumentParser:
                    "text_only: {reason, rationale}}")
     p.add_argument("--as-of", dest="as_of", default=None)
     p.add_argument("--by", default="session")
+    p = gcmd(g, "unskip", cmd_refresh_manual,
+             "the owner skipped a post but meant Refresh: reopen the slot and request a replacement")
+    p.add_argument("post")
+    p.add_argument("--note", default="")
+    p.add_argument("--by", required=True, help="who asked (e.g. owner via chat)")
     p = gcmd(g, "push", cmd_refresh, "send today's latest freshness records to the cloud gate")
     p.add_argument("--as-of", dest="as_of", default=None)
     p = gcmd(g, "show", cmd_refresh, "the post's freshness history")
