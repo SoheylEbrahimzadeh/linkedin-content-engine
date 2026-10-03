@@ -47,6 +47,27 @@ is reported to D1 `client_reports`; D1 `access_sessions` records which Access
 sessions reached the Worker with GETs and with changes. The dashboard check prints
 both, which is the production evidence for why a POST was refused.
 
+**Live progress (LCE-048).** Every stage of a Refresh is an event that actually
+happened, recorded in D1 `refresh_progress` by the component that did it:
+- **The writing session:** `worker_started`, `researching`, `writing`, `media`.
+- **The `refresh-package` workflow via the engine:** `humanization`, `qa`,
+  `duplicate_check`, `approval_prepared`; then `replacement_ready` after the
+  mirror is synced, or `failed`.
+
+`GET /api/refresh-status/:post` returns the request (the D1 decision), these
+events and the mirror's view of the post. While a Refresh is active, the Control
+Center polls it every 15 s and shows each stage with the time it was reported.
+It shows the elapsed time since the request and no remaining-time estimate. It
+keeps queued (private run), waiting (no writing session yet) and actively
+processing apart, and flags stalls:
+- no private run after 75 min;
+- no writing session 30 min after the request reached the repository;
+- a session silent for 20 min.
+
+When the mirror shows the post refreshed for that request, the page loads the
+new state by itself. A failure shows "Refresh failed — no replacement was
+created" with Try again.
+
 **Access session length (LCE-047).** Cloudflare Access decides how long a sign-in
 lasts: the application token it issues (the `cf-access-jwt-assertion` the Worker
 verifies) carries its own `iat`/`exp`. When that token expires, Access answers

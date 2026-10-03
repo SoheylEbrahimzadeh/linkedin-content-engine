@@ -8,7 +8,7 @@
 
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
-  REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
+  REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, PROGRESS_STEPS, fmtElapsed, refreshProgress, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
   mediaSourceShort, parseHash, segments, timeline, weekday,
 } from "./lib.js";
 
@@ -685,7 +685,7 @@ function viewPost(id) {
     d ? h("div", { class: "notice info" }, locked ? CLOSED_NOTE[locked](d) : `Your ${d.action} decision is recorded (${fmtWhen(d.created_at)}). It is applied to the repository at the next private run, within about an hour. `,
       B(locked ? `Undo ${locked}` : "Cancel", () => A.cancel(d), "small")) : null,
     outcomeLine(id, true),
-    refreshBanner(p, d),
+    progressPanel(p, d) ?? refreshBanner(p, d),
     stepper(code),
     h("div", { class: "detail" },
       h("div", { class: "detail-main" }, publishingAs(true), feedPreview(p, c), h("p", { class: "small muted" }, "Preview only. Opening or reviewing a post never publishes it."),
@@ -739,6 +739,73 @@ function outcomeLine(key, big = false) {
     h("strong", {}, `${cap(o.label)} failed — the request was not recorded. `), o.message ?? "",
     o.retry ? [" ", h("button", { type: "button", class: "small", onclick: () => o.retry() }, "Try again")] : null);
 }
+
+// ── LCE-048: live Refresh progress (real events only; polled while a refresh is active) ──
+S.progress = {};
+const POLL_MS = 15000;
+let pollTimer = null;
+function activeRefreshIds() {
+  const ids = new Set();
+  for (const p of S.pipe?.posts ?? []) if (p.refresh_request) ids.add(p.post_id);
+  for (const d of S.snap?.decisions ?? []) if (d.status === "pending" && d.action === "refresh" && d.post_id) ids.add(d.post_id);
+  for (const [id, st] of Object.entries(S.progress)) {
+    const pr = refreshProgress(st);
+    if (pr && !pr.ready && !pr.failed) ids.add(id);
+  }
+  return [...ids];
+}
+async function pollProgress() {
+  clearTimeout(pollTimer);
+  const ids = activeRefreshIds();
+  if (!ids.length) return;
+  let becameReady = false;
+  for (const id of ids) {
+    const r = await rawFetch("GET", "/refresh-status/" + encodeURIComponent(id));
+    if (r.kind === "signin") { sessionExpired(); break; }
+    if (r.kind !== "ok") continue;
+    const before = refreshProgress(S.progress[id]);
+    S.progress[id] = r.data;
+    const now = refreshProgress(r.data);
+    if (now?.ready && before && !before.ready) becameReady = true;
+  }
+  if (becameReady) { await load(); return; }      // the replacement is in the mirror: show it at once
+  if (location.hash.startsWith("#post/")) render();
+  pollTimer = setTimeout(pollProgress, POLL_MS);
+}
+setInterval(() => {     // elapsed time from the recorded request, ticking; never a countdown
+  for (const el of document.querySelectorAll("[data-elapsed-since]")) {
+    el.textContent = "Elapsed: " + fmtElapsed((Date.now() - Date.parse(el.dataset.elapsedSince)) / 1000);
+  }
+}, 1000);
+
+function progressPanel(p, d) {
+  if (!p) return null;
+  const st = S.progress[p.post_id];
+  const pr = refreshProgress(st);
+  if (!pr || pr.ready) return null;
+  const title = pr.failed ? "Refresh failed — no replacement was created" : "Refresh requested · writing a replacement";
+  const phaseLabel = { queued: "Queued: waiting for the private run", waiting: "Waiting for writing session",
+    working: "Claude Code is actively processing", failed: "Failed" }[pr.phase];
+  const stepRow = (s) => h("li", { class: "pstep " + s.state },
+    h("span", { class: "pstep-mark" }, s.state === "done" || s.state === "done_untimed" ? "✓" : s.state === "current" ? "…" : ""),
+    h("span", { class: "pstep-label" }, s.label),
+    h("span", { class: "pstep-at small muted" }, s.at ? localTime(s.at, tz()) : s.state === "done_untimed" ? "(no time reported)" : ""));
+  return h("section", { class: "notice " + (pr.failed ? "err" : pr.stalled ? "warn" : "info") + " progress-panel", "aria-live": "polite" },
+    h("div", { class: "progress-head" }, h("strong", {}, title),
+      pr.failed ? null : h("span", { class: "small", "data-elapsed-since": pr.started_at }, "Elapsed: " + pr.elapsed)),
+    h("div", { class: "small" }, h("span", { class: "pill " + (pr.stalled ? "warn" : pr.phase === "working" ? "accent" : "muted") }, phaseLabel),
+      pr.note ? " " + pr.note : ""),
+    h("ol", { class: "psteps" }, pr.steps.map(stepRow)),
+    pr.failed ? B2("Try again", () => A.refresh(p), "primary") : null,
+    h("details", { class: "small" }, h("summary", {}, "Diagnostics"),
+      h("ul", { class: "list small" },
+        h("li", {}, `Request ${pr.decision_id} recorded ${fmtWhen(st.decision.created_at)} — ${st.decision.status}${st.decision.resolved_at ? " " + fmtWhen(st.decision.resolved_at) : ""}`),
+        st.mirror ? h("li", {}, `Mirror (GitHub state) generated ${fmtWhen(st.mirror.generated_at)}; post ${st.mirror.post?.state ?? "?"}${st.mirror.post?.refresh_request ? ", replacement requested" : ""}`) : null,
+        pr.events.length ? pr.events.map((e) => h("li", {}, `${fmtWhen(e.at)} · ${e.stage}${e.note ? " — " + e.note : ""} (${e.reported_by})`))
+          : h("li", {}, "No progress reported by any writing session yet."),
+        h("li", {}, "Times are when each step was reported; there is no estimate of the remaining time."))));
+}
+const B2 = (label, fn, cls) => h("button", { type: "button", class: cls, onclick: fn }, label);
 
 function refreshPill(p) {
   const r = p ? refreshState(p, pendingFor(p.post_id)) : null;
@@ -1008,6 +1075,7 @@ async function load() {
     status.textContent = "Updated " + localTime(snap.now, snap.settings?.timezone);
     status.className = "status ok";
     render();
+    pollProgress();   // LCE-048: follow any active Refresh live
     if (!S.identity) {
       fetch("/api/linkedin/identity", { credentials: "same-origin", cache: "no-store" })
         .then((r) => r.json()).then((i) => { S.identity = i; render(); })

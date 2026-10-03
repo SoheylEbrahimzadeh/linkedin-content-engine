@@ -364,3 +364,41 @@ test("the Access session length is reported in honest units (LCE-047)", () => {
   assert.equal(lib.sessionLength({}), null);
   assert.match(lib.SHORT_SESSION_ADVICE, /Zero Trust → Access → Applications/);
 });
+
+// ── LCE-048: real Refresh progress ──
+test("refresh progress comes only from recorded events", () => {
+  const T = (m) => new Date(Date.parse("2026-10-03T17:23:25Z") + m * 60000).toISOString();
+  const d = { decision_id: "d-1", status: "pending", created_at: T(0), resolved_at: null };
+  const base = { decision: d, events: [], mirror: { post: { state: "AWAITING_APPROVAL", refresh_request: null, refresh: { decision_id: "d-0" } } } };
+  let p = lib.refreshProgress(base, Date.parse(T(5)));
+  assert.equal(p.phase, "queued");
+  assert.equal(p.elapsed, "05:00");
+  assert.deepEqual(p.steps.filter((s) => s.state === "done").map((s) => s.key), ["recorded"]);
+  assert.equal(p.steps.find((s) => s.state === "current").key, "waiting");
+  // applied, no worker for 40 minutes -> stalled waiting, never "processing"
+  const applied = { ...base, decision: { ...d, status: "applied", resolved_at: T(10) }, mirror: { post: { state: "NEEDS_REVISION", refresh_request: { decision_id: "d-1" } } } };
+  p = lib.refreshProgress(applied, Date.parse(T(50)));
+  assert.equal(p.phase, "waiting");
+  assert.equal(p.stalled, true);
+  assert.match(p.note, /no worker has started yet/);
+  // worker started and reported qa -> earlier stages done, qa done, duplicate current
+  const working = { ...applied, events: [{ stage: "worker_started", at: T(51) }, { stage: "researching", at: T(52) }, { stage: "qa", at: T(60) }] };
+  p = lib.refreshProgress(working, Date.parse(T(61)));
+  assert.equal(p.phase, "working");
+  assert.equal(p.steps.find((s) => s.key === "writing").state, "done_untimed");
+  assert.equal(p.steps.find((s) => s.key === "qa").at, T(60));
+  assert.equal(p.steps.find((s) => s.state === "current").key, "duplicate_check");
+  // silent worker -> stalled
+  assert.equal(lib.refreshProgress(working, Date.parse(T(90))).stalled, true);
+  // failure is shown as failure
+  const failed = { ...working, events: [...working.events, { stage: "failed", at: T(62), note: "QA failed" }] };
+  p = lib.refreshProgress(failed, Date.parse(T(63)));
+  assert.equal(p.phase, "failed");
+  assert.equal(p.note, "QA failed");
+  // ready when the mirror shows the post refreshed for THIS request
+  const ready = { ...working, mirror: { post: { state: "AWAITING_APPROVAL", refresh_request: null, refresh: { decision_id: "d-1", completed_at: T(64) } } } };
+  p = lib.refreshProgress(ready, Date.parse(T(70)));
+  assert.equal(p.phase, "ready");
+  assert.equal(p.steps.at(-1).state, "done");
+  assert.equal(lib.refreshProgress({ decision: null }), null);
+});

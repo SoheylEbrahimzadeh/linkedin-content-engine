@@ -429,3 +429,32 @@ describe("same-day freshness gate (LCE-040)", () => {
     expect(snap.body!.freshness).toMatchObject([{ post_id: READY, status: "current", check_date: "2026-10-05" }]);
   });
 });
+
+describe("refresh progress (LCE-048)", () => {
+  it("records real events from the CLI only and reports request, events and mirror together", async () => {
+    await awaitingMirror({ refresh_request: { decision_id: "x" } });
+    await e.DB.prepare("DELETE FROM refresh_progress").run();
+    const d = await call("POST", "/decisions", { action: "refresh", post_id: AWAITING, note: "again" });
+    expect(d.status).toBe(201);
+    // a browser (dashboard) cannot report progress; the CLI (service token) can
+    expect((await call("PUT", `/refresh-progress/${AWAITING}`, { stage: "researching" })).status).toBe(403);
+    expect((await call("PUT", `/refresh-progress/${AWAITING}`, { stage: "made_up" }, SERVICE, fakeFetch(), "cli")).status).toBe(400);
+    const ok = await call("PUT", `/refresh-progress/${AWAITING}`, { stage: "worker_started", note: "manual session",
+      decision_id: d.body!.decision_id }, SERVICE, fakeFetch(), "cli");
+    expect(ok.status).toBe(200);
+    await call("PUT", `/refresh-progress/${AWAITING}`, { stage: "researching" }, SERVICE, fakeFetch(), "cli");
+    const s = await call("GET", `/refresh-status/${AWAITING}`);
+    expect(s.status).toBe(200);
+    expect(s.body!.decision.decision_id).toBe(d.body!.decision_id);
+    expect(s.body!.decision.status).toBe("pending");
+    expect(s.body!.events.map((x: { stage: string }) => x.stage)).toEqual(["worker_started", "researching"]);
+    expect(s.body!.mirror.post.state).toBe("AWAITING_APPROVAL");
+    expect(s.body!.mirror.post.refresh_request).toEqual({ decision_id: "x" });
+  });
+  it("has no request when the post was never refreshed", async () => {
+    await awaitingMirror();
+    const s = await call("GET", `/refresh-status/${AWAITING}`);
+    expect(s.body!.decision).toBeNull();
+    expect(s.body!.events).toEqual([]);
+  });
+});

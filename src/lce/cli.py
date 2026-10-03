@@ -1026,6 +1026,13 @@ def cmd_cloud(args):
                   + (f"\n    {c['action']}" if c["action"] else ""))
         return 2 if any(c["status"] == cloud.FAIL for c in checks) else 0
     store = _store(args)
+    if args.sub == "refresh-progress":
+        req = store.load_post(args.post).get("refresh_request") or {}
+        decision = args.decision_id or req.get("decision_id") or ""
+        cloud.report_progress(store, args.post, args.stage, note=args.note, decision_id=decision,
+                              required=True)
+        print(f"✓ {args.post}: {args.stage} reported")
+        return 0
     if args.sub == "configure" and args.dry_run:
         print(json.dumps(cloud.configure_payload(store), indent=2, ensure_ascii=False))
         print("(dry run: nothing sent; auto_publish is never set here)")
@@ -1504,6 +1511,14 @@ def build_parser() -> argparse.ArgumentParser:
     gcmd(g, "whoami", cmd_linkedin_whoami, "look up your person URN (network call)")
 
     g = group("cloud", "cloud publisher (Cloudflare Worker)")
+    p = gcmd(g, "refresh-progress", cmd_cloud,
+             "report a Refresh stage that actually happened (LCE-048; shown live in the Control Center)")
+    p.add_argument("post")
+    p.add_argument("stage", choices=["worker_started", "researching", "writing", "media", "humanization",
+                                     "qa", "duplicate_check", "approval_prepared", "replacement_ready",
+                                     "failed"])
+    p.add_argument("--note", default="")
+    p.add_argument("--decision-id", dest="decision_id", default="")
     gcmd(g, "push", cmd_cloud, "delegate an approved post to the cloud (interactive)").add_argument("post")
     p = gcmd(g, "consent", cmd_cloud, "schedule a delegated post for one slot (interactive)")
     p.add_argument("post")
