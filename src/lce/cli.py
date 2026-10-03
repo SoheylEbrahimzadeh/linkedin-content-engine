@@ -1270,7 +1270,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--by", default="agent", help="who decided (agent or owner)")
     p.add_argument("--text-only-reason", dest="text_only_reason", default=None,
                    choices=["text_carries_point", "no_relevant_visual", "no_rights_safe_source",
-                            "personal_story_without_owner_photo", "would_be_decorative"],
+                            "personal_story_without_owner_photo", "would_be_decorative",
+                            "no_suitable_licensed_image"],
                    help="required with --kind none: why the post stays text-only")
     p.add_argument("--concept", default=None, help="the idea the image communicates (LCE-041)")
     p.add_argument("--visual-type", dest="visual_type", default=None,

@@ -241,13 +241,18 @@ export const PIPELINE_STEPS = ["PLANNED", "AWAITING_APPROVAL", "APPROVED", "SCHE
 const DRAFTING = new Set(["RESEARCHED", "SELECTED", "NEEDS_INPUT", "DRAFTED", "HUMANIZED", "QA_PASSED", "DUPLICATE_CHECKED"]);
 
 /** Display status of one post/plan entry. Cloud facts (scheduled, published) win over the plan. */
-export function displayStatus({ post = null, cloudPost = null, consent = null, publication = null, planStatus = null } = {}) {
+export function displayStatus({ post = null, cloudPost = null, consent = null, publication = null, planStatus = null, pending = null } = {}) {
   const cs = cloudPost && cloudPost.state !== "WITHDRAWN" ? cloudPost.state : null;
   if (publication?.state === "published" || cs === "PUBLISHED" || post?.state === "PUBLISHED") return "PUBLISHED";
   if (cs === "NEEDS_RECONCILE" || cs === "PUBLISHING" || post?.state === "NEEDS_RECONCILE") return "NEEDS_RECONCILE";
   if (cs === "PUBLISH_FAILED") return "FAILED";
   if (consent) return "SCHEDULED";
   if (planStatus === "skipped") return "SKIPPED";
+  // LCE-043: a recorded Skip / Reject / Refresh takes effect for the owner at once; the repository
+  // catches up at the next private run (the decision is pending there, never in doubt here).
+  if (pending?.action === "skip") return "SKIPPED";
+  if (pending?.action === "reject") return "REJECTED";
+  if (pending?.action === "refresh") return "REPLACEMENT_PENDING";
   const st = post?.state;
   if (st === "REJECTED") return /^skipped/i.test(post?.approval?.reason ?? lastNote(post)) ? "SKIPPED" : "REJECTED";
   if (post?.refresh_request) return "REPLACEMENT_PENDING";     // LCE-042: rejected by Refresh, replacement coming
@@ -256,6 +261,17 @@ export function displayStatus({ post = null, cloudPost = null, consent = null, p
   if (st === "PUBLISH_FAILED") return "FAILED";
   if (st === "AWAITING_APPROVAL") return "AWAITING_APPROVAL";
   return "PLANNED";
+}
+
+/** LCE-043: decisions that end this version as a candidate. While one is pending, nothing may act on the
+ * version (no Approve, Refresh, Edit, Reschedule, Skip or Reject); only Cancel undoes it. */
+export const CLOSING = new Set(["skip", "reject", "refresh"]);
+export const closedBy = (pending) => (pending && pending.status === "pending" && CLOSING.has(pending.action) ? pending.action : null);
+
+/** The pending decision for a post or an empty plan entry (cloud snapshot, newest first). */
+export function pendingDecision(decisions, postId, planDate = null) {
+  return (decisions ?? []).find((d) => d.status === "pending" &&
+    (postId ? d.post_id === postId : !d.post_id && planDate && d.plan_date === planDate)) ?? null;
 }
 
 const lastNote = (post) => String((post?.history ?? []).at(-1)?.note ?? "");
@@ -301,7 +317,8 @@ export function contentPlan({ pipeline, cloud, now, tz, days = 14 }) {
     const cp = postId ? cloudPosts.get(postId) ?? null : null;
     const consent = postId ? consents.get(postId) ?? null : null;
     const pub = postId ? pubs.get(postId) ?? null : null;
-    const status = displayStatus({ post, cloudPost: cp, consent, publication: pub, planStatus: entry?.status });
+    const pending = pendingDecision(cloud?.decisions, postId, postId ? null : entry?.date);
+    const status = displayStatus({ post, cloudPost: cp, consent, publication: pub, planStatus: entry?.status, pending });
     let date = consent ? localDate(consent.slot_utc, tz) : String(entry?.date ?? post?.plan_date ?? cp?.plan_date ?? "") || null;
     if (status === "PUBLISHED" && pub?.published_at) date = localDate(pub.published_at, tz);
     let time = consent ? localTime(consent.slot_utc, tz) : status === "PUBLISHED" && pub?.published_at ? localTime(pub.published_at, tz) : null;
@@ -314,7 +331,8 @@ export function contentPlan({ pipeline, cloud, now, tz, days = 14 }) {
     items.push({ kind: "post", post_id: postId, date, time, time_source: timeSource, status,
       title: hook(text) ?? entry?.topic ?? post?.topic ?? postId ?? UNKNOWN, topic: entry?.topic ?? post?.topic ?? null,
       objective: post?.objective ?? entry?.objective ?? null, media: media(post ?? cp ?? { post_id: postId, format: entry?.format }, cloud),
-      note: draftingNote(post ?? (cp ? { state: "APPROVED" } : null)), consent_id: consent?.consent_id ?? null,
+      note: closedBy(pending) ? "recorded; the repository is updated at the next private run" : draftingNote(post ?? (cp ? { state: "APPROVED" } : null)),
+      pending: pending ? { decision_id: pending.decision_id, action: pending.action, created_at: pending.created_at, post_id: pending.post_id ?? null, plan_date: pending.plan_date ?? null } : null, consent_id: consent?.consent_id ?? null,
       plan_date: entry?.date ?? post?.plan_date ?? null, sources: post?.sources ?? (entry?.sources ?? []).map((u) => ({ url: u })) });
   };
   for (const e of pipeline?.calendar ?? []) {
@@ -384,7 +402,7 @@ const ORIGIN_LABEL = { own_creation: "Own creation", owner_screenshot: "Your scr
   source_publication: "Source publication", licensed_stock: "Licensed (Wikimedia Commons or stock)", generated: "Generated" };
 const REASON_LABEL = { text_carries_point: "The text carries the point", no_relevant_visual: "No relevant visual",
   no_rights_safe_source: "No rights-safe source", personal_story_without_owner_photo: "Personal story without your photo",
-  would_be_decorative: "An image would only decorate" };
+  would_be_decorative: "An image would only decorate", no_suitable_licensed_image: "No suitable licensed image" };
 const STATUS_LABEL = { attached: "Attached", text_only: "Text-only (decided)", needs_review: "Rights need your review",
   invalid: "Invalid — fix before approval", undecided: "No decision yet" };
 
@@ -403,9 +421,15 @@ export function mediaRecord(post) {
     const prov = img.provenance ?? {};
     rows.push(["Kind", img.kind]);
     rows.push(["Source", ORIGIN_LABEL[prov.origin] ?? prov.origin ?? UNKNOWN]);
-    if (prov.credit) rows.push(["Credit", prov.credit]);
+    if (prov.title) rows.push(["Source file", prov.title]);
+    if (prov.creator) rows.push(["Creator", prov.creator]);
+    else if (prov.credit) rows.push(["Credit", prov.credit]);
     if (prov.license || prov.usage) rows.push(["Rights", [prov.license, prov.usage].filter(Boolean).join(" · ")]);
+    if (prov.license_url) rows.push(["Licence", { href: prov.license_url }]);
+    if (prov.attribution_required !== undefined) rows.push(["Attribution", prov.attribution_required ? `required · in the post: “${prov.attribution}”` : `not required${prov.attribution ? ` (“${prov.attribution}”)` : ""}`]);
     if (prov.source_url) rows.push(["Source URL", { href: prov.source_url }]);
+    if (prov.retrieved) rows.push(["Retrieved", `${prov.retrieved}${prov.retrieved_at ? " · " + String(prov.retrieved_at).slice(0, 16).replace("T", " ") : ""}`]);
+    if (prov.original_sha1) rows.push(["Original SHA-1", prov.original_sha1]);
     if (prov.generation?.method) rows.push(["Made with", prov.generation.method]);
     if (img.width && img.height) rows.push(["Size", `${img.width}×${img.height} px${img.bytes ? ` · ${Math.round(img.bytes / 1024)} KB` : ""}${img.mime ? ` · ${img.mime.replace("image/", "").toUpperCase()}` : ""}`]);
     else if (img.bytes) rows.push(["Size", `${Math.round(img.bytes / 1024)} KB`]);
@@ -414,6 +438,14 @@ export function mediaRecord(post) {
   }
   if (img.decided_by) rows.push(["Decided", `${img.decided_by}${img.decided_at ? " · " + String(img.decided_at).slice(0, 10) : ""}`]);
   return { status, statusLabel: STATUS_LABEL[status] ?? status, rows, errors: img.errors ?? [], warnings: img.warnings ?? [] };
+}
+
+/** LCE-043: how the image was searched for (every candidate and why it was refused). */
+export function selectionRows(image) {
+  const sel = image?.selection;
+  if (!sel) return null;
+  return { subject: sel.subject, concept: sel.concept ?? null, terms: sel.subject_terms ?? [], source: sel.source ?? null,
+    selected: sel.selected ?? null, tried: (sel.tried ?? []).map((t) => ({ title: t.title, outcome: t.outcome, why: t.why ?? (t.matched_terms ? "matches: " + t.matched_terms.join(", ") : ""), license: t.license ?? null })) };
 }
 
 export function mediaSourceShort(post) {
@@ -492,6 +524,7 @@ export function canRefresh(post, inCloud) {
 
 /** Where a refresh stands for this post (from the recorded request/outcome only). */
 export function refreshState(post, pending = null) {
+  if (pending?.action === "skip" || pending?.action === "reject") return null;   // LCE-043: the version is closed
   if (pending?.action === "refresh") {
     return { key: "recorded", label: "Refresh requested", tone: "info",
       note: "Recorded in the cloud; the private workflow adds it to the repository within about an hour." };
@@ -525,6 +558,11 @@ export function relevanceRows(image) {
       ? rel.factual_claims.map((f) => `${f.text}${f.supported ? " (sourced)" : " (UNSUPPORTED)"}`).join("; ") : "none"],
   ];
   if ((rel.source_requirements ?? []).length) rows.push(["Source shown", rel.source_requirements.join("; ")]);
+  const sem = rel.semantic;   // LCE-043: a real image is relevant when its own metadata names the post's subject
+  if (sem) {
+    rows.push(["Subject", sem.subject ?? "not stated"]);
+    rows.push(["In source metadata", (sem.matched_terms ?? []).length ? sem.matched_terms.join(", ") : "none (not relevant)"]);
+  }
   return { rows, decision: rel.media_decision, legacy: Boolean(rel.legacy), problems: rel.problems ?? [] };
 }
 

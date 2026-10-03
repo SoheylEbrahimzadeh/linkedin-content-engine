@@ -35,7 +35,8 @@ ORIGINS_FOR_KIND = {
 THIRD_PARTY = {"source_publication", "licensed_stock"}
 # LCE-038: why a post stays text-only (recorded, never a silent default).
 TEXT_ONLY_REASONS = ("text_carries_point", "no_relevant_visual", "no_rights_safe_source",
-                     "personal_story_without_owner_photo", "would_be_decorative")
+                     "personal_story_without_owner_photo", "would_be_decorative",
+                     "no_suitable_licensed_image")
 MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif"}
 MIN_RELATION = 20
 NO_IMAGE = "none"

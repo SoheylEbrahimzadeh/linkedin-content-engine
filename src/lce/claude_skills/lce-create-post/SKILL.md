@@ -52,42 +52,37 @@ Phase 1 ends at the approval boundary. **You never run `lce approve`,
    is missing.
 5. **Duplicate check**: `lce dupcheck <post_id>`. On failure, change the angle
    or topic; do not paraphrase around it.
-6. **Media decision (explicit; text-only is never a silent default).** A visual
-   must communicate the post's IDEA, never re-type the post. Decide in this order:
-   1. What is the post's central idea, in one line? Would a visual add
-      information or understanding a reader does not get from the text?
-      If not: text-only (below).
-   2. Which visual form carries that idea: flow / process, decision_tree,
-      framework / relationship_map (centre + elements), comparison, chart?
-   3. Write a spec (YAML) with SHORT labels of your own (≤ 6 words, optional
-      note ≤ 8 words), not the post's sentences or questions:
-      ```yaml
-      visual_type: decision_tree          # flow, process, decision_tree, framework, relationship_map
-      concept: "<the idea the visual carries>"
-      relevance_reason: "<what it adds beyond the text>"
-      title: "<short title>"
-      nodes: [{label: "Business value", note: "result changed, how measured"}, ...]
-      outcomes: ["Proceed", "Fund as experiment", "Stop"]   # optional
-      footer_claim: 0                     # optional: a recorded claim drawn verbatim + its source
-      alt_text: "<describe the visual: form, elements, outcome — not the post>"
-      ```
-      then `lce image diagram <post_id> --spec <file>`. It is attached only if
-      the media relevance check accepts it: no text dump (copied post text ≤ 35%),
-      no copied questions, every number a recorded sourced claim with the
-      source shown, alt text describing the visual. "It rendered" is not proof
-      of relevance. Every figure in an image must come from a recorded claim.
-   - **Recorded figures** the post rests on: `lce image chart <post_id>`.
-   - **A real photo or illustration adds meaning**: `lce image commons <post_id>
-     --title "File:…" --relation "…" --alt "…" --rationale "…" --concept "…"
-     --visual-type photo --relevance-reason "…"`. Wikimedia Commons only; PD,
-     CC0, CC BY or CC BY-SA; credit and licence recorded. Never Google Images,
-     never an unlicensed or invented source.
-   - **The owner's own screenshot/photo**: `lce image decide … --origin
-     owner_screenshot|owner_photo --concept … --visual-type screenshot|photo
-     --relevance-reason …`.
-   - **Otherwise text-only**, with the reason:
-     `lce image decide <post_id> --kind none --text-only-reason text_carries_point|no_relevant_visual|no_rights_safe_source|personal_story_without_owner_photo|would_be_decorative --rationale "..."`.
-   Never a random stock/AI image, generated people, logos or fake screenshots.
+6. **Media decision (explicit; text-only is never a silent default).** LCE-043:
+   the default is a **real, relevant, legally reusable image**, never a generated
+   diagram and never the post's sentences in boxes. Decide in this order:
+   1. What is the post's central subject, and the key visual concept? What kind
+      of real image would show it (a photo of the industry, place, artefact,
+      event or organisation; a source chart whose licence allows reuse)?
+      If no real image would add anything: text-only (below).
+   2. **Real image from Wikimedia Commons** (the only external source with
+      machine-readable licences): name candidate files and/or search queries,
+      the subject terms the file's own metadata must contain, and why it fits.
+      The engine accepts a file only if its licence is PD, CC0, CC BY or CC BY-SA
+      (never NC/ND/fair use/unknown) AND its title, description or categories
+      name at least one subject term; it records creator, licence, licence URL,
+      source URL, attribution, the retrieved file and its hashes, and every
+      candidate it refused with the reason. Licences that require credit put the
+      credit line into the post. Commons is reachable from GitHub Actions, not
+      from this container: for a refresh, use `media: {commons: …}` in the
+      package (section A of `lce-refresh`); for a new post,
+      `lce image commons <post_id> --title "File:…" …` where the network allows.
+      Never Google Images, never a page whose rights are unclear, never invented.
+   3. **The owner's own screenshot/photo**: `lce image decide … --origin
+      owner_screenshot|owner_photo --concept … --visual-type screenshot|photo
+      --relevance-reason …`.
+   4. **Recorded figures the post rests on**: `lce image chart <post_id>` (a
+      chart of sourced claims, source shown).
+   5. **Otherwise text-only**, with the reason:
+      `lce image decide <post_id> --kind none --text-only-reason no_suitable_licensed_image|text_carries_point|no_relevant_visual|no_rights_safe_source|personal_story_without_owner_photo|would_be_decorative --rationale "..."`.
+   A drawn conceptual diagram (`lce image diagram --spec`) is used **only when the
+   owner asked for one**; it must still pass the relevance check (short labels of
+   your own, no text dump, every number a sourced claim). Never a random
+   stock/AI image, generated people, logos or fake screenshots.
    `lce image check <post_id>` must pass; `lce image show <post_id>` prints the
    media record with its `media_relevance`.
 7. **Approval artifact**: `lce approval prepare <post_id>`, then show the owner

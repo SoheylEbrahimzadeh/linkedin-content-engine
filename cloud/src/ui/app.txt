@@ -8,7 +8,7 @@
 
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
-  REFRESH_CONFIRM, SKIP_CONFIRM, canRefresh, displayStatus, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
+  REFRESH_CONFIRM, SKIP_CONFIRM, canRefresh, closedBy, displayStatus, selectionRows, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
   mediaSourceShort, parseHash, segments, timeline, weekday,
 } from "./lib.js";
 
@@ -471,6 +471,7 @@ function planRow(i) {
   const p = i.post_id ? pipePost(i.post_id) : null;
   const href = i.post_id ? `#post/${i.post_id}` : null;
   const hasImage = i.media.preview === "available" && i.post_id;
+  const locked = i.pending && closedBy({ ...i.pending, status: "pending" });   // LCE-043: skip/reject/refresh recorded
   return h("div", { class: "row status-" + i.status.toLowerCase() + (hasImage ? " has-media" : "") },
     h("div", { class: "row-time" }, i.time ?? "—", i.time && i.time_source === "planned slot" ? h("div", { class: "row-time-note" }, "planned") : null),
     h("div", { class: "row-main" },
@@ -486,11 +487,12 @@ function planRow(i) {
       p && !["PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) ? freshLine(freshOf(p, cloudPost(p.post_id), activeConsent(p.post_id))) : null,
       h("div", { class: "row-actions" },
         href ? link(href, "Open", "btn small") : null,
-        p?.state === "AWAITING_APPROVAL" && !refreshPending(p) ? h("button", { type: "button", class: "small primary", onclick: () => A.approve(p) }, "Approve") : null,
-        p && canRefresh(p, inCloud(p.post_id)) && !refreshPending(p) ? h("button", { type: "button", class: "small", onclick: () => A.refresh(p) }, "Refresh") : null,
-        p && i.status !== "SCHEDULED" && i.status !== "PUBLISHED" && p.text && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.edit(p) }, "Edit") : null,
-        p && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.reschedule(p) }, "Reschedule") : null,
-        !i.post_id && i.status === "PLANNED" ? h("button", { type: "button", class: "small", onclick: () => A.skip(null, i.plan_date) }, "Skip") : null,
+        p?.state === "AWAITING_APPROVAL" && !locked ? h("button", { type: "button", class: "small primary", onclick: () => A.approve(p) }, "Approve") : null,
+        p && canRefresh(p, inCloud(p.post_id)) && !locked ? h("button", { type: "button", class: "small", onclick: () => A.refresh(p) }, "Refresh") : null,
+        p && !locked && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && p.text && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.edit(p) }, "Edit") : null,
+        p && !locked && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.reschedule(p) }, "Reschedule") : null,
+        !i.post_id && !locked && i.status === "PLANNED" ? h("button", { type: "button", class: "small", onclick: () => A.skip(null, i.plan_date) }, "Skip") : null,
+        locked ? h("button", { type: "button", class: "small", onclick: () => A.cancel(i.pending) }, `Undo ${locked}`) : null,
         i.status === "SCHEDULED" && i.consent_id ? h("button", { type: "button", class: "small", onclick: () => A.revoke({ consent_id: i.consent_id }) }, "Unschedule") : null)));
 }
 function freshLine(f) {
@@ -648,15 +650,16 @@ function viewPost(id) {
   const pb = pub(id);
   const queued = inCloud(id);
   const entry = (S.pipe?.calendar ?? []).find((e) => e.draft_ref === id);
-  const code = displayStatus({ post: p, cloudPost: c, consent, publication: pb, planStatus: entry?.status });
+  const code = displayStatus({ post: p, cloudPost: c, consent, publication: pb, planStatus: entry?.status, pending: d });
   const item = plan(31).items.find((i) => i.post_id === id);
   const state = p?.state;
   const B = (label, fn, cls) => h("button", { type: "button", class: cls, onclick: fn }, label);
-  const editable = p && !queued && !["PUBLISHED", "REJECTED", "PUBLISHING", "NEEDS_RECONCILE"].includes(state);
+  const locked = closedBy(d);   // LCE-043: a recorded Skip/Reject/Refresh ends this version now; only Cancel undoes it
+  const editable = p && !queued && !locked && !["PUBLISHED", "REJECTED", "PUBLISHING", "NEEDS_RECONCILE"].includes(state);
   const voice = S.pipe?.voice;
   const controls = [
-    state === "AWAITING_APPROVAL" && !queued && !refreshPending(p) ? B("Approve", () => A.approve(p), "primary") : null,
-    p && canRefresh(p, queued) && !refreshPending(p) ? B("Refresh", () => A.refresh(p)) : null,
+    state === "AWAITING_APPROVAL" && !queued && !locked ? B("Approve", () => A.approve(p), "primary") : null,
+    p && canRefresh(p, queued) && !locked ? B("Refresh", () => A.refresh(p)) : null,
     editable && p.text ? B("Edit", () => A.edit(p)) : null,
     editable ? B("Reschedule", () => A.reschedule(p)) : null,
     editable ? B("Skip", () => A.skip(p)) : null,
@@ -673,7 +676,8 @@ function viewPost(id) {
   const kv = (rows) => h("dl", { class: "kv" }, rows.filter(Boolean).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v ?? UNKNOWN)]));
   return [
     h("div", { class: "page-head" }, h("div", {}, link("#upcoming", "← Upcoming", "back"), h("h1", { class: "post-h1" }, hook(p?.text ?? c?.text, 90) ?? p?.topic ?? id))),
-    d ? h("div", { class: "notice info" }, `Your ${d.action} decision is recorded (${fmtWhen(d.created_at)}). It is applied to the repository at the next private run, within about an hour. `, B("Cancel", () => A.cancel(d), "small")) : null,
+    d ? h("div", { class: "notice info" }, locked ? CLOSED_NOTE[locked](d) : `Your ${d.action} decision is recorded (${fmtWhen(d.created_at)}). It is applied to the repository at the next private run, within about an hour. `,
+      B(locked ? `Undo ${locked}` : "Cancel", () => A.cancel(d), "small")) : null,
     outcomeLine(id, true),
     refreshBanner(p, d),
     stepper(code),
@@ -690,7 +694,7 @@ function viewPost(id) {
           ["Media", typeChip(media(p ?? c, S.snap).type)],
           ["Visibility", (st().visibility || "PUBLIC") === "PUBLIC" ? "Public" : st().visibility],
         ])),
-        p ? freshCard(p, c, consent) : null,
+        p && !locked ? freshCard(p, c, consent) : null,
         mediaCard(p, c),
         card("Humanization", h("ul", { class: "hz" }, humanizationRows(p, voice).map((r) =>
           h("li", {}, h("span", { class: "hz-label" }, r.label), h("span", { class: "pill " + r.tone }, r.value), r.note ? h("div", { class: "small muted" }, r.note) : null))),
@@ -703,8 +707,12 @@ function viewPost(id) {
 }
 
 // ── LCE-041: refresh state, versions (previous → refreshed) ─────────
-// LCE-042: a refresh recorded in the cloud (not yet applied) already rejects this version: no Approve, no 2nd Refresh.
-const refreshPending = (p) => pendingFor(p.post_id)?.action === "refresh";
+// LCE-043: what a recorded (not yet applied) closing decision means for the owner, right now.
+const CLOSED_NOTE = {
+  skip: (d) => `Skipped · slot released (recorded ${fmtWhen(d.created_at)}). This version is no longer a candidate and nothing will be regenerated; the repository records it at the next private run and keeps the version in History. `,
+  reject: (d) => `Rejected (recorded ${fmtWhen(d.created_at)}). This version is no longer a candidate; the repository records it at the next private run. `,
+  refresh: (d) => `Refresh requested (recorded ${fmtWhen(d.created_at)}). This version is rejected and cannot be approved; it is archived in History and a new replacement is written for the same slot. `,
+};
 
 // What happened to the owner's last action here: sending, recorded, or failed (never ambiguous).
 function outcomeLine(key, big = false) {
@@ -755,7 +763,7 @@ function versionsCard(p) {
         p.image?.kind && p.image.kind !== "none" ? postImage(p.post_id, "version-img", { alt: p.image.alt_text }) : h("div", { class: "media-note" }, "Text-only"),
         h("p", { class: "version-hook" }, cur.hook ?? "—"),
         h("dl", { class: "kv small" }, [["Text hash", h("code", {}, short(cur.content_hash))], ["Image hash", cur.image_sha256 ? h("code", {}, short(cur.image_sha256)) : "none"],
-          ["Visual", cur.concept ?? "—"], ["Status", statusPill(displayStatus({ post: p }))]].map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
+          ["Visual", cur.concept ?? "—"], ["Status", statusPill(displayStatus({ post: p, pending: pendingFor(p.post_id) }))]].map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
         cur.refresh?.reason ? h("p", { class: "small muted" }, "Why: " + cur.refresh.reason) : null,
       ])),
     cmp.older.length ? h("details", { class: "rules" }, h("summary", {}, `Older versions (${cmp.older.length})`),
@@ -780,8 +788,18 @@ function mediaCard(p, c) {
     rec.rows.length ? h("dl", { class: "kv" }, [...rec.rows, ...(p?.image?.sha256 ? [["Image hash", h("code", {}, short(p.image.sha256, 16))]] : [])]
       .map(([k, v]) => [h("dt", {}, k), h("dd", {}, v && v.href ? ext(v.href, v.href.replace(/^https?:\/\//, "")) : v)])) : null,
     rec.note ? h("p", { class: "small muted" }, rec.note) : null,
+    selectionDetails(p?.image),
     (rec.errors ?? []).map((e) => h("p", { class: "err small" }, e)),
     (rec.warnings ?? []).map((w) => h("p", { class: "small muted" }, "Note: " + w)));
+}
+
+function selectionDetails(image) {
+  const sel = selectionRows(image);
+  if (!sel) return null;
+  return h("details", { class: "rules" }, h("summary", {}, `Image search · ${sel.tried.length} candidate${sel.tried.length === 1 ? "" : "s"} checked${sel.selected ? "" : " · none suitable"}`),
+    h("p", { class: "small" }, `Subject: ${sel.subject}. Must show: ${sel.terms.join(", ")}.${sel.source ? " Source: " + sel.source + "." : ""}`),
+    h("ul", { class: "list small" }, sel.tried.map((t) => h("li", {}, h("strong", {}, t.outcome === "selected" ? "Selected: " : "Refused: "),
+      t.title, t.license ? ` (${t.license})` : "", t.why ? " — " + t.why : ""))));
 }
 
 function techDetails(id, p, c, pb, state) {

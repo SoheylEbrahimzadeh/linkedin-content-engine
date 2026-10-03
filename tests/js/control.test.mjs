@@ -310,3 +310,27 @@ test("LCE-042: Refresh rejects the version (replacement pending), Skip is distin
   // after a replacement exists, Refresh is possible again (v3, v4, …)
   assert.equal(canRefresh({ post_id: "p1", state: "AWAITING_APPROVAL", text: "y", refresh: { outcome: "refreshed" } }, false), true);
 });
+
+// ── LCE-043: a recorded Skip / Reject / Refresh takes effect for the owner at once ──
+test("a pending skip releases the slot in the plan before the private run applies it", () => {
+  const skip = { decision_id: "d-1", status: "pending", action: "skip", post_id: "20261006-demo-a", created_at: "2026-10-05T00:44:37Z" };
+  const cp = contentPlan({ pipeline, cloud: { ...cloud, decisions: [skip] }, now: NOW, tz: "Europe/Berlin", days: 14 });
+  const a = cp.items.find((i) => i.post_id === "20261006-demo-a");
+  assert.equal(a.status, "SKIPPED");
+  assert.equal(lib.STATUSES[a.status].label, "Skipped · slot released");
+  assert.equal(a.pending.action, "skip");
+  assert.equal(lib.closedBy(skip), "skip");
+  // resolved decisions no longer lock; a cancelled skip gives the version back
+  assert.equal(lib.closedBy({ ...skip, status: "cancelled" }), null);
+  const back = contentPlan({ pipeline, cloud: { ...cloud, decisions: [{ ...skip, status: "cancelled" }] }, now: NOW, tz: "Europe/Berlin", days: 14 });
+  assert.equal(back.items.find((i) => i.post_id === "20261006-demo-a").status, "AWAITING_APPROVAL");
+});
+
+test("pending reject and refresh end the version; approve/edit do not", () => {
+  const post = { state: "AWAITING_APPROVAL" };
+  assert.equal(displayStatus({ post, pending: { action: "reject" } }), "REJECTED");
+  assert.equal(displayStatus({ post, pending: { action: "refresh" } }), "REPLACEMENT_PENDING");
+  assert.equal(displayStatus({ post, pending: { action: "edit" } }), "AWAITING_APPROVAL");
+  assert.equal(lib.closedBy({ status: "pending", action: "approve" }), null);
+  assert.equal(lib.pendingDecision([{ status: "pending", action: "skip", post_id: null, plan_date: "2026-10-09" }], null, "2026-10-09").action, "skip");
+});

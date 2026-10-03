@@ -15,10 +15,34 @@ reason, never a silent default.
 | alt text | `alt_text` |
 | text-only reason | `text_only_reason` + `rationale` |
 
+## LCE-043: a real image first; generated diagrams only on request
+
+The default for a post is a **real, relevant, legally reusable image**: a photo
+of the industry, place, artefact, event or organisation the post is about, or a
+source chart whose licence allows reuse. Generated diagrams are not the
+fallback; "nothing suitable" means text-only (`no_suitable_licensed_image`).
+
+`commons.select` (used by `media.commons` in a refresh package) records, per post:
+
+| | stored in `image.yaml` |
+|---|---|
+| central subject, visual concept, subject terms | `selection.subject`, `selection.concept`, `selection.subject_terms` |
+| every candidate file and why it was refused or chosen | `selection.tried[]` (licence, outcome, reason) |
+| semantic match | `media_relevance.semantic.matched_terms`: subject terms found in the file's own title, description or categories (none → refused) |
+| creator, licence, licence URL, source URL | `provenance.creator`, `.license`, `.license_url`, `.source_url`, `.title` |
+| attribution | `provenance.attribution_required`, `provenance.attribution` (appended to the post text when required) |
+| retrieved asset | `provenance.retrieved` (original, SHA-1 verified, or the Commons thumbnail of that file), `.retrieved_url`, `.retrieved_at`, `.original_sha1`, `sha256` |
+
+Licences: PD, CC0, CC BY, CC BY-SA only; NC, ND, fair use and unknown are
+refused. Sources: the Commons API only — never Google Images or pages with
+unclear rights. A later version never reuses an earlier version's file (by
+title and by hash). The Control Center's media card shows all of this, plus the
+"Image search" list of candidates.
+
 ## Ways to get a real, rights-safe image (no paid API)
 
 1. `lce image chart <post>` — recorded, sourced figures, drawn verbatim with the source.
-2. `lce image diagram <post> --spec <file.yaml>` — a conceptual visual of the post's
+2. (only when the owner asks for a drawn visual) `lce image diagram <post> --spec <file.yaml>` — a conceptual visual of the post's
    idea (flow, process, decision tree, framework/relationship map) with short labels
    of its own; attached only if the media relevance check accepts it (below).
    Origin `own_creation`, usage `owned`. (LCE-041: the old verbatim checklist mode

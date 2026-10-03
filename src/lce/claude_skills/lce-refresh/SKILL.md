@@ -28,28 +28,49 @@ owner's note and the rejected version). For each one:
    a new hook, a different angle or structure, same objective and pillar. The
    engine refuses a hook that matches any earlier version and a text that
    rewords an earlier one (more than half its words in shared 4-word runs).
-4. Draw a NEW visual for THIS text (`lce-create-post` step 6): a decision tree,
-   process flow, framework, comparison, matrix, timeline, funnel, system diagram,
-   or a sourced chart when a number is central — short labels of your own, never
-   the post's sentences in boxes. It must differ from every earlier version's image
-   (choose a different structure, not the same diagram re-coloured). Text-only only
-   with a real reason. The old image is never kept.
-5. Write a package file and run it:
+4. Choose a NEW **real** image for THIS text (`lce-create-post` step 6): state
+   the post's central subject, the visual concept, the subject terms a fitting
+   file's metadata must name (e.g. "AI agent", "data center", "Gartner"), why
+   it fits, and alt text that describes the image (not the post). Give
+   Wikimedia Commons candidate file titles you have found (web search for
+   `site:commons.wikimedia.org …` works) and/or search queries. The engine
+   checks the licence and the metadata, never reuses an earlier version's file,
+   and records every candidate. If none fits, the post becomes text-only
+   "no suitable licensed image" — never a generated diagram. A drawn diagram
+   only when the owner asked for one (`media: {spec: …, owner_requested: true}`).
+5. Write the package file:
    ```yaml
+   post_id: <id>
+   by: "<who wrote it, e.g. claude-code session (manual)>"
    text_file: post.md              # the new text (or `text: |`)
-   reason: "<what is new: angle, evidence, visual>"
+   reason: "<what is new: angle, evidence, image>"
    sources: [{url: "https://…", title: "…"}]
    claims: [{text: "<verbatim claim>", source_url: "https://…"}]
-   media: {spec: visual.yaml}      # or {text_only: {reason: text_carries_point, rationale: "…"}}
+   media:
+     commons:
+       subject: "<the post's central subject>"
+       concept: "<what the image shows that matters>"
+       subject_terms: ["<term>", "<term>"]
+       relevance_reason: "<why this image belongs to this post>"
+       relation: "<how the image supports the post>"
+       alt_text: "<describe the image itself>"
+       candidates: ["File:….jpg"]
+       search: ["<query>"]
+   # or: media: {text_only: {reason: no_suitable_licensed_image, rationale: "…"}}
    ```
-   `lce refresh package <id> --file <pkg.yaml>` → humanization record → QA →
-   duplicate check against the archive → media relevance → fresh approval
-   artifact → AWAITING_APPROVAL ("Refreshed · Awaiting approval"). Any failure
-   restores the post exactly; read the error, fix the package, run it again.
-   Look at the generated image (Read tool) before you accept it.
-6. Commit and push to the private repository (branch → PR → merge when the
-   `validate` check passes: `python3 scripts/ship_pr.py …`). The Control Center
-   shows the replacement after the next cloud sync. Tell the owner what is new.
+6. Run it where Commons is reachable: commit the package as
+   `refresh/packages/<id>.yaml` (with `post.md` next to it as
+   `refresh/packages/<id>.md`, referenced by `text_file`) to the private
+   repository (branch → PR → merge when `validate` passes:
+   `python3 scripts/ship_pr.py …`). The `refresh-package` workflow runs
+   `lce refresh package` → humanization record → QA → duplicate check against
+   the archive → licence + semantic media check → fresh approval artifact →
+   AWAITING_APPROVAL, commits the result and syncs the Control Center. Any
+   failure restores the post exactly and the job fails with the reason; fix the
+   package and push again. Where Commons is reachable locally you can also run
+   `lce refresh package <id> --file <pkg.yaml>` yourself.
+7. Look at the attached image (Read tool) and the media record before telling
+   the owner what is new. Nothing is approved or published.
 
 Skip is different: the owner releases the slot and nothing is generated. Never
 write a replacement for a skipped (REJECTED) post.

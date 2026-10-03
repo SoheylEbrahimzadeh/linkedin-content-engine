@@ -113,6 +113,31 @@
         },
         "title": {
           "type": "string"
+        },
+        "creator": {
+          "type": "string",
+          "description": "LCE-043: author of the file as stated by its source."
+        },
+        "attribution_required": {
+          "type": "boolean"
+        },
+        "attribution": {
+          "type": "string",
+          "description": "Credit line to show with the post."
+        },
+        "retrieved_at": {
+          "type": "string"
+        },
+        "retrieved": {
+          "type": "string",
+          "description": "original, or the source's rendered thumbnail of the same file"
+        },
+        "retrieved_url": {
+          "type": "string",
+          "pattern": "^https?://"
+        },
+        "original_sha1": {
+          "type": "string"
         }
       }
     },
@@ -128,7 +153,8 @@
         "no_relevant_visual",
         "no_rights_safe_source",
         "personal_story_without_owner_photo",
-        "would_be_decorative"
+        "would_be_decorative",
+        "no_suitable_licensed_image"
       ],
       "description": "Why the post stays text-only (LCE-038)."
     },
@@ -266,6 +292,42 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "LCE-043: how a real image was searched for: subject, concept, subject terms, every candidate tried and why it was refused or selected.",
+      "required": [
+        "subject",
+        "subject_terms",
+        "tried"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "concept": {
+          "type": "string"
+        },
+        "subject_terms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tried": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "selected": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     }

@@ -153,10 +153,16 @@ def test_commons_image_with_reuse_licence_is_attached_with_rights_metadata(store
                                     "visual_type": "photo",
                                     "reason": "shows the physical artefact the post describes in words"})
     prov = doc["provenance"]
-    assert prov == {"origin": "licensed_stock", "usage": "licensed", "license": "CC BY-SA 4.0",
-                    "source_url": "https://commons.wikimedia.org/wiki/File:Example.png",
-                    "credit": "Jane Example via Wikimedia Commons", "title": "File:Example.png",
-                    "license_url": "https://creativecommons.org/licenses/by-sa/4.0"}
+    assert {k: prov[k] for k in ("origin", "usage", "license", "source_url", "credit", "title", "license_url",
+                                 "creator", "attribution_required", "attribution", "retrieved")} == {
+        "origin": "licensed_stock", "usage": "licensed", "license": "CC BY-SA 4.0",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Example.png",
+        "credit": "Jane Example via Wikimedia Commons", "title": "File:Example.png",
+        "license_url": "https://creativecommons.org/licenses/by-sa/4.0", "creator": "Jane Example",
+        "attribution_required": True,
+        "attribution": "Image: Jane Example, CC BY-SA 4.0, via Wikimedia Commons",
+        "retrieved": "original"}
+    assert prov["original_sha1"] == fake.sha1 and prov["retrieved_url"].startswith("https://upload.wikimedia.org/")
     assert (store.post_dir(pid) / doc["file"]).read_bytes() == fake.data
     assert images.check(store, pid)[0] == []
     rel = doc["media_relevance"]

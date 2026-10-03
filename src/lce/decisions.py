@@ -241,14 +241,53 @@ def pending(client: cloud.CloudClient) -> list[dict]:
     return client.call("GET", "/decisions?status=pending").get("decisions", [])
 
 
+def load_overrides(store: DataStore) -> list[dict]:
+    """decisions/overrides.yaml: decisions the owner withdrew after recording them, with what
+    to do instead. Reviewed in git like every other change; nothing is deleted."""
+    path = store.root / "decisions" / "overrides.yaml"
+    if not path.exists():
+        return []
+    return list(store.read_doc(path).get("overrides", []))
+
+
+def _override_for(d: dict, overrides: list[dict]) -> dict | None:
+    """By decision id, or by post + action + the time it was recorded (when the id is not at hand)."""
+    for o in overrides:
+        if o.get("decision_id") == d["decision_id"]:
+            return o
+        m = o.get("match")
+        if (m and m["post_id"] == d.get("post_id") and m["action"] == d.get("action")
+                and str(d.get("created_at") or "").startswith(m["recorded_at_prefix"])):
+            return o
+    return None
+
+
 def apply_all(store: DataStore, client: cloud.CloudClient) -> list[dict]:
     """Apply every pending decision, oldest first; resolve each in the cloud."""
     done = _applied_ids(store)
+    overrides = load_overrides(store)
     out = []
     for d in pending(client):
         did = d["decision_id"]
         if did in done:                      # applied before, resolve failed: only resolve now
             status, result = "applied", done[did] or "applied earlier"
+        elif (o := _override_for(d, overrides)) is not None:
+            # LCE-043: the owner decided otherwise after recording this decision (reviewed in git)
+            then = o.get("then") or {}
+            try:
+                if then.get("action") == "refresh" and d.get("post_id"):
+                    from lce import repackage
+
+                    repackage.request(store, d["post_id"], by=then.get("by", "owner"),
+                                      note=then.get("note", ""), decision_id=then.get("decision_id", ""))
+                status, result = "refused", f"overridden by the owner: {o['reason']}"
+                store.log_event("cloud.decision_overridden", decision_id=did, action=d.get("action"),
+                                post_id=d.get("post_id"), reason=o["reason"], then=then.get("action"))
+            except (StoreError, InvalidTransition) as exc:
+                store.log_event("cloud.decision_retry", decision_id=did, reason=str(exc))
+                out.append({"decision_id": did, "action": d.get("action"), "post_id": d.get("post_id"),
+                            "status": "pending", "result": str(exc)})
+                continue
         else:
             handler = HANDLERS.get(d.get("action"))
             try:

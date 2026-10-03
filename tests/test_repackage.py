@@ -48,7 +48,7 @@ PKG = {
     "reason": "sharper hook; conceptual visual instead of a text checklist",
     "sources": [{"url": URL, "title": "Fictional report"}],
     "claims": [{"text": CLAIM, "source_url": URL}],
-    "media": {"spec": SPEC},
+    "media": {"spec": SPEC, "owner_requested": True},   # drawn visuals only on the owner's request (LCE-043)
 }
 
 
@@ -169,7 +169,8 @@ def test_repeated_refresh_makes_v3_and_keeps_every_version(store):
     v2_image = images.load(store, pid)["sha256"]
     refresh_click(store, pid, note="still not right", decision_id="d-2")
     assert store.load_post(pid)["state"] == "NEEDS_REVISION"
-    repackage.package(store, pid, {**PKG, "text": THIRD_TEXT, "media": {"spec": SPEC3}})
+    third = {**PKG, "text": THIRD_TEXT, "media": {"spec": SPEC3, "owner_requested": True}}
+    repackage.package(store, pid, third)
     post = store.load_post(pid)
     assert post["state"] == "AWAITING_APPROVAL" and current_text(store, pid) == THIRD_TEXT
     vs = versions.listing(store, pid)
@@ -206,7 +207,8 @@ def test_a_replacement_must_be_genuinely_new(store, change, match):
         (
             {
                 "media": {
-                    "spec": {**SPEC, "nodes": [{"label": "Start with the boring rules, they cover a lot"}]}
+                    "owner_requested": True,
+                    "spec": {**SPEC, "nodes": [{"label": "Start with the boring rules, they cover a lot"}]},
                 }
             },
             "media relevance rejected",
@@ -319,7 +321,7 @@ def test_cli_package_pending_and_versions(store, tmp_path, capsys):
     assert pid in capsys.readouterr().out
     (tmp_path / "post.md").write_text(NEW_TEXT)
     (tmp_path / "visual.yaml").write_text(yaml.safe_dump(SPEC))
-    pkg = {**PKG, "media": {"spec": "visual.yaml"}, "text_file": "post.md"}
+    pkg = {**PKG, "media": {"spec": "visual.yaml", "owner_requested": True}, "text_file": "post.md"}
     pkg.pop("text")
     (tmp_path / "pkg.yaml").write_text(yaml.safe_dump(pkg))
     assert main([*base, "refresh", "package", pid, "--file", str(tmp_path / "pkg.yaml")]) == 0
