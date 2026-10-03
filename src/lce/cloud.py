@@ -888,7 +888,7 @@ def doctor(
         out.append(_check("database", FAIL, f"/api/pipeline HTTP {pipe.status} {perr}".strip()))
     probe = probe or StatusTransport()
     pages = {
-        "/": b"LCE Cloud Control Center",
+        "/": b"Content Control Center",
         "/pipeline/": b"LCE Control Center",
         "/pipeline/config.js": b'"snapshotUrl": "/api/pipeline"',
     }
