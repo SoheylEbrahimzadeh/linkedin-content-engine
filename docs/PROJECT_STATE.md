@@ -328,6 +328,39 @@ NOT_VERIFIED until an Access service token is stored in GitHub.
   resolves the existing D1 `lce` by name for deploys and `--remote` migrations
   (the placeholder made `migrations apply lce --remote` target a nonexistent id).
 
+## LCE-043 (2026-10-03): Skip/Refresh as real transitions; real licensed images
+
+Engine PRs #68, #69, #70; lce-data PRs #49–#52. Verified in production (dashboard-check PASS, run after #52).
+
+- Root cause of "Skip requested — recorded" next to Approve/Refresh/Edit: the Worker
+  only records decisions and the private workflow applies them later, but the UI locked
+  controls only for a pending refresh. A pending skip/reject/refresh now changes the status
+  at once and leaves only "Undo …". The Worker refuses other decisions over a pending
+  skip/reject (`409 post_closed`).
+- `decisions/overrides.yaml`: the owner's Skip `d-095407fc…` on the Gartner post
+  (00:44:37 UTC) was withdrawn in chat ("it's a Refresh"). It is resolved `refused` in D1;
+  v3 is archived as rejected.
+- Media: `media.commons` (licence PD/CC0/CC BY/CC BY-SA; metadata must name at least two
+  subject terms plus any required terms; personality-rights files refused; never an
+  earlier file; every candidate recorded); otherwise text-only `no_suitable_licensed_image`.
+  Generated diagrams are used only on the owner's request. The `refresh-package` workflow
+  in lce-data runs packages where Commons is reachable. `lce refresh media` corrects the
+  media of an unapproved candidate (text kept, old package in History as `replaced`).
+- Gartner post now (AWAITING_APPROVAL, nothing approved or published):
+  - v1–v3: earlier texts.
+  - v4: new text ("agents arrive inside licensed apps"; Gartner 2025-08-26 forecast)
+    with a 1997 post-office photo. The photo matched one generic term, so v4 is kept
+    as `replaced`.
+  - Current: same text with File:IceB-iceBw screenshot.png (CC BY-SA 4.0, Appsoft4),
+    an accounting/ERP application. Relevance is weak: Ukrainian UI, no AI shown.
+    Owner decision pending: approve, text-only, or another search.
+  - The current text has its credit line after the hashtags (voice warning). Fixed for
+    future packages in #70.
+- Owner actions open:
+  - Cloudflare Access session duration is 10 s (D1 `access_sessions` evidence).
+    Set it in Zero Trust → Access → Applications.
+  - The writing Routine cannot reach the private repository; attach lce-data to it.
+
 ## Reference re-audit (2026-09-30)
 
 `sergebulaev/linkedin-skills` (commit `14d332b`) re-audited against `main`. Only
