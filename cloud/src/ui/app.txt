@@ -8,7 +8,7 @@
 
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
-  REFRESH_CONFIRM, SKIP_CONFIRM, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
+  REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
   mediaSourceShort, parseHash, segments, timeline, weekday,
 } from "./lib.js";
 
@@ -71,9 +71,10 @@ function sessionNote() {
   const w = S.whoami;
   if (!w?.session_expires_at) return "";
   const end = new Date(w.session_expires_at * 1000).toISOString();
-  const mins = w.session_issued_at ? Math.round((w.session_expires_at - w.session_issued_at) / 60) : null;
+  const len = sessionLength(w);
   return ` Your Access session ${w.session_expires_at * 1000 < Date.now() ? "ended" : "ends"} at ${localTime(end, tz())}` +
-    (mins !== null ? ` (session length ${mins} min).` : ".");
+    (len ? ` (session length ${len.text}).` : ".") +
+    (len?.tooShort ? " " + SHORT_SESSION_ADVICE.replace("%s", len.text) : "");
 }
 
 /** One request; never throws. kind: ok | signin (Access redirect) | network | http. */
@@ -415,13 +416,16 @@ function postImage(postId, cls, img, version = null) {
   const el = h("img", { class: cls, src, alt: img?.alt || "Post image", width: img?.width || null, height: img?.height || null,
     decoding: "async", loading: "eager", "data-post": postId });
   el.addEventListener("error", async () => {
-    let why = "the browser could not load it";
+    let why = "the browser could not load it", signin = false;
     try {
       const r = await fetch(src, { credentials: "same-origin", cache: "no-store", redirect: "manual" });
-      if (r.type === "opaqueredirect" || r.status === 0) { sessionExpired(); why = "Cloudflare Access asked to sign in again"; }
+      if (r.type === "opaqueredirect" || r.status === 0) { signin = true; sessionExpired(); }
       else why = `HTTP ${r.status}, ${r.headers.get("content-type") || "no content type"}`;
     } catch (e) { why = String(e?.message || e); }
-    el.replaceWith(h("div", { class: "media-note warn" }, "The image could not be displayed: ", why, ". Reload the page; if it persists, sign in to Cloudflare Access again."));
+    // LCE-047: an Access refusal is the session, not the image: one sign-in (banner) reloads every image.
+    el.replaceWith(signin
+      ? h("div", { class: "media-note warn" }, "Image waiting for sign-in: Cloudflare Access refused this request because the session ended. It loads again right after you sign in (banner above).")
+      : h("div", { class: "media-note warn" }, "The image could not be displayed: ", why, "."));
   }, { once: true });
   return el;
 }

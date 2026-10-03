@@ -263,6 +263,18 @@ export function displayStatus({ post = null, cloudPost = null, consent = null, p
   return "PLANNED";
 }
 
+/** LCE-047: how long the Access session Cloudflare issued actually lasts (from the token's own iat/exp,
+ * reported by /api/whoami), in honest units, and whether it is too short to use the Control Center. */
+export function sessionLength(w) {
+  if (w?.session_issued_at == null || w?.session_expires_at == null) return null;
+  const s = w.session_expires_at - w.session_issued_at;
+  const text = s < 120 ? `${s} seconds` : s < 7200 ? `${Math.round(s / 60)} minutes` : `${Math.round(s / 3600)} hours`;
+  return { seconds: s, text, tooShort: s < 300 };
+}
+export const SHORT_SESSION_ADVICE = "Cloudflare Access issues this application a session of only %s, so every page, API call and image " +
+  "after that needs a new sign-in. The Control Center cannot extend it; set a longer Session Duration in Cloudflare " +
+  "Zero Trust → Access → Applications → this application (and check any Session Duration on its Allow policy), e.g. 24 hours.";
+
 /** LCE-045: what the owner's last action here amounts to NOW. A "recorded" click is only shown as
  * recorded while D1 still has that decision pending; once resolved, its real fate is shown instead
  * (a page left open must never claim a decision that was later refused or replaced is in effect). */
