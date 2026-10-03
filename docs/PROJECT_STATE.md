@@ -354,6 +354,23 @@ Engine #84–#90 (and the doctor-marker fix #86); lce-data #73–#79. Production
 - **Refresh progress:** the Worker records a `dispatched` progress event on every Refresh (started,
   or "not started: <reason>").
 
+**Update 22:15 UTC.**
+- **Gartner request:** the recovery writer (`trig_01KPVxwd9awVqXHcv2rvwSnt`, 21:38 run, following
+  `automation/WRITER.md`) processed the real Gartner request `d-22ff5289`. Its steps:
+  1. `source-fetch` for the hosts its environment blocks (#79), text committed 21:41;
+  2. replacement package (#80);
+  3. `refresh-package` → v10 AWAITING_APPROVAL, text-only `no_suitable_licensed_image`, v9 kept
+     in History.
+
+  Nothing was approved or published.
+- **ITSM request `d-a8954f9d`:** still pending (slot 29 Sep passed).
+- **UI pass (engine #93, #94):**
+  - `improve-ui` audit, with three proven findings in `design-plans/` (all implemented);
+  - `frontend-design` desk pass: segmented board, one side panel, the preview leads, fixed action
+    bar on phones, consistent vocabulary.
+  - Verified in production by `dashboard-lce050` (desktop + phone, no console errors).
+- **Doctor marker:** reverted by mistake in #87 and restored in #92; cloud-sync is green again.
+
 **Built and tested, not yet exercised end to end in production**
 - **Instant writer start** on a Dashboard Refresh: needs the owner's writer routine with an API trigger.
   Its URL and token go into Worker secrets and lce-data secrets as
