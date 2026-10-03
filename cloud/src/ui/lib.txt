@@ -421,6 +421,8 @@ export function mediaRecord(post) {
     const prov = img.provenance ?? {};
     rows.push(["Kind", img.kind]);
     rows.push(["Source", ORIGIN_LABEL[prov.origin] ?? prov.origin ?? UNKNOWN]);
+    if (prov.source_name) rows.push(["Found via", prov.source_name]);
+    if (prov.source_id) rows.push(["Source ID", prov.source_id]);
     if (prov.title) rows.push(["Source file", prov.title]);
     if (prov.creator) rows.push(["Creator", prov.creator]);
     else if (prov.credit) rows.push(["Credit", prov.credit]);
@@ -559,7 +561,11 @@ export function relevanceRows(image) {
   ];
   if ((rel.source_requirements ?? []).length) rows.push(["Source shown", rel.source_requirements.join("; ")]);
   const sem = rel.semantic;   // LCE-043: a real image is relevant when its own metadata names the post's subject
-  if (sem) {
+  if (sem?.depicts) {   // LCE-044: chosen after looking at the image
+    rows.push(["Depicts", sem.depicts]);
+    rows.push(["Why this image", sem.why_relevant ?? "not stated"]);
+    rows.push(["Reviewed", `${sem.reviewed_by ?? "not stated"} · ${sem.method ?? "visual review"}`]);
+  } else if (sem) {
     rows.push(["Subject", sem.subject ?? "not stated"]);
     rows.push(["In source metadata", (sem.matched_terms ?? []).length ? sem.matched_terms.join(", ") : "none (not relevant)"]);
   }

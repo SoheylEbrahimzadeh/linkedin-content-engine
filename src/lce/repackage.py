@@ -150,9 +150,10 @@ def _validate_package(pkg: dict) -> None:
     media = pkg.get("media") or {}
     if "keep" in media:
         raise StoreError("Refresh replaces the media too: a new real image (commons) or text_only")
-    if sum(k in media for k in ("commons", "spec", "text_only")) != 1:
+    if sum(k in media for k in ("reviewed", "commons", "spec", "text_only")) != 1:
         raise StoreError(
-            "media must be exactly one of: commons (a real, licensed image found by subject), "
+            "media must be exactly one of: reviewed (a real, licensed image chosen after looking at it), "
+            "commons (a real, licensed image found by subject), "
             "text_only {reason, rationale}, spec (a drawn visual, only when the owner asked for one)"
         )
     # LCE-043: a generated diagram is never the automatic choice; only the owner can ask for one.
@@ -167,8 +168,6 @@ def _commons_media(store, post_id, spec, text, history, used, by) -> str:
     """LCE-043: a real image chosen by subject from Wikimedia Commons, rights verified;
     nothing suitable → text-only `no_suitable_licensed_image` (never a generated diagram)."""
     from lce import commons
-    from lce import relevance as relv
-    from lce.posts import save_humanized
 
     titles = {((v.get("media") or {}).get("source_title")) for v in history} - {None}
     doc, record = commons.select(
@@ -191,6 +190,27 @@ def _commons_media(store, post_id, spec, text, history, used, by) -> str:
         doc["selection"] = record
         store.write_doc(images.path(store, post_id), "image", doc)
         return f"text-only (no suitable licensed image; {tried} candidates checked)"
+    _credit(store, post_id, doc, text, by)
+    return f"real image from Wikimedia Commons: {record['selected']} ({doc['provenance']['license']})"
+
+
+def _reviewed_media(store, post_id, sel, text, history, used, by) -> str:
+    """LCE-044: the candidate a reviewer chose after looking at it (any supported source)."""
+    from lce import media_search
+
+    ids = {((v.get("media") or {}).get("source_title")) for v in history} - {None}
+    doc = media_search.attach_reviewed(
+        store, post_id, sel, transport=_TRANSPORT, exclude_sha256=used - {None}, exclude_ids=ids
+    )
+    _credit(store, post_id, doc, text, by)
+    prov = doc["provenance"]
+    return f"real image, reviewed: {prov['source_id']} ({prov['license']}, {prov['source_name']})"
+
+
+def _credit(store, post_id, doc, text, by) -> None:
+    from lce import relevance as relv
+    from lce.posts import save_humanized
+
     prov = doc["provenance"]
     if prov.get("attribution_required"):
         # The licence asks for credit: it goes into the post itself, before QA and approval.
@@ -208,7 +228,6 @@ def _commons_media(store, post_id, spec, text, history, used, by) -> str:
         )
         doc["media_relevance"]["semantic"] = sem
         store.write_doc(images.path(store, post_id), "image", doc)
-    return f"real image from Wikimedia Commons: {record['selected']} ({prov['license']})"
 
 
 _TRANSPORT = None  # tests replace the Commons transport
@@ -294,7 +313,11 @@ def package(
             post = save_humanized(store, post_id, pkg["text"], source="session", by=by)
             media = pkg["media"]
             used = {v.get("image_sha256") for v in history} | {before["image_sha256"]}
-            if "commons" in media:
+            if "reviewed" in media:
+                media_note = _reviewed_media(
+                    store, post_id, media["reviewed"], pkg["text"], history, used, by
+                )
+            elif "commons" in media:
                 media_note = _commons_media(store, post_id, media["commons"], pkg["text"], history, used, by)
             elif "spec" in media:
                 doc = concept(store, post_id, media["spec"])
