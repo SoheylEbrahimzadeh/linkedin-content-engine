@@ -158,7 +158,19 @@ def _post(url: str, token: str, text: str) -> tuple[int, dict]:
         return exc.code, {"error": exc.read()[:300].decode("utf-8", "replace")}
 
 
-def dispatch(store: DataStore, *, now=None, post=_post, dry_run: bool = False) -> dict:
+def started_in_cloud(client, post_id: str, now, minutes: int = REFIRE_MINUTES) -> str | None:
+    """A writer already started for this post (the Worker's dispatch on a Refresh click, or a
+    session's worker_started), per the Control Center's real progress events."""
+    st = client.call("GET", f"/refresh-status/{post_id}")
+    for e in reversed(st.get("events") or []):
+        started = e["stage"] == "worker_started" or (e["stage"] == "dispatched" and
+                                                      not str(e.get("note", "")).startswith("not started"))
+        if started and now - parse_iso(e["at"]) < timedelta(minutes=minutes):
+            return f"{e['stage']} at {e['at']}"
+    return None
+
+
+def dispatch(store: DataStore, *, now=None, post=_post, dry_run: bool = False, client=None) -> dict:
     """Start the writer Routine for the next unit, once. Returns what happened and why."""
     now = now or clock.now()
     u = next_unit(store, now)
@@ -171,6 +183,14 @@ def dispatch(store: DataStore, *, now=None, post=_post, dry_run: bool = False) -
             "unit": u,
             "why": f"already started at {done['fired_at']} ({done.get('session_url')})",
         }
+    if client is not None and u.get("post_id"):
+        try:
+            seen = started_in_cloud(client, u["post_id"], now)
+        except Exception as exc:  # noqa: BLE001 - unknown is not "free to start twice"
+            why = f"could not read the writer's progress ({str(exc)[:120]})"
+            return {"fired": False, "unit": u, "why": why}
+        if seen:
+            return {"fired": False, "unit": u, "why": f"a writer is already on it ({seen})"}
     url, token = (
         os.environ.get("LCE_ROUTINE_FIRE_URL", "").strip(),
         os.environ.get("LCE_ROUTINE_FIRE_TOKEN", "").strip(),

@@ -189,3 +189,31 @@ def test_use_for_next_post_only_plans_an_open_slot(store):
         store.write_doc(store.plan_path, "plan", plan)
         with pytest.raises(decisions.Refused):
             decisions.HANDLERS["radar_use"](store, None, d)
+
+
+def test_dispatch_skips_a_post_whose_writer_the_worker_already_started(store, monkeypatch):
+    from lce import repackage
+
+    pid = awaiting_post(store)
+    monkeypatch.setenv("LCE_ROUTINE_FIRE_URL", "https://routines.example.test/v1/claude_code/routines/trig_X1/fire")
+    monkeypatch.setenv("LCE_ROUTINE_FIRE_TOKEN", "test-token-not-real")
+
+    class Client:
+        def __init__(self, events):
+            self.events = events
+
+        def call(self, method, path):
+            assert path == f"/refresh-status/{pid}"
+            return {"events": self.events}
+
+    sent = []
+    with use_clock(FixedClock(NOW)):
+        repackage.request(store, pid, by="owner", decision_id="d-y")
+        started = Client([{"stage": "dispatched", "at": "2026-10-03T17:55:00+00:00",
+                           "note": "writer started: x"}])
+        out = work.dispatch(store, post=lambda *a: sent.append(a) or (200, {}), client=started)
+        assert out["fired"] is False and "already on it" in out["why"] and not sent
+        not_started = Client([{"stage": "dispatched", "at": "2026-10-03T17:55:00+00:00",
+                               "note": "not started: instant start is not configured"}])
+        out = work.dispatch(store, post=lambda *a: sent.append(a) or (200, {}), client=not_started)
+        assert out["fired"] is True and len(sent) == 1

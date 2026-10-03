@@ -496,7 +496,12 @@ def cmd_work(args):
     store = _store(args)
     if args.sub == "dispatch":
         built = work.build_packets(store)
-        out = work.dispatch(store, dry_run=args.dry_run)
+        client = None
+        from lce import cloud
+
+        if all(cloud._service_token()):
+            client = cloud.make_client(store)
+        out = work.dispatch(store, dry_run=args.dry_run, client=client)
         u = out.get("unit") or {}
         line = (f"started the writer Routine for {u.get('key')}: {out['session_url']}" if out["fired"]
                 else f"not started{(' ' + u['key']) if u else ''}: {out['why']}")
