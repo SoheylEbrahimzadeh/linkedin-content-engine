@@ -328,6 +328,27 @@ NOT_VERIFIED until an Access service token is stored in GitHub.
   resolves the existing D1 `lce` by name for deploys and `--remote` migrations
   (the placeholder made `migrations apply lce --remote` target a nonexistent id).
 
+## LCE-048 (2026-10-03): live Refresh progress from real events
+
+Engine #81; lce-data #68–#72. The progress model: D1 `refresh_progress` events; `refresh-status`
+endpoint; panel with 10 stages, elapsed time, queued / waiting / processing, stalls, failure; 15 s
+polling; auto-reveal once the mirror has the replacement.
+
+Acceptance on the real Gartner Refresh `d-bb6a0285` (recorded 17:23:25 UTC, applied 17:41:27, v8
+archived as rejected):
+- worker_started 17:43:58, researching 17:44:53, writing 17:45:28, media 17:45:48;
+- humanization, QA and duplicate check 17:48:36; approval_prepared 17:48:37; replacement_ready 17:48:41.
+
+The new candidate (v9, current) is AWAITING_APPROVAL and text-only, with a Gartner source visual
+that is restricted. Found and fixed along the way: cloud-sync overwrote a newer mirror with a stale
+checkout (#67, #69).
+
+**Open:**
+- The scheduled refresh Routine `trig_01734Ek3cKiMV4Vzdyykj6ws` is paused. Its prompt predates the
+  source-first rules and progress reporting, and can only be edited from its own conversation.
+- The Access session is still 10 s (LCE-047), so the open page's 15 s polling is refused by Access
+  until the owner sets a longer Session Duration.
+
 ## LCE-047 (2026-10-03): Access session lost between tabs, pages and images
 
 Engine #79; lce-data #63–#64. Root cause, measured in production (`access-probe` workflow, D1
