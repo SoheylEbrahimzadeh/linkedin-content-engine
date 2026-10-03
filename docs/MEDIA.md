@@ -15,6 +15,32 @@ reason, never a silent default.
 | alt text | `alt_text` |
 | text-only reason | `text_only_reason` + `rationale` |
 
+## LCE-046: source first
+
+A post backed by a specific article or report should carry a visual that **belongs
+to that source** whenever the law allows it. "A picture generally about the topic"
+is not the same thing.
+
+1. `lce image search` with `source_urls` (the post's own sources) inspects each
+   page first. It records every visual on it (Open Graph/Twitter image, `<img>`,
+   `<figure>` with alt text and caption) and its rights signals (copyright notice,
+   "may not be reproduced / without permission", Creative Commons links,
+   public-domain statements). Copies are kept for inspection only, never attached.
+2. The media package records the decision as `media.source_check`:
+   - `source_visual_used`: only with an explicit licence or permission.
+   - `source_visual_unavailable_or_restricted`: a visual exists but reuse is not
+     permitted, or the page could not be inspected.
+   - `no_source_visual`.
+
+   It also carries the source URL and the evidence. The decision is required for
+   every real-image choice and for text-only `no_suitable_licensed_image`.
+3. Next: the original creator's licensed asset, or another licensed asset
+   directly tied to the same subject. The `reviewed` selection must state
+   `association` (`source_visual` | `original_source_asset` |
+   `same_subject_licensed`), `why_belongs_to_source` and `why_legal`.
+4. Otherwise text-only `no_suitable_licensed_image`. Never a generated diagram,
+   and never a visual copied from a page whose rights do not allow it.
+
 ## LCE-044: real images are chosen by looking at them
 
 Matching words in metadata is not relevance: in production it picked a 1997

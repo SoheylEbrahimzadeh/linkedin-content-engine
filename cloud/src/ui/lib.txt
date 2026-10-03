@@ -431,6 +431,13 @@ export function mediaRecord(post) {
   }
   const status = img.media_status ?? (img.kind === "none" ? "text_only" : "attached");
   const rows = [];
+  const sv = img.source_visual;   // LCE-046: the post's own source was checked for its visual first
+  if (sv) {
+    rows.push(["Source visual", { source_visual_used: "used (reuse permitted)", source_visual_unavailable_or_restricted: "source_visual_unavailable_or_restricted",
+      no_source_visual: "the source has no visual" }[sv.status] ?? sv.status]);
+    if (sv.source_url) rows.push(["Source checked", { href: sv.source_url }]);
+    if (sv.evidence) rows.push(["Source evidence", sv.evidence]);
+  }
   if (img.kind === "none") {
     rows.push(["Reason", img.text_only_reason ? REASON_LABEL[img.text_only_reason] ?? img.text_only_reason : "not categorised"]);
     if (img.rationale) rows.push(["Rationale", img.rationale]);
@@ -580,6 +587,8 @@ export function relevanceRows(image) {
   const sem = rel.semantic;   // LCE-043: a real image is relevant when its own metadata names the post's subject
   if (sem?.depicts) {   // LCE-044: chosen after looking at the image
     rows.push(["Depicts", sem.depicts]);
+    if (sem.association) rows.push(["Tied to the source", `${sem.association.replaceAll("_", " ")}${sem.why_belongs_to_source ? " — " + sem.why_belongs_to_source : ""}`]);
+    if (sem.why_legal) rows.push(["Why reuse is legal", sem.why_legal]);
     rows.push(["Why this image", sem.why_relevant ?? "not stated"]);
     rows.push(["Reviewed", `${sem.reviewed_by ?? "not stated"} · ${sem.method ?? "visual review"}`]);
   } else if (sem) {

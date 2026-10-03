@@ -111,6 +111,13 @@ PD_DESK = {
     "data": png_shade(40),
 }
 
+# LCE-046: every real-image choice carries the source-first decision
+SC = {
+    "status": "source_visual_unavailable_or_restricted",
+    "source_url": "https://example.com/report",
+    "evidence": "the report page has one chart; the page says all rights reserved and grants no reuse",
+}
+
 COMMONS = {
     "subject": "IT operations teams routing service tickets",
     "concept": "the real operations floor where ticket routing rules are applied",
@@ -139,6 +146,7 @@ def test_refresh_attaches_a_real_licensed_image_chosen_by_subject(store, fake):
     pkg = {
         **PKG,
         "media": {
+            "source_check": SC,
             "commons": {
                 **COMMONS,
                 "candidates": ["File:Ops team at work.png", "File:Sunset beach.png"],
@@ -182,6 +190,7 @@ def test_no_suitable_licensed_image_means_text_only_never_a_diagram(store, fake)
     pkg = {
         **PKG,
         "media": {
+            "source_check": SC,
             "commons": {
                 **COMMONS,
                 "candidates": [
@@ -202,7 +211,9 @@ def test_no_suitable_licensed_image_means_text_only_never_a_diagram(store, fake)
 
 def test_a_later_refresh_never_reuses_an_earlier_versions_file(store, fake):
     pid = requested(store)
-    repackage.package(store, pid, {**PKG, "media": {"commons": {**COMMONS, "search": ["server"]}}})
+    repackage.package(
+        store, pid, {**PKG, "media": {"source_check": SC, "commons": {**COMMONS, "search": ["server"]}}}
+    )
     assert versions.listing(store, pid)[-1]["status"] == "rejected"
     repackage.request(store, pid, by="owner", note="again")
     assert versions.listing(store, pid)[-1]["media"]["source_title"] == "File:Server room racks.png"
@@ -210,6 +221,7 @@ def test_a_later_refresh_never_reuses_an_earlier_versions_file(store, fake):
         **PKG,
         "text": THIRD_TEXT,
         "media": {
+            "source_check": SC,
             "commons": {
                 **COMMONS,
                 "search": ["server"],
@@ -239,7 +251,7 @@ def test_commons_media_must_state_the_subject_and_why(store, fake, missing):
     pid = requested(store)
     spec = {k: v for k, v in COMMONS.items() if k != missing} | {"search": ["server"]}
     with pytest.raises(StoreError, match=missing):
-        repackage.package(store, pid, {**PKG, "media": {"commons": spec}})
+        repackage.package(store, pid, {**PKG, "media": {"source_check": SC, "commons": spec}})
     assert store.load_post(pid)["state"] == "NEEDS_REVISION"
 
 
@@ -270,7 +282,7 @@ def test_one_generic_term_is_not_relevance_and_identifiable_people_are_refused(s
         "subject_terms": ["office workers", "IT operations", "data center"],
         "candidates": [POST_OFFICE["title"], PORTRAIT["title"]],
     }
-    repackage.package(store, pid, {**PKG, "media": {"commons": spec}})
+    repackage.package(store, pid, {**PKG, "media": {"source_check": SC, "commons": spec}})
     doc = images.load(store, pid)
     assert doc["kind"] == "none" and doc["text_only_reason"] == "no_suitable_licensed_image"
     why = {t["title"]: t["why"] for t in doc["selection"]["tried"]}
@@ -285,7 +297,7 @@ def test_required_terms_must_all_be_named(store, fake):
         "required_terms": ["service desk"],
         "candidates": [SERVER_ROOM["title"], PD_DESK["title"]],
     }
-    repackage.package(store, pid, {**PKG, "media": {"commons": spec}})
+    repackage.package(store, pid, {**PKG, "media": {"source_check": SC, "commons": spec}})
     doc = images.load(store, pid)
     assert doc["provenance"]["title"] == PD_DESK["title"]
     assert "required term(s): service desk" in doc["selection"]["tried"][0]["why"]
@@ -294,14 +306,16 @@ def test_required_terms_must_all_be_named(store, fake):
 def test_media_only_correction_keeps_the_text_and_the_wrong_package_in_history(store, fake):
     pid = requested(store)
     repackage.package(
-        store, pid, {**PKG, "media": {"commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}}
+        store,
+        pid,
+        {**PKG, "media": {"source_check": SC, "commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}},
     )
     text_with_credit = current_text(store, pid)
     assert "Image: Jane Example" in text_with_credit
     rec = repackage.replace_media(
         store,
         pid,
-        {"commons": {**COMMONS, "candidates": [SERVER_ROOM["title"], PD_DESK["title"]]}},
+        {"source_check": SC, "commons": {**COMMONS, "candidates": [SERVER_ROOM["title"], PD_DESK["title"]]}},
         reason="the photo was not about the post",
         by="session",
     )
@@ -321,7 +335,9 @@ def test_media_only_correction_keeps_the_text_and_the_wrong_package_in_history(s
 def test_media_correction_never_touches_an_approved_version(store, fake):
     pid = requested(store)
     repackage.package(
-        store, pid, {**PKG, "media": {"commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}}
+        store,
+        pid,
+        {**PKG, "media": {"source_check": SC, "commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}},
     )
     post = store.load_post(pid)
     post["state"] = "APPROVED"

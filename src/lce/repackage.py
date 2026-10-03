@@ -156,6 +156,15 @@ def _validate_package(pkg: dict) -> None:
             "commons (a real, licensed image found by subject), "
             "text_only {reason, rationale}, spec (a drawn visual, only when the owner asked for one)"
         )
+    # LCE-046: a real image or "no suitable licensed image" starts from the post's own source.
+    from lce import source_visuals
+
+    if (
+        "reviewed" in media
+        or "commons" in media
+        or (media.get("text_only") or {}).get("reason") == ("no_suitable_licensed_image")
+    ):
+        source_visuals.validate_check(media.get("source_check") or {}, has_sources=True)
     # LCE-043: a generated diagram is never the automatic choice; only the owner can ask for one.
     if "spec" in media and media.get("owner_requested") is not True:
         raise StoreError(
@@ -200,7 +209,13 @@ def _reviewed_media(store, post_id, sel, text, history, used, by) -> str:
 
     ids = {((v.get("media") or {}).get("source_title")) for v in history} - {None}
     doc = media_search.attach_reviewed(
-        store, post_id, sel, transport=_TRANSPORT, exclude_sha256=used - {None}, exclude_ids=ids
+        store,
+        post_id,
+        sel,
+        transport=_TRANSPORT,
+        exclude_sha256=used - {None},
+        exclude_ids=ids,
+        source_check=_SOURCE_CHECK.get("current"),
     )
     _credit(store, post_id, doc, text, by)
     prov = doc["provenance"]
@@ -231,6 +246,7 @@ def _credit(store, post_id, doc, text, by) -> None:
 
 
 _TRANSPORT = None  # tests replace the Commons transport
+_SOURCE_CHECK: dict = {}
 
 
 def with_credit(text: str, credit: str) -> str:
@@ -313,6 +329,7 @@ def package(
             post = save_humanized(store, post_id, pkg["text"], source="session", by=by)
             media = pkg["media"]
             used = {v.get("image_sha256") for v in history} | {before["image_sha256"]}
+            _SOURCE_CHECK["current"] = media.get("source_check")
             if "reviewed" in media:
                 media_note = _reviewed_media(
                     store, post_id, media["reviewed"], pkg["text"], history, used, by
@@ -337,6 +354,10 @@ def package(
                     text_only_reason=t["reason"],
                 )
                 media_note = f"text-only ({t['reason']})"
+            if media.get("source_check"):  # LCE-046: the source-first decision stays with the media
+                d = images.load(store, post_id)
+                d["source_visual"] = media["source_check"]
+                store.write_doc(images.path(store, post_id), "image", d)
             qa = run_qa(store, post_id)
             if qa["status"] != "passed":
                 raise StoreError(
