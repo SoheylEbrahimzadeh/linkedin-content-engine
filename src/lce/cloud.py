@@ -290,6 +290,7 @@ def make_client(
 
 
 PROGRESS_STAGES = (
+    "dispatched",
     "worker_started",
     "researching",
     "writing",
@@ -888,7 +889,7 @@ def doctor(
         out.append(_check("database", FAIL, f"/api/pipeline HTTP {pipe.status} {perr}".strip()))
     probe = probe or StatusTransport()
     pages = {
-        "/": b"Content Control Center",
+        "/": b"LCE Cloud Control Center",
         "/pipeline/": b"LCE Control Center",
         "/pipeline/config.js": b'"snapshotUrl": "/api/pipeline"',
     }

@@ -601,6 +601,112 @@ def brand_view(store: DataStore, posts: list[dict], mode: str) -> dict:
             "next": brand.recommend(store, today)}
 
 
+def _safe(fn):
+    """A view that cannot be built is reported, never allowed to break the whole snapshot."""
+    try:
+        return fn()
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc)[:300]}
+
+
+def radar_view(store: DataStore, limit: int = 80) -> dict:
+    """LCE-050: what the Content Radar found (provenance kept; nothing here is post copy)."""
+    from datetime import timedelta
+
+    from lce import clock, radar
+    from lce.clock import iso_utc, parse_iso
+
+    items = radar.load_items(store)
+    if not items and not (store.root / "config" / "radar.yaml").exists():
+        return {"configured": False, "items": [], "sources": []}
+    now = clock.now()
+    day_ago = iso_utc(now - timedelta(hours=24))
+    used = radar.used_urls(store)
+    posts = [store.load_post(pid) for pid in store.post_ids()]
+    recs = {str(e.get("recommendation", {}).get("item_id")): str(e["date"])
+            for e in store.plan().get("entries", []) if e.get("recommendation")}
+    relevant = [i for i in items if i.get("relevance", 0) > 0]
+    rows = []
+    for it in relevant[:limit]:
+        when = it.get("published_at") or it["first_seen"]
+        text = f"{it['title']} {it.get('excerpt', '')}"
+        best = max(((radar.overlap(f"{p.get('topic', '')} {p.get('angle', '')}", text), p["post_id"])
+                    for p in posts), default=(0, None))
+        rows.append({
+            "id": it["id"], "title": it["title"], "url": it["url"], "source": it["source_name"],
+            "source_kind": it.get("source_kind"), "quality": it.get("quality"),
+            "published_at": it.get("published_at"), "first_seen": it["first_seen"],
+            "age_hours": round((now - parse_iso(when)).total_seconds() / 3600, 1),
+            "pillar": it.get("pillar"), "relevance": it.get("relevance"),
+            "angle_hint": it.get("angle_hint"), "matched_terms": it.get("matched_terms", []),
+            "excerpt": (it.get("excerpt") or "")[:280],
+            "used_by": used.get(radar.canonical(it["url"])),
+            "related_post": best[1] if best[0] >= 0.12 else None,
+            "recommended_for": recs.get(it["id"]),
+        })
+    by_pillar: dict[str, int] = {}
+    for i in relevant:
+        by_pillar[i["pillar"]] = by_pillar.get(i["pillar"], 0) + 1
+    return {
+        "configured": True, "total": len(items), "relevant": len(relevant),
+        "new_today": sum(1 for i in relevant if i["first_seen"] >= day_ago),
+        "by_pillar": by_pillar, "items": rows,
+        "sources": list(radar.load_sources(store).values()),
+    }
+
+
+def freshness_plan_view(store: DataStore) -> dict:
+    """LCE-050: per planned post/slot: window, packet, last research, new developments, next check."""
+    from datetime import timedelta
+
+    from lce import clock, radar, refresh, work
+    from lce.clock import iso_utc, parse_iso
+    from lce.jobs import automation_config
+
+    cfg = automation_config(store)
+    now = clock.now()
+    in_window = {w["post_id"]: w for w in refresh.window(store, now)}
+    out = {}
+    for e in store.plan().get("entries", []):
+        day = str(e["date"])
+        pid = e.get("draft_ref")
+        post = store.load_post(pid) if pid else {"plan_date": day}
+        slot = refresh.slot_of(store, post)
+        if not slot or slot["utc"] <= now:
+            continue
+        opens = slot["utc"] - timedelta(hours=cfg["freshness_lead_hours"])
+        recs = refresh.history(store, pid) if pid else []
+        research = [r for r in recs if r.get("mode") in refresh.WRITTEN_MODES]
+        checks = [r for r in recs if r.get("mode") == "check" and not r.get("test_mode")]
+        w = in_window.get(pid) if pid else None
+        if now < opens:
+            next_check = iso_utc(opens)
+        elif checks:
+            recheck = timedelta(hours=cfg["freshness_recheck_hours"])
+            next_check = iso_utc(parse_iso(checks[-1]["checked_at"]) + recheck)
+        else:
+            next_check = "next hourly run"
+        pk = radar.packet_path(store, day)
+        packet = store.read_doc(pk) if pk.exists() else None
+        out[day] = {
+            "post_id": pid, "slot_utc": iso_utc(slot["utc"]), "window_opens_at": iso_utc(opens),
+            "in_window": opens <= now, "next_check": next_check,
+            "last_check": checks[-1]["checked_at"] if checks else None,
+            "last_check_status": checks[-1]["status"] if checks else None,
+            "last_research": research[-1]["checked_at"] if research else None,
+            "new_developments": (w or {}).get("new_developments", []),
+            "packet": {"built_at": packet.get("built_at"), "fresh": len(packet.get("fresh_items", [])),
+                       "older": len(packet.get("related_older", []))} if packet else None,
+        }
+    units = work.units(store, now)
+    fired = work.fired(store)
+    keys = ("kind", "post_id", "plan_date", "origin", "key")
+    queue = [{**{k: u.get(k) for k in keys}, "started": fired.get(u["key"])} for u in units]
+    return {"slots": out, "work": queue,
+            "lead_hours": cfg["freshness_lead_hours"], "horizon_days": cfg["plan_horizon_days"],
+            "candidate_lead_days": cfg["candidate_lead_days"]}
+
+
 def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None) -> dict:
     """Collect everything the dashboard shows. `mode` is 'real' or 'demo'."""
     if mode not in {"real", "demo"}:
@@ -677,6 +783,8 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
         "brand": brand_view(store, posts, mode),
         "analytics": analytics_view(store),
         "voice": voice.view(store),
+        "radar": _safe(lambda: radar_view(store)),
+        "freshness_plan": _safe(lambda: freshness_plan_view(store)),
     }
     return redact(snapshot)
 

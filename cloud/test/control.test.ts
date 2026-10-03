@@ -35,6 +35,14 @@ async function call(method: string, path: string, body?: unknown, who: Record<st
     res, calls: f.calls };
 }
 
+async function callEnv(env: typeof e, method: string, path: string, body: unknown, fetchFn: never) {
+  const headers: Record<string, string> = { "cf-access-jwt-assertion": await jwt(OWNER), "content-type": "application/json",
+    "x-lce-client": "dashboard" };
+  const res = await handleApi(new Request(`https://lce.example/api${path}`, { method, headers, body: JSON.stringify(body) }),
+    env, NOW, certs, fetchFn);
+  return { status: res.status, body: await res.json() as Record<string, any> };
+}
+
 // Synthetic pipeline mirror (fictional posts only).
 const AWAITING = "20261006-demo-awaiting";
 async function mirror(posts: Record<string, unknown>[], calendar: Record<string, unknown>[] = []) {
@@ -447,7 +455,7 @@ describe("refresh progress (LCE-048)", () => {
     expect(s.status).toBe(200);
     expect(s.body!.decision.decision_id).toBe(d.body!.decision_id);
     expect(s.body!.decision.status).toBe("pending");
-    expect(s.body!.events.map((x: { stage: string }) => x.stage)).toEqual(["worker_started", "researching"]);
+    expect(s.body!.events.map((x: { stage: string }) => x.stage)).toEqual(["dispatched", "worker_started", "researching"]);
     expect(s.body!.mirror.post.state).toBe("AWAITING_APPROVAL");
     expect(s.body!.mirror.post.refresh_request).toEqual({ decision_id: "x" });
   });
@@ -463,6 +471,33 @@ describe("refresh progress (LCE-048)", () => {
     await awaitingMirror({ refresh: { origin: "freshness", requested_at: at, completed_at: "2026-10-05T05:00:00+00:00", outcome: "refreshed" } });
     const done = await call("GET", `/refresh-status/${AWAITING}`);
     expect(done.body!.decision).toMatchObject({ origin: "freshness", created_at: at });
+  });
+  it("starts the writer routine at once on Refresh (LCE-050), or records why it could not", async () => {
+    await awaitingMirror();
+    await e.DB.prepare("DELETE FROM refresh_progress").run();
+    // not configured: recorded, and the reason is a real progress event
+    const d1 = await call("POST", "/decisions", { action: "refresh", post_id: AWAITING });
+    expect(d1.status).toBe(201);
+    expect(d1.body!.writer).toMatchObject({ started: false });
+    expect(String(d1.body!.writer.why)).toContain("not configured");
+    let s = await call("GET", `/refresh-status/${AWAITING}`);
+    expect(s.body!.events.map((x: { stage: string }) => x.stage)).toEqual(["dispatched"]);
+    // configured: one POST to the routine's /fire endpoint with the request identity
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fire = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ type: "routine_fire", claude_code_session_url: "https://claude.ai/code/session_T" }), { status: 200 });
+    }) as never;
+    const env2 = { ...e, LCE_ROUTINE_FIRE_URL: "https://routines.example.test/v1/claude_code/routines/trig_T1/fire",
+      LCE_ROUTINE_FIRE_TOKEN: "test-not-real" };
+    const d2 = await callEnv(env2, "POST", "/decisions", { action: "refresh", post_id: AWAITING, note: "again" }, fire);
+    expect(d2.body!.writer).toEqual({ started: true, session_url: "https://claude.ai/code/session_T" });
+    expect(calls).toHaveLength(1);
+    expect((calls[0].init.headers as Record<string, string>).Authorization).toBe("Bearer test-not-real");
+    expect(String(calls[0].init.body)).toContain(d2.body!.decision_id);
+    s = await call("GET", `/refresh-status/${AWAITING}`);
+    expect(s.body!.events.at(-1)).toMatchObject({ stage: "dispatched", reported_by: "worker" });
+    expect(String(s.body!.events.at(-1).note)).toContain("session_T");
   });
   it("has no request when the post was never refreshed", async () => {
     await awaitingMirror();

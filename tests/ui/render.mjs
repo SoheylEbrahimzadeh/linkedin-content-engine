@@ -35,6 +35,24 @@ const pipe = { meta: { mirror: { received_at: day(0) } },
              { date: ymd(3), topic: "B", status: "ready_to_publish", draft_ref: "20261008-demo-b" },
              { date: ymd(4), topic: "D", status: "in_progress", draft_ref: "20261010-demo-d", format: "video" },
              { date: ymd(6), topic: "A planned topic without a post", status: "planned", format: "document" }] };
+// LCE-050: Content Radar and freshness plan (fictional items only)
+pipe.radar = { configured: true, total: 41, relevant: 23, new_today: 3, by_pillar: { "itsm-it-operations": 9, "ai-business-automation": 8, "digital-transformation": 6 },
+  items: [
+    { id: "r-1", title: "Fictional vendor adds approval steps to ticket routing rules", url: "https://example.com/news/routing", source: "Example Vendor Newsroom", quality: "vendor",
+      published_at: day(0, "05:00:00"), first_seen: day(0, "06:00:00"), age_hours: 2, pillar: "itsm-it-operations", relevance: 0.75, matched_terms: ["itsm", "service management"],
+      excerpt: "A fictional release note about routing and approvals for service desks.", used_by: null, related_post: "20261006-demo-a", recommended_for: null },
+    { id: "r-2", title: "Survey (fictional): most automation pilots stall at the data stage", url: "https://example.org/survey", source: "Example Analyst Blog", quality: "analyst",
+      published_at: day(-1), first_seen: day(-1), age_hours: 26, pillar: "ai-business-automation", relevance: 0.5, matched_terms: ["automation", "ai agents"],
+      excerpt: "Fictional excerpt for the render test.", used_by: null, related_post: null, recommended_for: ymd(4) },
+    { id: "r-3", title: "r/fictional: how we run blameless incident reviews", url: "https://example.net/r/fictional/1", source: "r/fictional", quality: "community",
+      published_at: day(-3), first_seen: day(-3), age_hours: 74, pillar: "itsm-it-operations", relevance: 0.25, matched_terms: ["itsm"], excerpt: "", used_by: "20261008-demo-b", related_post: null, recommended_for: null }],
+  sources: [{ id: "vendor", name: "Example Vendor Newsroom", status: "ok", http: 200, entries: 20, new: 2, checked_at: day(0) },
+            { id: "blocked", name: "Example Blocked Feed", status: "unreachable", http: 403, entries: 0, new: 0, checked_at: day(0) }] };
+pipe.freshness_plan = { lead_hours: 36, horizon_days: 30, candidate_lead_days: 7,
+  work: [{ kind: "research", post_id: "20261006-demo-a", plan_date: ymd(1), key: "research:a" }, { kind: "slot", plan_date: ymd(6), key: "slot:x", started: { fired_at: day(0) } }],
+  slots: { [ymd(1)]: { post_id: "20261006-demo-a", slot_utc: day(1), window_opens_at: day(-1), in_window: true, next_check: day(0, "18:00:00"), last_check: day(0, "05:00:00"),
+    last_check_status: "current", last_research: null, packet: { built_at: day(0, "06:00:00"), fresh: 4, older: 2 },
+    new_developments: [{ id: "r-1", title: "Fictional vendor adds approval steps to ticket routing rules", url: "https://example.com/news/routing", source: "Example Vendor Newsroom" }] } } };
 pipe.voice = { version: 2, tone: ["Natural", "Practical", "Direct"], point_of_view: { person: "first", first_person: "Observations and opinions in first person; experience only from PUBLIC stories" },
   individual_voice: "One practitioner speaking, never a company page", technical_depth: "mixed", evidence: "Every number sourced", hashtag_policy: { max: 3, placement: "end" },
   avoid_phrases: [], avoid_patterns: ["generic closers"], review: { status: "pending_owner_review", fields: ["technical_depth", "point_of_view"] },
@@ -143,7 +161,7 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   const page = await browser.newPage({ viewport: vp });
   page.on("console", (m) => { if (m.type() === "error") errors.push(`${name}: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`${name} pageerror: ${e.message}`));
-  for (const view of ["overview", "upcoming", "posts", "post/20261006-demo-a", "post/20261008-demo-b", "post/20260929-old-approved", "post/20261014-demo-e", "test/20261012-demo-c", "history", "system"]) {
+  for (const view of ["overview", "upcoming", "posts", "radar", "post/20261006-demo-a", "post/20261008-demo-b", "post/20260929-old-approved", "post/20261014-demo-e", "test/20261012-demo-c", "history", "system"]) {
     await page.goto(`http://127.0.0.1:${port}/#${view}`);
     await page.waitForTimeout(400);
     const text = await page.locator("main").innerText();

@@ -19,7 +19,8 @@ export class DecisionError extends Error {
   }
 }
 
-export const ACTIONS = ["approve", "reject", "edit", "regenerate", "reschedule", "skip", "duplicate", "refresh"] as const;
+export const ACTIONS = ["approve", "reject", "edit", "regenerate", "reschedule", "skip", "duplicate", "refresh",
+  "radar_use"] as const;
 type Action = typeof ACTIONS[number];
 const POST_ID_RE = /^\d{8}-[a-z0-9-]{1,56}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -31,7 +32,8 @@ const MAX_TEXT = 3000;
 
 type MirrorPost = { post_id: string; state: string; text?: string | null; actual_hash?: string | null;
   plan_date?: string | null; image?: { sha256?: string } | null };
-type MirrorEntry = { date?: string; topic?: string; status?: string; draft_ref?: string };
+type MirrorEntry = { date?: string; topic?: string; status?: string; draft_ref?: string; pillar?: string };
+type RadarItem = { id: string; title: string; url: string; pillar?: string | null };
 
 export type DecisionRow = { decision_id: string; post_id: string | null; plan_date: string | null; action: Action;
   content_hash: string | null; payload: string; status: string; created_at: string; created_by: string;
@@ -53,11 +55,11 @@ const futureDate = (v: unknown, now: number): string => {
   return d;
 };
 
-async function mirror(env: Env): Promise<{ posts: MirrorPost[]; calendar: MirrorEntry[] }> {
+async function mirror(env: Env): Promise<{ posts: MirrorPost[]; calendar: MirrorEntry[]; radar: RadarItem[] }> {
   const row = await env.DB.prepare("SELECT body FROM pipeline_snapshot WHERE id = 1").first<{ body: string }>();
   if (!row) throw new DecisionError(409, "no pipeline mirror yet: the private workflow must sync first");
-  const snap = JSON.parse(row.body) as { posts?: MirrorPost[]; calendar?: MirrorEntry[] };
-  return { posts: snap.posts ?? [], calendar: snap.calendar ?? [] };
+  const snap = JSON.parse(row.body) as { posts?: MirrorPost[]; calendar?: MirrorEntry[]; radar?: { items?: RadarItem[] } };
+  return { posts: snap.posts ?? [], calendar: snap.calendar ?? [], radar: snap.radar?.items ?? [] };
 }
 
 export async function createDecision(env: Env, now: number, who: { subject: string; human: boolean },
@@ -76,7 +78,7 @@ export async function createDecision(env: Env, now: number, who: { subject: stri
   }
   const action = String(b.action ?? "") as Action;
   if (!ACTIONS.includes(action)) throw new DecisionError(400, `action must be one of ${ACTIONS.join(", ")}`);
-  const { posts, calendar } = await mirror(env);
+  const { posts, calendar, radar } = await mirror(env);
   const postId = b.post_id === undefined || b.post_id === null ? null : String(b.post_id);
   if (postId !== null && !POST_ID_RE.test(postId)) throw new DecisionError(400, "invalid post id");
   const post = postId ? posts.find((p) => p.post_id === postId) : undefined;
@@ -163,6 +165,20 @@ export async function createDecision(env: Env, now: number, who: { subject: stri
         payload.topic = entry.topic ?? null;
       }
       payload.reason = str(b.reason, 500, "reason", false);
+      break;
+    }
+    case "radar_use": {
+      // LCE-050: a planning recommendation only: the item is attached to an open slot as the suggested
+      // starting point for its candidate. Nothing is written, approved or published by this.
+      const item = radar.find((i) => i.id === String(b.item_id ?? ""));
+      if (!item) throw new DecisionError(404, "radar item not in the mirror");
+      const today = isoUtc(now).slice(0, 10);
+      const open = calendar.filter((e) => e.status === "open" && !e.draft_ref && (e.date ?? "") >= today)
+        .sort((x, y) => String(x.date).localeCompare(String(y.date)));
+      const wanted = b.plan_date ? open.find((e) => e.date === String(b.plan_date)) : (open.find((e) => e.pillar === item.pillar) ?? open[0]);
+      if (!wanted) throw new DecisionError(409, "no open slot to plan it for (every slot in the horizon has a post)");
+      planDate = String(wanted.date);
+      Object.assign(payload, { item_id: item.id, title: item.title.slice(0, 300), url: item.url });
       break;
     }
     case "duplicate": {

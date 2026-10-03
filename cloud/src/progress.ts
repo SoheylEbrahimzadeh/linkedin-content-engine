@@ -5,7 +5,7 @@ import type { Env } from "./db";
 import { isoUtc } from "./schedule";
 
 export const STAGES = [
-  "worker_started", "researching", "writing", "media", "humanization", "qa", "duplicate_check",
+  "dispatched", "worker_started", "researching", "writing", "media", "humanization", "qa", "duplicate_check",
   "approval_prepared", "replacement_ready", "failed",
 ] as const;
 
