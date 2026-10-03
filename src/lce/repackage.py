@@ -326,3 +326,54 @@ def package(
         image_sha256=record["image_sha256"],
     )
     return record
+
+
+def unskip_as_refresh(store: DataStore, post_id: str, *, by: str, note: str = "") -> dict:
+    """The owner skipped a post but meant Refresh (LCE-042): reopen the slot and request a
+    replacement. Only for posts rejected by Skip and never published; the skipped version is
+    archived (status `rejected`) and the post waits in NEEDS_REVISION for the replacement.
+    This is the one sanctioned way out of REJECTED, recorded in the post history."""
+    from lce import cloud
+
+    post = store.load_post(post_id)
+    reason = (post.get("approval") or {}).get("reason") or ""
+    if post["state"] != S.REJECTED.value or not reason.startswith("skipped"):
+        raise StoreError("only a post rejected by Skip can be reopened as a Refresh")
+    if (store.post_dir(post_id) / "publication.json").exists() or cloud.load_delegation(store, post_id):
+        raise StoreError("the post was published or handed to the cloud publisher; it is not reopened")
+    archived = versions.snapshot(
+        store,
+        post_id,
+        reason=f"skipped by the owner ({reason}); reopened as Refresh",
+        by=by,
+        status="rejected",
+    )["version"]
+    post = store.load_post(post_id)
+    post.pop("approval", None)
+    for k in ("qa", "duplicate"):
+        post.pop(k, None)
+    post["state"] = S.NEEDS_REVISION.value
+    post.setdefault("history", []).append(
+        {
+            "at": now_iso(),
+            "state": S.NEEDS_REVISION.value,
+            "note": f"skip undone: reopened as Refresh by {by}",
+        }
+    )
+    post["refresh_request"] = {
+        "requested_at": now_iso(),
+        "requested_by": by,
+        **({"note": note.strip()} if note.strip() else {}),
+        "rejected_version": archived,
+    }
+    store.save_post(post)
+    plan = store.plan()
+    for e in plan.get("entries", []):
+        if e.get("draft_ref") == post_id and e.get("status") == "skipped":
+            e["status"] = "in_progress"
+    store.write_doc(store.plan_path, "plan", plan)
+    from lce.posts import sync_plan
+
+    sync_plan(store, store.load_post(post_id))
+    store.log_event("post.unskipped_as_refresh", post_id=post_id, by=by, rejected_version=archived)
+    return post["refresh_request"]

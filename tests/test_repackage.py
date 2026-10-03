@@ -366,3 +366,36 @@ def test_sync_uploads_previous_version_images(store):
     fake = VersionCloud()
     out = cloud.sync_version_media(store, CloudClient("https://lce.example", lambda: "x", fake))
     assert out["uploaded"] == [f"{pid}/v1"] and fake.put[f"{pid}/1"]["sha256"] == old_sha
+
+
+def test_a_skip_can_be_reopened_as_refresh_only_when_skipped_and_unpublished(store):
+    pid = legacy_post(store)
+    decisions._skip(
+        store,
+        None,
+        {
+            "decision_id": "d-3",
+            "action": "skip",
+            "post_id": pid,
+            "created_by": "owner@example.com",
+            "payload": {"reason": "i dont like it"},
+        },
+    )
+    out = repackage.unskip_as_refresh(store, pid, by="owner via chat", note="i dont like it")
+    post = store.load_post(pid)
+    assert post["state"] == "NEEDS_REVISION" and "approval" not in post and out["rejected_version"] == 1
+    assert versions.listing(store, pid)[0]["status"] == "rejected"
+    assert "skip undone" in post["history"][-1]["note"]
+    repackage.package(store, pid, PKG)  # the replacement can now be written
+    assert store.load_post(pid)["state"] == "AWAITING_APPROVAL"
+    with pytest.raises(StoreError, match="only a post rejected by Skip"):
+        repackage.unskip_as_refresh(store, pid, by="x")  # not skipped any more
+
+
+def test_a_rejected_post_is_not_reopened(store):
+    from lce.approval import reject
+
+    pid = legacy_post(store)
+    reject(store, pid, "off-topic")
+    with pytest.raises(StoreError, match="only a post rejected by Skip"):
+        repackage.unskip_as_refresh(store, pid, by="x")
