@@ -334,3 +334,15 @@ test("pending reject and refresh end the version; approve/edit do not", () => {
   assert.equal(lib.closedBy({ status: "pending", action: "approve" }), null);
   assert.equal(lib.pendingDecision([{ status: "pending", action: "skip", post_id: null, plan_date: "2026-10-09" }], null, "2026-10-09").action, "skip");
 });
+
+// ── LCE-045: a "recorded" click is shown as recorded only while D1 still has it pending ──
+test("an outcome follows the decision's real fate", () => {
+  const o = { state: "recorded", label: "skip", decision_id: "d-1", at: "2026-10-03T00:44:37Z" };
+  assert.equal(lib.outcomeNow(o, [{ decision_id: "d-1", status: "pending" }]).kind, "recorded");
+  const ref = lib.outcomeNow(o, [{ decision_id: "d-1", status: "refused", result: "overridden by the owner: treat as Refresh" }]);
+  assert.equal(ref.kind, "resolved");
+  assert.match(ref.text, /^not applied: overridden by the owner/);
+  assert.equal(lib.outcomeNow(o, [{ decision_id: "d-1", status: "superseded" }]).text, "replaced by a later decision");
+  assert.equal(lib.outcomeNow(o, []).kind, "recorded");   // absence proves nothing
+  assert.equal(lib.outcomeNow({ state: "failed", label: "skip" }, []).kind, "failed");
+});

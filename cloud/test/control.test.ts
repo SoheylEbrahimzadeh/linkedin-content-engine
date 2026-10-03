@@ -189,6 +189,7 @@ describe("decision inbox", () => {
     expect((await call("POST", "/client-report", { kind: "whatever", detail: {} })).status).toBe(400);
     expect((await call("POST", "/client-report", { kind: "access_redirect", detail: { c: "CF_Authorization=abc" } })).status).toBe(400);
     const snap = await call("GET", "/snapshot");
+    expect((snap.body as { ui_build?: string }).ui_build).toMatch(/^[0-9a-f]{8}$/);   // LCE-045
     expect(snap.body!.client_reports).toMatchObject([{ kind: "access_redirect", detail: { method: "POST", status: 0 } }]);
     expect(snap.body!.access_sessions[0]).toMatchObject({ subject: "owner@example.com", issued_at: iat });
     expect((await rows(e, "SELECT * FROM access_sessions WHERE subject LIKE '%.access'"))).toEqual([]);   // service tokens not recorded

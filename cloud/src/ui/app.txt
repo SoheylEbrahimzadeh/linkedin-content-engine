@@ -8,7 +8,7 @@
 
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
-  REFRESH_CONFIRM, SKIP_CONFIRM, canRefresh, closedBy, displayStatus, selectionRows, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
+  REFRESH_CONFIRM, SKIP_CONFIRM, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
   mediaSourceShort, parseHash, segments, timeline, weekday,
 } from "./lib.js";
 
@@ -63,6 +63,8 @@ const SIGNIN = "Cloudflare Access sent this request to its sign-in page instead 
 const T = { pageLoadedAt: new Date().toISOString(), lastOkGetAt: null };
 const reports = [];
 S.outcomes = {};
+const UI_BUILD = "__UI_BUILD__";   // replaced by the Worker when it serves this file (LCE-045)
+let lastLoad = 0;
 const newRequestId = () => "req-" + (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
 
 function sessionNote() {
@@ -718,6 +720,11 @@ const CLOSED_NOTE = {
 function outcomeLine(key, big = false) {
   const o = key ? S.outcomes[key] : null;
   if (!o) return null;
+  const now = outcomeNow(o, S.snap?.decisions);
+  if (now?.kind === "resolved") {
+    return h("div", { class: "outcome small muted" + (big ? " notice" : "") },
+      `Your ${o.label} (recorded ${localTime(o.at, tz())}) was ${now.text}.`);
+  }
   if (o.state === "sending") return h("div", { class: "outcome small muted" }, `Sending your ${o.label}…`);
   if (o.state === "kept") return h("div", { class: "outcome small muted" }, `${cap(o.label)} not sent — ${o.message}.`);
   if (o.state === "recorded") {
@@ -987,7 +994,13 @@ async function load() {
       api("GET", "/pipeline").catch((e) => (e.status === 404 ? null : Promise.reject(e))),
       api("GET", "/migrations").catch(() => null),
     ]);
-    S.snap = snap; S.pipe = pipe; S.migrations = mig;
+    S.snap = snap; S.pipe = pipe; S.migrations = mig; lastLoad = Date.now();
+    // LCE-045: this page's code is older than the deployed Control Center: reload instead of mixing
+    // old rendering with new data (unless the owner is in the middle of something).
+    if (snap.ui_build && !UI_BUILD.startsWith("__") && snap.ui_build !== UI_BUILD) {
+      const busy = document.querySelector("dialog[open]") || Object.values(S.outcomes).some((o) => o.state === "sending");
+      if (!busy) { location.reload(); return; }
+    }
     status.textContent = "Updated " + localTime(snap.now, snap.settings?.timezone);
     status.className = "status ok";
     render();
@@ -1023,3 +1036,7 @@ function shell() {
 
 shell();
 load();
+// LCE-045: coming back to a tab left open shows the current state, never a stale one.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && Date.now() - lastLoad > 30000 && !document.querySelector("dialog[open]")) load();
+});

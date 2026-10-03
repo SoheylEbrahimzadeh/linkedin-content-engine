@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import worker from "../src/index";
-import { handleUi } from "../src/ui";
+import { handleUi, UI_BUILD } from "../src/ui";
 import { testEnv } from "./helpers";
 
 const e = testEnv();
@@ -69,6 +69,13 @@ describe("remote dashboard", () => {
     }
     expect(js).toContain('"x-lce-client": "dashboard"');
     expect(js).not.toContain("/approve");                 // no approval path exists
+  });
+
+  it("stamps the served script with the UI build the snapshot reports (LCE-045)", async () => {
+    const js = await (await get("/app.js")).text();
+    expect(js).not.toContain("__UI_BUILD__");
+    expect(js).toContain(`const UI_BUILD = "${UI_BUILD}"`);
+    expect(UI_BUILD).toMatch(/^[0-9a-f]{8}$/);
   });
 
   it("is routed by the Worker; unknown paths stay 404", async () => {

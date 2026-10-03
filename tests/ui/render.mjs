@@ -276,6 +276,20 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   if (!/skipped · slot released/i.test(rowText)) errors.push(`${name}: upcoming row not released after skip (${rowText.slice(0, 160)})`);
   for (const gone of ["Approve", "Refresh", "Edit", "Reschedule"]) if (await skRow.getByRole("button", { name: gone, exact: true }).count()) errors.push(`${name}: upcoming row still offers ${gone} after skip`);
   if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-upcoming-after-skip.png`, fullPage: true });
+  // LCE-045 (the production case): the page stays open while the private run resolves the skip as refused
+  // (the owner withdrew it). Refreshing the state must replace "Skip requested — recorded" with its real fate
+  // and give the version its controls back — never both at once.
+  const sk = (snap.decisions || []).find((d) => d.decision_id === "d-skip-recorded");
+  Object.assign(sk, { status: "refused", result: "overridden by the owner: treat as Refresh", resolved_at: new Date().toISOString() });
+  await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
+  await page.locator("#refresh").click().catch(() => errors.push(`${name}: no ↻ button`));
+  await page.waitForTimeout(700);
+  const after = await page.locator("main").innerText();
+  if (/skip requested — recorded/i.test(after)) errors.push(`${name}: stale "Skip requested — recorded" after the skip was refused`);
+  if (!/was not applied: overridden by the owner/i.test(after)) errors.push(`${name}: the refused skip's fate is not shown`);
+  if (/skipped · slot released/i.test(after)) errors.push(`${name}: still "Skipped" after the skip was refused`);
+  if (!(await page.locator("section.card", { hasText: "Controls" }).getByRole("button", { name: "Approve", exact: true }).count())) errors.push(`${name}: controls not back after the skip was refused`);
+  if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-skip-refused-later.png`, fullPage: true });
   snap.decisions = (snap.decisions || []).filter((d) => d.decision_id !== "d-skip-recorded");   // the owner undid it
   await page.reload();
   redirectMode = "once";
