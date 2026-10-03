@@ -84,10 +84,23 @@ describe("decision inbox", () => {
     const r = await call("POST", "/decisions", { action: "approve", post_id: AWAITING, content_hash: h, confirm: `APPROVE ${AWAITING}` });
     expect(r.status).toBe(409);
   });
-  it("a newer decision supersedes the pending one for the same post", async () => {
+  it("never drops a pending decision of another kind silently (LCE-042)", async () => {
+    await awaitingMirror();
+    expect((await call("POST", "/decisions", { action: "refresh", post_id: AWAITING })).status).toBe(201);
+    const skip = await call("POST", "/decisions", { action: "skip", post_id: AWAITING, reason: "x" });
+    expect(skip.status).toBe(409);
+    expect(skip.body!.error).toContain("pending_conflict: your refresh");
+    expect((await rows<Record<string, string>>(e, "SELECT action, status FROM decisions")).map((d) => `${d.action}:${d.status}`))
+      .toEqual(["refresh:pending"]);
+    // the same kind still replaces itself (a second Refresh with a new note)
+    expect((await call("POST", "/decisions", { action: "refresh", post_id: AWAITING, note: "n2" })).status).toBe(201);
+    const ok = await call("POST", "/decisions", { action: "skip", post_id: AWAITING, reason: "x", replace_pending: true });
+    expect(ok.status).toBe(201);
+  });
+  it("a newer decision supersedes the pending one for the same post when confirmed", async () => {
     const h = await awaitingMirror();
     await call("POST", "/decisions", { action: "regenerate", post_id: AWAITING, reason: "sharper hook" });
-    const r = await call("POST", "/decisions", { action: "edit", post_id: AWAITING, base_hash: h, text: "A new fictional text." });
+    const r = await call("POST", "/decisions", { action: "edit", post_id: AWAITING, base_hash: h, text: "A new fictional text.", replace_pending: true });
     expect(r.status).toBe(201);
     const ds = await rows<Record<string, string>>(e, "SELECT action, status FROM decisions ORDER BY created_at, action");
     expect(ds.map((d) => `${d.action}:${d.status}`).sort()).toEqual(["edit:pending", "regenerate:superseded"]);
@@ -103,7 +116,8 @@ describe("decision inbox", () => {
     expect((await call("POST", "/decisions", { action: "reschedule", post_id: AWAITING, date: "2026-10-12" })).status).toBe(201);
     expect((await call("POST", "/decisions", { action: "skip", plan_date: "2026-10-09" })).status).toBe(201);
     expect((await call("POST", "/decisions", { action: "skip", plan_date: "2026-10-10" })).status).toBe(404);
-    expect((await call("POST", "/decisions", { action: "duplicate", post_id: AWAITING, date: "2026-10-20" })).status).toBe(201);
+    expect((await call("POST", "/decisions", { action: "duplicate", post_id: AWAITING, date: "2026-10-20" })).status).toBe(409);
+    expect((await call("POST", "/decisions", { action: "duplicate", post_id: AWAITING, date: "2026-10-20", replace_pending: true })).status).toBe(201);
     expect((await call("POST", "/decisions", { action: "publish", post_id: AWAITING })).status).toBe(400);
   });
   it("refuses edits of a post already delegated to the cloud publisher", async () => {
