@@ -469,7 +469,8 @@ def cmd_image_search(args):
     print(f"✓ {len(rec['candidates'])} candidates from {', '.join(rec['sources_searched'])} "
           f"({len(ok)} reusable, {sum(1 for c in ok if c.get('preview_file'))} previews) → {args.out}")
     for si in rec.get("source_inspection") or []:
-        print(f"  source {si['source_url']}: HTTP {si.get('http_status')}, {len(si.get('visuals') or [])} visual(s), "
+        n = len(si.get("visuals") or [])
+        print(f"  source {si['source_url']}: HTTP {si.get('http_status')}, {n} visual(s), "
               f"reuse permitted by page: {si.get('reuse_permitted_by_page')}")
     for e in rec["errors"]:
         print(f"  ! {e['source']} '{e['query']}': {e['error']}")
