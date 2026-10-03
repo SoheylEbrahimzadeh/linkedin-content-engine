@@ -13,7 +13,8 @@ import {
 } from "./lib.js";
 
 const main = document.getElementById("main");
-const S = { snap: null, pipe: null, identity: null, migrations: null, range: 14, filter: "all", radarPillar: "all", radarUnused: false };
+const S = { snap: null, pipe: null, identity: null, migrations: null, range: 14, filter: "all", radarPillar: "all", radarUnused: false,
+  radarOrder: "rank", radarShown: 20 };
 
 // ── tiny DOM helpers ────────────────────────────────────────────────
 function h(tag, attrs, ...kids) {
@@ -639,13 +640,16 @@ function viewRadar() {
     card(null, empty("The radar has no sources yet (config/radar.yaml in the private repository)."))];
   if (r.error) return [h("div", { class: "page-head" }, h("h1", {}, "Content Radar")), card(null, h("p", { class: "err" }, r.error))];
   const pillars = Object.entries(r.by_pillar ?? {}).sort((a, b) => b[1] - a[1]);
-  const rows = radarRows(r, { pillar: S.radarPillar, unusedOnly: S.radarUnused });
+  const all = radarRows(r, { pillar: S.radarPillar, unusedOnly: S.radarUnused, order: S.radarOrder });
+  const rows = all.slice(0, S.radarShown);
   const ok = (r.sources ?? []).filter((s) => s.status === "ok").length;
   const chip = (id, label) => h("button", { type: "button", class: "chip-btn" + (S.radarPillar === id ? " on" : ""), onclick: () => { S.radarPillar = id; render(); } }, label);
   return [
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Content Radar"),
       h("p", { class: "muted" }, `${r.new_today} new today, ${r.relevant} relevant items, ${ok} of ${(r.sources ?? []).length} sources readable`))),
     h("div", { class: "toolbar" }, h("div", { class: "chips" }, chip("all", "All pillars"), pillars.map(([p, n]) => chip(p, `${p} (${n})`))),
+      h("div", { class: "seg" }, [["rank", "Most relevant"], ["newest", "Newest"]].map(([k, l]) =>
+        h("button", { type: "button", class: S.radarOrder === k ? "on" : "", onclick: () => { S.radarOrder = k; render(); } }, l))),
       h("label", { class: "check" }, h("input", { type: "checkbox", checked: S.radarUnused || null, onchange: (e) => { S.radarUnused = e.target.checked; render(); } }), " Unused only")),
     rows.length ? h("div", { class: "radar-list" }, rows.map((i) => h("article", { class: "radar-item" + (i.used_by ? " used" : "") },
       h("div", { class: "radar-main" },
@@ -660,6 +664,8 @@ function viewRadar() {
           : h("button", { type: "button", class: "small", onclick: () => A.radarUse(i) }, "Use for next post"),
         i.related_post ? link(`#post/${i.related_post}`, "Related post", "small") : null))))
       : card(null, empty("No items match this filter.")),
+    all.length > rows.length ? h("button", { type: "button", class: "more", onclick: () => { S.radarShown += 20; render(); } },
+      `Show ${Math.min(20, all.length - rows.length)} more of ${all.length - rows.length}`) : null,
     card("Sources", h("div", { class: "table-wrap" }, h("table", {},
       h("thead", {}, h("tr", {}, ["Source", "State", "Entries", "New", "Last read"].map((x) => h("th", {}, x)))),
       h("tbody", {}, (r.sources ?? []).map((s) => h("tr", {}, h("td", {}, s.name ?? s.id),

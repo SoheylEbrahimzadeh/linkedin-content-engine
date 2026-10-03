@@ -627,7 +627,7 @@ def radar_view(store: DataStore, limit: int = 80) -> dict:
             for e in store.plan().get("entries", []) if e.get("recommendation")}
     relevant = [i for i in items if i.get("relevance", 0) > 0]
     rows = []
-    for it in relevant[:limit]:
+    for it in sorted(relevant, key=lambda i: -radar.rank(i, now))[:limit]:
         when = it.get("published_at") or it["first_seen"]
         text = f"{it['title']} {it.get('excerpt', '')}"
         best = max(((radar.overlap(f"{p.get('topic', '')} {p.get('angle', '')}", text), p["post_id"])
@@ -649,7 +649,8 @@ def radar_view(store: DataStore, limit: int = 80) -> dict:
         by_pillar[i["pillar"]] = by_pillar.get(i["pillar"], 0) + 1
     return {
         "configured": True, "total": len(items), "relevant": len(relevant),
-        "new_today": sum(1 for i in relevant if i["first_seen"] >= day_ago),
+        # published (or, without a date, first seen) in the last 24 hours: not the first ingestion
+        "new_today": sum(1 for i in relevant if (i.get("published_at") or i["first_seen"]) >= day_ago),
         "by_pillar": by_pillar, "items": rows,
         "sources": list(radar.load_sources(store).values()),
     }

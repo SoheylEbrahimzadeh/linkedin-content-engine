@@ -375,3 +375,4 @@ th { color: var(--muted); font-weight: 600; border-top: 0; font-size: 12.5px; }
   .radar-item { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .radar-side { justify-items: start; grid-auto-flow: column; justify-content: start; }
 }
+.more { justify-self: center; }

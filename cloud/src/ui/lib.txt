@@ -746,7 +746,7 @@ export function nowBoard({ pipeline, cloud, progress = {}, nowMs = Date.now() })
     ...Object.entries(progress).filter(([, st]) => (st?.events ?? []).at(-1)?.stage === "failed").map(([id, st]) => ({ post_id: id, why: st.events.at(-1).note ?? "refresh failed" })),
   ];
   const radar = pipeline?.radar ?? {};
-  const fresh = (radar.items ?? []).filter((i) => Date.parse(i.first_seen) > nowMs - 86400e3);
+  const fresh = (radar.items ?? []).filter((i) => Date.parse(i.published_at ?? i.first_seen) > nowMs - 86400e3);
   const scheduled = (cloud?.consents ?? []).filter((c) => c.status === "active");
   const today = new Date(nowMs).toISOString().slice(0, 10);
   const next = (pipeline?.calendar ?? []).filter((e) => String(e.date) >= today && !["skipped", "rejected", "published"].includes(e.status))
@@ -756,11 +756,14 @@ export function nowBoard({ pipeline, cloud, progress = {}, nowMs = Date.now() })
 }
 
 /** Radar items for the page: filter by pillar and use, newest first (never invented fields). */
-export function radarRows(radar, { pillar = "all", unusedOnly = false } = {}) {
-  return (radar?.items ?? [])
+export function radarRows(radar, { pillar = "all", unusedOnly = false, order = "rank" } = {}) {
+  // the mirror lists items in rank order (relevance, freshness, source quality); "newest" re-sorts by date
+  const rows = (radar?.items ?? [])
     .filter((i) => pillar === "all" || i.pillar === pillar)
-    .filter((i) => !unusedOnly || !i.used_by)
-    .sort((a, b) => String(b.published_at ?? b.first_seen).localeCompare(String(a.published_at ?? a.first_seen)));
+    .filter((i) => !unusedOnly || !i.used_by);
+  return order === "newest"
+    ? rows.slice().sort((a, b) => String(b.published_at ?? b.first_seen).localeCompare(String(a.published_at ?? a.first_seen)))
+    : rows;
 }
 
 export function fmtAge(hours) {
