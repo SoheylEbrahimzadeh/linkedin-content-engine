@@ -125,3 +125,23 @@ def test_text_only_after_the_source_check_keeps_the_text_and_records_the_decisio
     assert doc["source_visual"]["status"] == "source_visual_unavailable_or_restricted"
     assert current_text(store, pid).rstrip() == before  # the old credit line goes, the text stays
     assert versions.listing(store, pid)[-1]["status"] == "replaced"
+
+
+def test_a_refusing_publisher_is_read_through_the_internet_archive_and_says_so(tmp_path):
+    url = "https://firm.example/press/1"
+
+    def get(u):
+        if u == url:
+            return (403, b"")
+        if u.startswith(source_visuals.ARCHIVE + "id_/"):
+            return PAGE
+        if u.startswith(source_visuals.ARCHIVE + "im_/"):
+            return png_shade(9)
+        return (403, b"")
+
+    rec = source_visuals.inspect(url, tmp_path, get)
+    assert rec["http_status"] == 403 and rec["archive_status"] == 200
+    assert rec["via"].startswith("Internet Archive capture")
+    fig = next(v for v in rec["visuals"] if v["kind"] == "figure_img")
+    assert fig["via"] == "Internet Archive" and fig["inspection_copy"]
+    assert rec["reuse_permitted_by_page"] is False

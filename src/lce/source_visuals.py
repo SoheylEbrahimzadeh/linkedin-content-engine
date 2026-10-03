@@ -50,6 +50,7 @@ RIGHTS_PATTERNS = [
     ("public_domain", re.compile(r"[^.\n]{0,80}(public domain|not subject to copyright)[^.\n]{0,80}", re.I)),
 ]
 MAX_VISUALS = 25
+ARCHIVE = "https://web.archive.org/web/2026"
 MAX_INSPECT_BYTES = 3_000_000
 UA = commons.UA
 
@@ -112,7 +113,8 @@ class _Page(HTMLParser):
 
 def _fetch(url: str, transport=None) -> tuple[int, bytes]:
     if transport:
-        return 200, transport(url)
+        r = transport(url)
+        return r if isinstance(r, tuple) else (200, r)
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html,image/*"})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310
@@ -133,9 +135,25 @@ def inspect(url: str, out_dir: Path, transport=None) -> dict:
     try:
         status, body = _fetch(url, transport)
     except OSError as exc:
-        rec.update(http_status=None, reachable=False, error=str(exc)[:300])
-        return rec
+        status, body = None, b""
+        rec["error"] = str(exc)[:300]
     rec["http_status"] = status
+    rec["via"] = "source"
+    if not (status == 200 and body):
+        # The publisher refuses automated clients (e.g. HTTP 403 for GitHub Actions): read the Internet
+        # Archive's capture of the same page instead ("id_" = the original HTML, not rewritten), and say so.
+        try:
+            a_status, a_body = _fetch(ARCHIVE + "id_/" + url, transport)
+        except OSError as exc:
+            a_status, a_body = None, b""
+            rec["archive_error"] = str(exc)[:300]
+        rec["archive_status"] = a_status
+        if a_status == 200 and a_body:
+            status, body, rec["via"] = (
+                200,
+                a_body,
+                "Internet Archive capture (the publisher refused the request)",
+            )
     rec["reachable"] = status == 200 and bool(body)
     if not rec["reachable"]:
         return rec
@@ -173,6 +191,9 @@ def inspect(url: str, out_dir: Path, transport=None) -> dict:
             continue
         try:
             st, data = _fetch(v["src"], transport)
+            if st != 200 and rec["via"] != "source":
+                st, data = _fetch(ARCHIVE + "im_/" + v["src"], transport)
+                v["via"] = "Internet Archive"
             if st == 200 and data and len(data) <= MAX_INSPECT_BYTES:
                 ext = (
                     ".png"
