@@ -467,3 +467,11 @@ test("LCE-050: the right-now board counts only recorded facts", () => {
   assert.equal(b.next.date, "2026-10-06");
   assert.deepEqual(lib.radarRows({ items: [{ id: "x", pillar: "p", used_by: "post" }, { id: "y", pillar: "p" }] }, { unusedOnly: true }).map((i) => i.id), ["y"]);
 });
+
+
+test("a refusal the owner overrode is history, not a current failure", () => {
+  const cloud = { decisions: [{ action: "skip", status: "refused", post_id: "a", created_at: "2026-10-03T10:00:00Z", result: "overridden by the owner: treat it as Refresh" }], consents: [], posts: [] };
+  const b = lib.nowBoard({ pipeline: { posts: [] }, cloud, nowMs: Date.parse("2026-10-03T20:00:00Z") });
+  assert.equal(b.failed.length, 0);
+  assert.equal(lib.attention({ cloud, pipeline: { posts: [] }, decisions: cloud.decisions }).length, 0);
+});

@@ -182,6 +182,9 @@ export function timeline({ cloud, pipeline, postId = null }) {
     .sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 
+// a refusal the owner resolved by an override is history, not something that failed now
+const OVERRIDDEN = /overridden by the owner/i;
+
 /** Items that need the owner's attention, most urgent first. */
 export function attention({ cloud, pipeline, decisions }) {
   const out = [];
@@ -190,7 +193,7 @@ export function attention({ cloud, pipeline, decisions }) {
     if (p.state === "PUBLISH_FAILED") out.push({ level: "err", post_id: p.post_id, text: "Publication failed" });
   }
   for (const d of decisions ?? []) {
-    if (d.status === "refused") out.push({ level: "warn", post_id: d.post_id, text: `Decision refused (${d.action}): ${d.result ?? ""}` });
+    if (d.status === "refused" && !OVERRIDDEN.test(d.result ?? "")) out.push({ level: "warn", post_id: d.post_id, text: `Decision refused (${d.action}): ${d.result ?? ""}` });
   }
   for (const p of pipeline?.posts ?? []) {
     if (p.state === "AWAITING_APPROVAL") out.push({ level: "info", post_id: p.post_id, text: "Ready for your approval" });
@@ -748,7 +751,7 @@ export function nowBoard({ pipeline, cloud, progress = {}, nowMs = Date.now() })
   ];
   const failed = [
     ...(cloud?.posts ?? []).filter((p) => ["PUBLISH_FAILED", "NEEDS_RECONCILE"].includes(p.state)).map((p) => ({ post_id: p.post_id, why: p.state })),
-    ...(cloud?.decisions ?? []).filter((d) => d.status === "refused" && Date.parse(d.created_at) > nowMs - 7 * 86400e3).map((d) => ({ post_id: d.post_id, why: `${d.action} refused` })),
+    ...(cloud?.decisions ?? []).filter((d) => d.status === "refused" && !OVERRIDDEN.test(d.result ?? "") && Date.parse(d.created_at) > nowMs - 7 * 86400e3).map((d) => ({ post_id: d.post_id, why: `${d.action} refused` })),
     ...Object.entries(progress).filter(([, st]) => (st?.events ?? []).at(-1)?.stage === "failed").map(([id, st]) => ({ post_id: id, why: st.events.at(-1).note ?? "refresh failed" })),
   ];
   const radar = pipeline?.radar ?? {};
