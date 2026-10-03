@@ -149,9 +149,69 @@ def _validate_package(pkg: dict) -> None:
             raise StoreError(f"claim without one of the package's sources: {c.get('text')!r}")
     media = pkg.get("media") or {}
     if "keep" in media:
-        raise StoreError("Refresh replaces the media too: draw a new visual (spec) or decide text_only")
-    if sum(k in media for k in ("spec", "text_only")) != 1:
-        raise StoreError("media must be exactly one of: spec (a new visual), text_only {reason, rationale}")
+        raise StoreError("Refresh replaces the media too: a new real image (commons) or text_only")
+    if sum(k in media for k in ("commons", "spec", "text_only")) != 1:
+        raise StoreError(
+            "media must be exactly one of: commons (a real, licensed image found by subject), "
+            "text_only {reason, rationale}, spec (a drawn visual, only when the owner asked for one)"
+        )
+    # LCE-043: a generated diagram is never the automatic choice; only the owner can ask for one.
+    if "spec" in media and media.get("owner_requested") is not True:
+        raise StoreError(
+            "a generated diagram is used only when the owner asked for one (media.owner_requested: true); "
+            "use a real licensed image (media.commons) or text-only"
+        )
+
+
+def _commons_media(store, post_id, spec, text, history, used, by) -> str:
+    """LCE-043: a real image chosen by subject from Wikimedia Commons, rights verified;
+    nothing suitable → text-only `no_suitable_licensed_image` (never a generated diagram)."""
+    from lce import commons
+    from lce import relevance as relv
+    from lce.posts import save_humanized
+
+    titles = {((v.get("media") or {}).get("source_title")) for v in history} - {None}
+    doc, record = commons.select(
+        store, post_id, spec, transport=_TRANSPORT, exclude_sha256=used - {None}, exclude_titles=titles
+    )
+    if doc is None:
+        tried = len(record["tried"])
+        images.decide(
+            store,
+            post_id,
+            kind="none",
+            decided_by="agent",
+            text_only_reason="no_suitable_licensed_image",
+            rationale=(
+                f"No suitable licensed image: {tried} Wikimedia Commons file(s) checked for "
+                f"'{record['subject']}'; none both allowed reuse and showed the subject."
+            ),
+        )
+        doc = images.load(store, post_id)
+        doc["selection"] = record
+        store.write_doc(images.path(store, post_id), "image", doc)
+        return f"text-only (no suitable licensed image; {tried} candidates checked)"
+    prov = doc["provenance"]
+    if prov.get("attribution_required"):
+        # The licence asks for credit: it goes into the post itself, before QA and approval.
+        save_humanized(store, post_id, text.rstrip() + "\n\n" + prov["attribution"], source="session", by=by)
+        from lce.posts import current_text as ct
+
+        sem = doc["media_relevance"].get("semantic")
+        doc["media_relevance"] = relv.declared(
+            concept=doc["media_relevance"]["concept"],
+            visual_type=doc["media_relevance"]["visual_type"],
+            reason=doc["media_relevance"]["relevance_reason"],
+            alt_text=doc["alt_text"],
+            post=store.load_post(post_id),
+            text=ct(store, post_id),
+        )
+        doc["media_relevance"]["semantic"] = sem
+        store.write_doc(images.path(store, post_id), "image", doc)
+    return f"real image from Wikimedia Commons: {record['selected']} ({prov['license']})"
+
+
+_TRANSPORT = None  # tests replace the Commons transport
 
 
 def package(
@@ -213,14 +273,16 @@ def package(
                 save_draft(store, post_id, pkg["text"])
             post = save_humanized(store, post_id, pkg["text"], source="session", by=by)
             media = pkg["media"]
-            if "spec" in media:
+            used = {v.get("image_sha256") for v in history} | {before["image_sha256"]}
+            if "commons" in media:
+                media_note = _commons_media(store, post_id, media["commons"], pkg["text"], history, used, by)
+            elif "spec" in media:
                 doc = concept(store, post_id, media["spec"])
-                used = {v.get("image_sha256") for v in history} | {before["image_sha256"]}
                 if doc["sha256"] in used:
                     raise StoreError(
                         "the new visual is identical to an earlier version's image; draw a new one"
                     )
-                media_note = "new conceptual visual"
+                media_note = "new conceptual visual (requested by the owner)"
             else:
                 t = media["text_only"]
                 images.decide(

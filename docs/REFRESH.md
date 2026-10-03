@@ -1,6 +1,27 @@
 # Refresh (LCE-040 same-day check, LCE-041 manual Refresh)
 
-## Manual Refresh (LCE-041, semantics LCE-042)
+## Manual Refresh (LCE-041, semantics LCE-042, media and state LCE-043)
+
+**LCE-043 — decisions take effect for the owner at once; real images.**
+- A recorded Skip, Reject or Refresh ends the version in the Control Center
+  immediately, before the private run applies it: the status becomes "Skipped ·
+  slot released" / "Rejected" / "Rejected · replacement being written", every
+  control that acts on that version (Approve, Refresh, Edit, Reschedule, Skip,
+  Reject) disappears, and only "Undo …" (cancel the pending decision) remains.
+  The Worker refuses any other decision on a post with a pending Skip or Reject
+  (`409 post_closed`), even with `replace_pending`. Skip never generates anything.
+- A decision the owner recorded and then withdrew in conversation is written to
+  `decisions/overrides.yaml` in the private repository (reviewed in git, with
+  the reason and who decided). The decisions workflow resolves it `refused`
+  ("overridden by the owner: …") and, if the override says so, requests a
+  Refresh instead. Nothing is deleted from D1 or git.
+- The replacement's media is a **real, legally reusable image** chosen by
+  subject (`media.commons`: Wikimedia Commons API, licence PD/CC0/CC BY/CC BY-SA,
+  file metadata must name a subject term, never an earlier version's file),
+  or text-only "no suitable licensed image". A generated diagram is used only
+  when the owner asked for one (`media.owner_requested: true`). The private
+  `refresh-package` workflow runs packages committed as
+  `refresh/packages/<id>.yaml`, because Commons is reachable from GitHub Actions.
 
 **LCE-042 — Refresh rejects; Skip releases.** Refresh means "I reject this
 version — write another publishable candidate for the same slot". When the
@@ -45,8 +66,8 @@ alt text, metadata), not just the image.
    `posts/<id>/versions/vN/` (text, post.yaml, image file and decision,
    APPROVAL.md, QA and duplicate reports, `version.yaml` with hashes, hook,
    media concept, approval state), replaces text/sources/claims, records the
-   humanization/voice check, decides the media (a new conceptual visual or an
-   explicit text-only; never the old image), runs QA, the duplicate
+   humanization/voice check, decides the media (a new real licensed image, or an
+   explicit text-only; never the old image; a drawn visual only on the owner's request), runs QA, the duplicate
    check against the archive, the media checks, and writes a fresh approval
    artifact bound to the new text and image hashes. Any failure restores the
    previous version exactly.

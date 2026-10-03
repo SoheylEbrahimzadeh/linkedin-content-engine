@@ -70,6 +70,20 @@ pipe.posts[0].versions = [{ version: 1, created_at: day(-1), by: "session", reas
 pipe.posts[3].refresh_request = { requested_at: day(0), requested_by: "cloud-access:owner@example.com", note: "image repeats the text" };
 pipe.posts[1].image.media_relevance = { concept: "rules before models", visual_type: "flow", relevance_reason: "shows the decision order the post argues for",
   copied_post_text_ratio: 0.05, factual_claims: [], source_requirements: [], media_decision: "accepted", problems: [] };
+// LCE-043: a refreshed post with a real Commons photo, its rights record and the image search
+pipe.posts.push({ post_id: "20261014-demo-e", state: "AWAITING_APPROVAL", text: "A fictional post about operations rooms.\n\nImage: Jane Example, CC BY-SA 4.0, via Wikimedia Commons", actual_hash: "e".repeat(64), plan_date: ymd(9), topic: "E",
+  image: { kind: "source_image", file: "image.png", sha256: "5".repeat(64), width: 1600, height: 1067, bytes: 240000, mime: "image/png", media_status: "attached",
+    alt_text: "Photo of server racks in a data center operations room", relation: "the operations room where the post's routing rules run",
+    provenance: { origin: "licensed_stock", usage: "licensed", license: "CC BY-SA 4.0", license_url: "https://creativecommons.org/licenses/by-sa/4.0",
+      source_url: "https://commons.wikimedia.org/wiki/File:Server_room.png", title: "File:Server room.png", creator: "Jane Example", credit: "Jane Example via Wikimedia Commons",
+      attribution_required: true, attribution: "Image: Jane Example, CC BY-SA 4.0, via Wikimedia Commons", retrieved: "Commons thumbnail (1600px wide)", retrieved_at: day(0), original_sha1: "abc123" },
+    media_relevance: { concept: "the real operations floor", visual_type: "photo", relevance_reason: "shows the environment the post is about", copied_post_text_ratio: null,
+      factual_claims: [], source_requirements: [], media_decision: "accepted", problems: [], text_checked: false,
+      semantic: { subject: "IT operations teams", subject_terms: ["IT operations", "data center"], matched_terms: ["data center"], metadata_checked: true } },
+    selection: { source: "Wikimedia Commons API", subject: "IT operations teams", subject_terms: ["IT operations", "data center"], selected: "File:Server room.png",
+      tried: [{ title: "File:Ops team.png", outcome: "refused", license: "CC BY-NC 2.0", why: "licence 'CC BY-NC 2.0' does not allow reuse" },
+              { title: "File:Server room.png", outcome: "selected", license: "CC BY-SA 4.0", matched_terms: ["data center"] }] } } });
+snap.preview_media.push({ post_id: "20261014-demo-e", sha256: "5".repeat(64), bytes: 240000, mime: "image/png" });
 snap.version_media = [{ post_id: "20261006-demo-a", version: 1, sha256: "1".repeat(64), bytes: 100, mime: "image/png" }];
 const identity = { ok: true, status: "verified", person_urn: "urn:li:person:TestPerson1", configured_person_urn: "urn:li:person:TestPerson1", person_urn_matches: true, api_version: "202609", api_version_valid: true };
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
@@ -117,7 +131,7 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   const page = await browser.newPage({ viewport: vp });
   page.on("console", (m) => { if (m.type() === "error") errors.push(`${name}: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`${name} pageerror: ${e.message}`));
-  for (const view of ["overview", "upcoming", "posts", "post/20261006-demo-a", "post/20261008-demo-b", "post/20260929-old-approved", "test/20261012-demo-c", "history", "system"]) {
+  for (const view of ["overview", "upcoming", "posts", "post/20261006-demo-a", "post/20261008-demo-b", "post/20260929-old-approved", "post/20261014-demo-e", "test/20261012-demo-c", "history", "system"]) {
     await page.goto(`http://127.0.0.1:${port}/#${view}`);
     await page.waitForTimeout(400);
     const text = await page.locator("main").innerText();
@@ -277,6 +291,17 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   await page.waitForTimeout(400);
   const mc = await page.locator("section.card", { hasText: "Visual concept" }).innerText().catch(() => "");
   for (const want of ["Relevant to the post", "rules before models", "flow", "5%", "Image hash"]) if (!mc.includes(want)) errors.push(`${name}: media card lacks "${want}"`);
+  // LCE-043: a real image shows its source, licence, creator, attribution and how it was found
+  await page.goto(`http://127.0.0.1:${port}/#post/20261014-demo-e`);
+  await page.waitForTimeout(400);
+  const media = page.locator("section.card", { hasText: "Source file" });
+  await media.locator("summary", { hasText: "Image search" }).click().catch(() => errors.push(`${name}: no image search record`));
+  const mtext = await media.innerText().catch(() => "");
+  for (const want of ["File:Server room.png", "Jane Example", "CC BY-SA 4.0", "creativecommons.org/licenses/by-sa/4.0", "required · in the post", "commons.wikimedia.org/wiki/File:Server_room.png",
+    "Commons thumbnail", "data center", "Refused: File:Ops team.png", "does not allow reuse", "Selected: File:Server room.png"]) {
+    if (!mtext.includes(want)) errors.push(`${name}: media card lacks "${want}"`);
+  }
+  if (process.env.OUT) await media.screenshot({ path: `${process.env.OUT}/${name}-real-image-card.png` });
   // open a dialog
   await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
   await page.waitForTimeout(300);

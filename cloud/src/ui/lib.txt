@@ -402,7 +402,7 @@ const ORIGIN_LABEL = { own_creation: "Own creation", owner_screenshot: "Your scr
   source_publication: "Source publication", licensed_stock: "Licensed (Wikimedia Commons or stock)", generated: "Generated" };
 const REASON_LABEL = { text_carries_point: "The text carries the point", no_relevant_visual: "No relevant visual",
   no_rights_safe_source: "No rights-safe source", personal_story_without_owner_photo: "Personal story without your photo",
-  would_be_decorative: "An image would only decorate" };
+  would_be_decorative: "An image would only decorate", no_suitable_licensed_image: "No suitable licensed image" };
 const STATUS_LABEL = { attached: "Attached", text_only: "Text-only (decided)", needs_review: "Rights need your review",
   invalid: "Invalid — fix before approval", undecided: "No decision yet" };
 
@@ -421,9 +421,15 @@ export function mediaRecord(post) {
     const prov = img.provenance ?? {};
     rows.push(["Kind", img.kind]);
     rows.push(["Source", ORIGIN_LABEL[prov.origin] ?? prov.origin ?? UNKNOWN]);
-    if (prov.credit) rows.push(["Credit", prov.credit]);
+    if (prov.title) rows.push(["Source file", prov.title]);
+    if (prov.creator) rows.push(["Creator", prov.creator]);
+    else if (prov.credit) rows.push(["Credit", prov.credit]);
     if (prov.license || prov.usage) rows.push(["Rights", [prov.license, prov.usage].filter(Boolean).join(" · ")]);
+    if (prov.license_url) rows.push(["Licence", { href: prov.license_url }]);
+    if (prov.attribution_required !== undefined) rows.push(["Attribution", prov.attribution_required ? `required · in the post: “${prov.attribution}”` : `not required${prov.attribution ? ` (“${prov.attribution}”)` : ""}`]);
     if (prov.source_url) rows.push(["Source URL", { href: prov.source_url }]);
+    if (prov.retrieved) rows.push(["Retrieved", `${prov.retrieved}${prov.retrieved_at ? " · " + String(prov.retrieved_at).slice(0, 16).replace("T", " ") : ""}`]);
+    if (prov.original_sha1) rows.push(["Original SHA-1", prov.original_sha1]);
     if (prov.generation?.method) rows.push(["Made with", prov.generation.method]);
     if (img.width && img.height) rows.push(["Size", `${img.width}×${img.height} px${img.bytes ? ` · ${Math.round(img.bytes / 1024)} KB` : ""}${img.mime ? ` · ${img.mime.replace("image/", "").toUpperCase()}` : ""}`]);
     else if (img.bytes) rows.push(["Size", `${Math.round(img.bytes / 1024)} KB`]);
@@ -432,6 +438,14 @@ export function mediaRecord(post) {
   }
   if (img.decided_by) rows.push(["Decided", `${img.decided_by}${img.decided_at ? " · " + String(img.decided_at).slice(0, 10) : ""}`]);
   return { status, statusLabel: STATUS_LABEL[status] ?? status, rows, errors: img.errors ?? [], warnings: img.warnings ?? [] };
+}
+
+/** LCE-043: how the image was searched for (every candidate and why it was refused). */
+export function selectionRows(image) {
+  const sel = image?.selection;
+  if (!sel) return null;
+  return { subject: sel.subject, concept: sel.concept ?? null, terms: sel.subject_terms ?? [], source: sel.source ?? null,
+    selected: sel.selected ?? null, tried: (sel.tried ?? []).map((t) => ({ title: t.title, outcome: t.outcome, why: t.why ?? (t.matched_terms ? "matches: " + t.matched_terms.join(", ") : ""), license: t.license ?? null })) };
 }
 
 export function mediaSourceShort(post) {
@@ -544,6 +558,11 @@ export function relevanceRows(image) {
       ? rel.factual_claims.map((f) => `${f.text}${f.supported ? " (sourced)" : " (UNSUPPORTED)"}`).join("; ") : "none"],
   ];
   if ((rel.source_requirements ?? []).length) rows.push(["Source shown", rel.source_requirements.join("; ")]);
+  const sem = rel.semantic;   // LCE-043: a real image is relevant when its own metadata names the post's subject
+  if (sem) {
+    rows.push(["Subject", sem.subject ?? "not stated"]);
+    rows.push(["In source metadata", (sem.matched_terms ?? []).length ? sem.matched_terms.join(", ") : "none (not relevant)"]);
+  }
   return { rows, decision: rel.media_decision, legacy: Boolean(rel.legacy), problems: rel.problems ?? [] };
 }
 

@@ -15,7 +15,6 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "decision_id",
           "reason",
           "decided_at",
           "decided_by"
@@ -67,8 +66,43 @@
                 "type": "string"
               }
             }
+          },
+          "match": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "post_id",
+              "action",
+              "recorded_at_prefix"
+            ],
+            "description": "When the decision id is not at hand: the post, the action and the start of its recording time (UTC, e.g. 2026-10-03T00:44).",
+            "properties": {
+              "post_id": {
+                "type": "string",
+                "minLength": 5
+              },
+              "action": {
+                "type": "string"
+              },
+              "recorded_at_prefix": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}"
+              }
+            }
           }
-        }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "decision_id"
+            ]
+          },
+          {
+            "required": [
+              "match"
+            ]
+          }
+        ]
       }
     }
   }

@@ -8,7 +8,7 @@
 
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
-  REFRESH_CONFIRM, SKIP_CONFIRM, canRefresh, closedBy, displayStatus, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
+  REFRESH_CONFIRM, SKIP_CONFIRM, canRefresh, closedBy, displayStatus, selectionRows, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
   mediaSourceShort, parseHash, segments, timeline, weekday,
 } from "./lib.js";
 
@@ -788,8 +788,18 @@ function mediaCard(p, c) {
     rec.rows.length ? h("dl", { class: "kv" }, [...rec.rows, ...(p?.image?.sha256 ? [["Image hash", h("code", {}, short(p.image.sha256, 16))]] : [])]
       .map(([k, v]) => [h("dt", {}, k), h("dd", {}, v && v.href ? ext(v.href, v.href.replace(/^https?:\/\//, "")) : v)])) : null,
     rec.note ? h("p", { class: "small muted" }, rec.note) : null,
+    selectionDetails(p?.image),
     (rec.errors ?? []).map((e) => h("p", { class: "err small" }, e)),
     (rec.warnings ?? []).map((w) => h("p", { class: "small muted" }, "Note: " + w)));
+}
+
+function selectionDetails(image) {
+  const sel = selectionRows(image);
+  if (!sel) return null;
+  return h("details", { class: "rules" }, h("summary", {}, `Image search · ${sel.tried.length} candidate${sel.tried.length === 1 ? "" : "s"} checked${sel.selected ? "" : " · none suitable"}`),
+    h("p", { class: "small" }, `Subject: ${sel.subject}. Must show: ${sel.terms.join(", ")}.${sel.source ? " Source: " + sel.source + "." : ""}`),
+    h("ul", { class: "list small" }, sel.tried.map((t) => h("li", {}, h("strong", {}, t.outcome === "selected" ? "Selected: " : "Refused: "),
+      t.title, t.license ? ` (${t.license})` : "", t.why ? " — " + t.why : ""))));
 }
 
 function techDetails(id, p, c, pb, state) {

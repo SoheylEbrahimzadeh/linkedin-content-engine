@@ -214,3 +214,19 @@ def test_override_file_is_validated(store):
     with pytest.raises(StoreError):
         store.write_doc(store.root / "decisions" / "overrides.yaml", "decision_overrides",
                         {"overrides": [{"decision_id": "x", "reason": "short"}]})
+
+
+def test_override_can_match_by_post_action_and_recording_time(store):
+    pid = awaiting_post(store)
+    d = decision("skip", pid)
+    other = decision("skip", None, plan_date="2026-11-03")
+    (store.root / "decisions").mkdir(exist_ok=True)
+    store.write_doc(store.root / "decisions" / "overrides.yaml", "decision_overrides", {"overrides": [
+        {"match": {"post_id": pid, "action": "skip", "recorded_at_prefix": "2026-10-05T12:00"},
+         "reason": "owner decided in chat: treat as Refresh", "decided_at": "2026-10-05T13:00:00+00:00",
+         "decided_by": "owner", "then": {"action": "refresh", "by": "owner (chat)"}}]})
+    _, out = run(store, d, other)
+    by_id = {o["decision_id"]: o for o in out}
+    assert by_id[d["decision_id"]]["status"] == "refused"
+    assert "overridden" not in str(by_id[other["decision_id"]]["result"])
+    assert store.load_post(pid)["state"] == "NEEDS_REVISION"
