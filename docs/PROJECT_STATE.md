@@ -328,6 +328,18 @@ NOT_VERIFIED until an Access service token is stored in GitHub.
   resolves the existing D1 `lce` by name for deploys and `--remote` migrations
   (the placeholder made `migrations apply lce --remote` target a nonexistent id).
 
+## LCE-047 (2026-10-03): Access session lost between tabs, pages and images
+
+Engine #79; lce-data #63–#64. Root cause, measured in production (`access-probe` workflow, D1
+`access_sessions`): every Access application token issued to the owner lives exactly **10 seconds**
+(9 of 9 sessions on 2026-10-03, including 16:20–16:28 UTC). After 10 s Access redirects every request
+(new tab, API call, `<img>`) to its sign-in page; right after a sign-in images load. Our side is clean:
+same origin, credentials sent, no cookies set by the Worker, image route 200 with valid credentials,
+302 to Access without. **Owner action (open):** Zero Trust → Access → Applications →
+linkedin-content-engine → Session Duration (e.g. 24 h), and the Session Duration on its Allow policy.
+The UI now reports the real length and, below 5 min, where to change it; images refused by Access
+wait for the single sign-in banner.
+
 ## LCE-045/046 (2026-10-03): no stale decision state; source-first media
 
 Engine #74–#77; lce-data #56–#62. Verified in production: dashboard-check PASS, dashboard-visual PASS
