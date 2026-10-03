@@ -371,6 +371,27 @@ Engine #84–#90 (and the doctor-marker fix #86); lce-data #73–#79. Production
   - Verified in production by `dashboard-lce050` (desktop + phone, no console errors).
 - **Doctor marker:** reverted by mistake in #87 and restored in #92; cloud-sync is green again.
 
+**Update 23:30 UTC (final acceptance round).**
+- **Future slots first:** writer queue no longer starts a replacement whose slot passed (29 Sep ITSM
+  stays pending; the dashboard asks for a reschedule). Engine #95.
+- **`mode: new` verified in production on the open slot 6 Oct (digital-transformation):**
+  1. research packet (7 fresh items);
+  2. CIO.com 1 Oct 2026 read in full by `source-fetch`;
+  3. claims verbatim;
+  4. `lce plan fill` → `20261006-modernization-by-constraint-not-by-age` AWAITING_APPROVAL: QA and
+     duplicate check passed; text-only, the source visual being restricted stock.
+
+  Humanize warning `style.triads` was left in; WRITER.md now requires clearing such warnings.
+  `refresh-package` failed after the sync on mode new (no refreshed.txt); fixed in lce-data #88.
+- **Radar sources:**
+  - removed: Gartner newsroom (403), r/sysadmin, r/automation (429);
+  - added: The New Stack, DevOps.com and InfoQ DevOps;
+  - 17 of 18 sources readable (r/servicenow intermittently 429).
+- **Scheduled checks:**
+  - 4 Oct 06:15 UTC: was slot 10 Oct filled by the 05:37 scheduled writer run?
+  - 4 Oct 19:05 UTC: first real freshness window (6 Oct post, opens 18:30 UTC).
+- **Instant Refresh trigger:** still not configured (owner action).
+
 **Built and tested, not yet exercised end to end in production**
 - **Instant writer start** on a Dashboard Refresh: needs the owner's writer routine with an API trigger.
   Its URL and token go into Worker secrets and lce-data secrets as
