@@ -9,11 +9,11 @@
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
   REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, PROGRESS_STEPS, fmtElapsed, refreshProgress, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
-  mediaSourceShort, parseHash, segments, timeline, weekday,
+  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge,
 } from "./lib.js";
 
 const main = document.getElementById("main");
-const S = { snap: null, pipe: null, identity: null, migrations: null, range: 14, filter: "all" };
+const S = { snap: null, pipe: null, identity: null, migrations: null, range: 14, filter: "all", radarPillar: "all", radarUnused: false };
 
 // ── tiny DOM helpers ────────────────────────────────────────────────
 function h(tag, attrs, ...kids) {
@@ -314,11 +314,16 @@ const A = {
   async refresh(p) {
     const note = h("textarea", { rows: 3, maxlength: 500, class: "short", placeholder: "Optional: what should change (e.g. the image only repeats the text)" });
     const ok = await dialog("Refresh this post?", [h("p", {}, REFRESH_CONFIRM),
-      h("p", { class: "small muted" }, "Nothing is published. The current version stops being approvable at once; a writing session (scheduled every 2 hours, or started by hand) produces the replacement, which then waits for your approval."),
+      h("p", { class: "small muted" }, "Nothing is published. The current version stops being approvable at once; the writer starts right away (or, if instant start is not set up, at its next scheduled run) and the replacement then waits for your approval."),
       h("label", { class: "small" }, "Note for the rewrite (optional)"), note],
       [{ label: "Reject and refresh", value: () => true }]);
     if (ok) decide({ action: "refresh", post_id: p.post_id, note: note.value.trim() },
       "Refresh requested and recorded. The current version is rejected; the replacement appears here for your approval.");
+  },
+  async radarUse(item) {
+    const ok = await confirmBox("Use for the next post?", `"${item.title}" becomes the suggested starting point for the next open slot` +
+      (item.pillar ? ` in ${item.pillar}` : "") + ". This only plans it: a writer still researches and writes the post, and you approve it.", "Plan it");
+    if (ok) decide({ action: "radar_use", item_id: item.id }, "Planned. The private workflow attaches it to the open slot at its next run.");
   },
   async regenerate(p) {
     const reason = await askText("Request regeneration", "What should change? The next drafting session rewrites it; nothing is regenerated automatically.");
@@ -573,6 +578,7 @@ function viewOverview() {
   const nextPost = next?.post_id ? pipePost(next.post_id) ?? cloudPost(next.post_id) : null;
   return [
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Overview"), h("p", { class: "muted" }, `Your plan for the next ${S.range} days`)), rangeControls("overview")),
+    boardView(),
     h("div", { class: "hero" },
       card(null, publishingAs()),
       h("div", { class: "switches" },
@@ -580,9 +586,6 @@ function viewOverview() {
         h("div", { class: "switch " + (s.emergency_stop ? "err" : "ok") }, h("span", { class: "switch-label" }, "Emergency stop"), h("strong", {}, s.emergency_stop ? "On" : "Off")),
         h("div", { class: "switch " + (s.token_present && (days === null || days > 7) ? "ok" : "warn") }, h("span", { class: "switch-label" }, "LinkedIn access"),
           h("strong", {}, !s.token_present ? "No token" : days === null ? "Connected" : days < 0 ? "Expired" : `${days} days left`)))),
-    h("div", { class: "funnel", role: "list", "aria-label": "Posts by status in range" }, PIPELINE_STEPS.map((k) =>
-      h("a", { class: "funnel-step", role: "listitem", href: "#upcoming", onclick: () => { S.filter = { AWAITING_APPROVAL: "needs_approval", APPROVED: "approved", SCHEDULED: "scheduled", PUBLISHED: "published" }[k] ?? "all"; save(); } },
-        h("span", { class: "funnel-count" }, String(cp.counts[k] ?? 0)), h("span", { class: "funnel-label" }, STATUSES[k].label)))),
     h("div", { class: "grid2" },
       card("Next post", next ? h("div", { class: "next" },
         h("div", { class: "next-when" }, fmtDate(next.date), next.time ? ` · ${next.time}` : "", next.time_source === "planned slot" ? h("span", { class: "muted" }, " (planned time)") : null),
@@ -603,6 +606,83 @@ function viewOverview() {
       h("p", { class: "small muted" }, `Next ${S.range} days: ${textOnly} text-only · ${withImage} with an image`,
         unsupported ? ` · ${unsupported} with a media type that is not implemented` : "")),
   ];
+}
+
+// LCE-050: what needs the owner, and what the system is doing right now (recorded facts only)
+function boardView() {
+  const b = nowBoard({ pipeline: S.pipe, cloud: S.snap, progress: S.progress, nowMs: Date.now() });
+  const title = (id) => hook(pipePost(id)?.text, 48) ?? pipePost(id)?.topic ?? id;
+  const tile = (key, label, count, tone, href, detail) => h("a", { class: `tile tile-${key} ${count ? tone : "quiet"}`, href },
+    h("span", { class: "tile-label" }, label), h("span", { class: "tile-count" }, String(count)), h("span", { class: "tile-detail" }, detail));
+  const first = (list, f) => (list.length ? f(list[0]) + (list.length > 1 ? ` and ${list.length - 1} more` : "") : null);
+  return h("section", { class: "board", "aria-label": "Right now" },
+    tile("approval", "Needs your approval", b.approval.length, "info", b.approval[0] ? `#post/${b.approval[0].post_id}` : "#upcoming",
+      first(b.approval, (p) => title(p.post_id)) ?? "Nothing waiting for you"),
+    tile("research", "Being researched", b.researching.length, "accent", "#upcoming",
+      first(b.researching, (u) => title(u.post_id)) ?? "No research running"),
+    tile("writing", "Being written", b.writing.length, "accent", b.writing[0]?.post_id ? `#post/${b.writing[0].post_id}` : "#upcoming",
+      first(b.writing, (u) => u.post_id ? title(u.post_id) : `Slot ${fmtDate(u.plan_date)}`) ?? "No writer active"),
+    tile("fresh", "Fresh in the radar", b.radarNewToday, "ok", "#radar",
+      b.radarConfigured ? (b.fresh[0]?.title?.slice(0, 60) ?? "Nothing new in the last 24 hours") : "Radar not set up yet"),
+    tile("scheduled", "Scheduled", b.scheduled.length, "ok", "#upcoming",
+      b.scheduled[0] ? `Next ${fmtWhen(b.scheduled[0].slot_utc)}` : "Nothing has a publishing time"),
+    tile("failed", "Failed", b.failed.length, "err", b.failed[0]?.post_id ? `#post/${b.failed[0].post_id}` : "#system",
+      first(b.failed, (f) => f.why) ?? "Nothing failed"),
+    tile("next", "Next slot", b.next ? 1 : 0, "info", b.next?.draft_ref ? `#post/${b.next.draft_ref}` : "#upcoming",
+      b.next ? `${fmtDate(b.next.date)} · ${b.next.status === "open" ? "open slot" : b.next.topic}` : "Nothing planned"));
+}
+
+// LCE-050: Content Radar: what the feeds brought in, with provenance; "Use" only plans
+function viewRadar() {
+  const r = S.pipe?.radar;
+  if (!r || r.configured === false) return [h("div", { class: "page-head" }, h("h1", {}, "Content Radar")),
+    card(null, empty("The radar has no sources yet (config/radar.yaml in the private repository)."))];
+  if (r.error) return [h("div", { class: "page-head" }, h("h1", {}, "Content Radar")), card(null, h("p", { class: "err" }, r.error))];
+  const pillars = Object.entries(r.by_pillar ?? {}).sort((a, b) => b[1] - a[1]);
+  const rows = radarRows(r, { pillar: S.radarPillar, unusedOnly: S.radarUnused });
+  const ok = (r.sources ?? []).filter((s) => s.status === "ok").length;
+  const chip = (id, label) => h("button", { type: "button", class: "chip-btn" + (S.radarPillar === id ? " on" : ""), onclick: () => { S.radarPillar = id; render(); } }, label);
+  return [
+    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Content Radar"),
+      h("p", { class: "muted" }, `${r.new_today} new today, ${r.relevant} relevant items, ${ok} of ${(r.sources ?? []).length} sources readable`))),
+    h("div", { class: "toolbar" }, h("div", { class: "chips" }, chip("all", "All pillars"), pillars.map(([p, n]) => chip(p, `${p} (${n})`))),
+      h("label", { class: "check" }, h("input", { type: "checkbox", checked: S.radarUnused || null, onchange: (e) => { S.radarUnused = e.target.checked; render(); } }), " Unused only")),
+    rows.length ? h("div", { class: "radar-list" }, rows.map((i) => h("article", { class: "radar-item" + (i.used_by ? " used" : "") },
+      h("div", { class: "radar-main" },
+        h("a", { class: "radar-title", href: i.url, target: "_blank", rel: "noopener noreferrer" }, i.title),
+        h("div", { class: "radar-meta" }, h("span", {}, i.source), h("span", {}, fmtAge(i.age_hours)), i.quality ? h("span", {}, i.quality) : null,
+          i.pillar ? h("span", { class: "pill info" }, i.pillar) : null,
+          h("span", { class: `relevance rel-${Math.max(1, Math.round((i.relevance ?? 0) * 4))}`, title: `relevance ${i.relevance}`, "aria-label": `relevance ${i.relevance}` }, h("span", {}))),
+        i.excerpt ? h("p", { class: "radar-excerpt" }, i.excerpt) : null,
+        i.matched_terms?.length ? h("p", { class: "small muted" }, "Matches: " + i.matched_terms.slice(0, 6).join(", ")) : null),
+      h("div", { class: "radar-side" },
+        i.used_by ? h("span", { class: "pill ok" }, "Used") : i.recommended_for ? h("span", { class: "pill accent" }, `Planned for ${fmtDate(i.recommended_for)}`)
+          : h("button", { type: "button", class: "small", onclick: () => A.radarUse(i) }, "Use for next post"),
+        i.related_post ? link(`#post/${i.related_post}`, "Related post", "small") : null))))
+      : card(null, empty("No items match this filter.")),
+    card("Sources", h("div", { class: "table-wrap" }, h("table", {},
+      h("thead", {}, h("tr", {}, ["Source", "State", "Entries", "New", "Last read"].map((x) => h("th", {}, x)))),
+      h("tbody", {}, (r.sources ?? []).map((s) => h("tr", {}, h("td", {}, s.name ?? s.id),
+        h("td", {}, h("span", { class: "pill " + (s.status === "ok" ? "ok" : "warn") }, s.status === "ok" ? "readable" : `${s.status}${s.http ? " " + s.http : ""}`)),
+        h("td", {}, String(s.entries ?? 0)), h("td", {}, String(s.new ?? 0)), h("td", {}, fmtWhen(s.checked_at))))))),
+      h("p", { class: "small muted" }, "Public feeds only, read by the private repository's scheduled job. Feed text is evidence for a writer, never post copy.")),
+  ];
+}
+
+// LCE-050: freshness window, research packet, last research, new developments, next check
+function researchCard(p) {
+  const f = S.pipe?.freshness_plan?.slots?.[p?.plan_date];
+  if (!f) return null;
+  const kv = (rows) => h("dl", { class: "kv" }, rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]));
+  return card("Freshness & research", kv([
+    ["Window", f.in_window ? `open since ${fmtWhen(f.window_opens_at)}` : `opens ${fmtWhen(f.window_opens_at)}`],
+    ["Research packet", f.packet ? `ready (${f.packet.fresh} fresh, ${f.packet.older} older items, built ${fmtWhen(f.packet.built_at)})` : "not built yet"],
+    ["Last research", f.last_research ? fmtWhen(f.last_research) : "none in this window"],
+    ["Last check", f.last_check ? `${fmtWhen(f.last_check)} (${f.last_check_status})` : "not yet"],
+    ["Next check", /^\d{4}-/.test(f.next_check) ? fmtWhen(f.next_check) : f.next_check],
+  ]), f.new_developments?.length ? [h("h3", { class: "small" }, "New developments since the text was written"),
+    h("ul", { class: "list small" }, f.new_developments.map((n) => h("li", {}, ext(n.url, n.title), h("span", { class: "muted" }, ` (${n.source})`))))]
+    : h("p", { class: "small muted" }, "No radar item on this topic is newer than the text."));
 }
 
 function viewUpcoming() {
@@ -691,6 +771,7 @@ function viewPost(id) {
       h("div", { class: "detail-main" }, publishingAs(true), feedPreview(p, c), h("p", { class: "small muted" }, "Preview only. Opening or reviewing a post never publishes it."),
         p?.versions?.length ? versionsCard(p) : null),
       h("div", { class: "side" },
+        card("Controls", h("div", { class: "controls" }, controls)),
         card("Plan", kv([
           ["Status", statusPill(code)],
           ["Objective", p?.objective ? objectiveLabel(p.objective) : "not recorded"],
@@ -701,11 +782,11 @@ function viewPost(id) {
           ["Visibility", (st().visibility || "PUBLIC") === "PUBLIC" ? "Public" : st().visibility],
         ])),
         p && !locked ? freshCard(p, c, consent) : null,
+        p && !locked ? researchCard(p) : null,
         mediaCard(p, c),
         card("Humanization", h("ul", { class: "hz" }, humanizationRows(p, voice).map((r) =>
           h("li", {}, h("span", { class: "hz-label" }, r.label), h("span", { class: "pill " + r.tone }, r.value), r.note ? h("div", { class: "small muted" }, r.note) : null))),
           voice ? h("details", { class: "rules" }, h("summary", {}, "Voice profile used"), voiceSummary(voice)) : null),
-        card("Controls", h("div", { class: "controls" }, controls)),
         p?.sources?.length ? card("Sources", h("ul", { class: "list" }, p.sources.map((s) => h("li", {}, ext(s.url, s.title || s.url))))) : null,
         p?.regeneration ? card("Regeneration requested", h("p", {}, p.regeneration.reason), h("p", { class: "small muted" }, fmtWhen(p.regeneration.requested_at))) : null,
         h("details", { class: "card tech" }, h("summary", {}, "Technical details"), techDetails(id, p, c, pb, state)))),
@@ -785,7 +866,7 @@ function progressPanel(p, d) {
   if (!pr || pr.ready) return null;
   const title = pr.failed ? "Refresh failed — no replacement was created"
     : pr.auto ? "Sources changed · writing an updated version" : "Refresh requested · writing a replacement";
-  const phaseLabel = { queued: "Queued: waiting for the private run", waiting: "Waiting for writing session",
+  const phaseLabel = { queued: "Queued: waiting for the private run", starting: "Starting the writer", waiting: "Waiting for writing session",
     working: "Claude Code is actively processing", failed: "Failed" }[pr.phase];
   const stepRow = (s) => h("li", { class: "pstep " + s.state },
     h("span", { class: "pstep-mark" }, s.state === "done" || s.state === "done_untimed" ? "✓" : s.state === "current" ? "…" : ""),
@@ -1035,8 +1116,8 @@ function viewSystem() {
 }
 
 // ── shell ───────────────────────────────────────────────────────────
-const NAV = [["overview", "Overview"], ["upcoming", "Upcoming"], ["posts", "Posts"], ["test", "Test publish"], ["history", "History"], ["system", "System"]];
-const MOBILE_NAV = new Set(["overview", "upcoming", "posts", "test", "system"]);
+const NAV = [["overview", "Overview"], ["upcoming", "Upcoming"], ["posts", "Posts"], ["radar", "Radar"], ["test", "Test publish"], ["history", "History"], ["system", "System"]];
+const MOBILE_NAV = new Set(["overview", "upcoming", "posts", "radar", "system"]);
 
 function render() {
   const { view, arg } = parseHash(location.hash);
@@ -1048,7 +1129,7 @@ function render() {
   estop.classList.toggle("solid", !s.emergency_stop);
   document.getElementById("banner").replaceChildren(...(s.emergency_stop ? [h("div", { class: "notice err" }, "Emergency stop is on — nothing publishes. ",
     h("button", { type: "button", class: "small", onclick: () => A.emergency(false) }, "Release…"))] : []));
-  const views = { overview: viewOverview, upcoming: viewUpcoming, posts: viewPosts, post: viewPost, test: viewTest, history: viewHistory, system: viewSystem };
+  const views = { overview: viewOverview, upcoming: viewUpcoming, posts: viewPosts, post: viewPost, radar: viewRadar, test: viewTest, history: viewHistory, system: viewSystem };
   main.replaceChildren(...[(views[view] || viewOverview)(arg)].flat(Infinity).filter(Boolean));
 }
 

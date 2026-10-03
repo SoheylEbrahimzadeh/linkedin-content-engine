@@ -233,8 +233,25 @@ def _refresh(store, client, d) -> str:
             "(text, sources, media), which then needs your approval")
 
 
+def _radar_use(store, client, d) -> str:
+    """LCE-050: attach a radar item to an open slot as its suggested starting point (planning only)."""
+    plan = store.plan()
+    entry = next((e for e in plan.get("entries", [])
+                  if str(e["date"]) == d["plan_date"] and e.get("status") == "open"
+                  and not e.get("draft_ref")), None)
+    if entry is None:
+        raise Refused(f"{d['plan_date']} is no longer an open slot; nothing was changed")
+    p = d["payload"]
+    entry["recommendation"] = {"item_id": p["item_id"], "title": p.get("title", ""), "url": p.get("url", ""),
+                               "by": d.get("created_by", "owner"), "at": d.get("created_at", "")}
+    store.write_doc(store.plan_path, "plan", plan)
+    return (f"planned for {d['plan_date']} as the suggested starting point "
+            "(a writer still researches and writes it)")
+
+
 HANDLERS = {"approve": _approve, "reject": _reject, "edit": _edit, "regenerate": _regenerate,
-            "reschedule": _reschedule, "skip": _skip, "duplicate": _duplicate, "refresh": _refresh}
+            "reschedule": _reschedule, "skip": _skip, "duplicate": _duplicate, "refresh": _refresh,
+            "radar_use": _radar_use}
 
 
 def pending(client: cloud.CloudClient) -> list[dict]:

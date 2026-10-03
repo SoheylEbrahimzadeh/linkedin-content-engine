@@ -571,10 +571,24 @@ def window(store: DataStore, now=None) -> list[dict]:
             item.update(action="check", why=f"last check older than {cfg['freshness_recheck_hours']} h")
         else:
             item.update(action="wait", why=f"checked at {last['checked_at']}")
-        researched = any(
-            r.get("mode") in WRITTEN_MODES and parse_iso(r["checked_at"]) >= opens for r in recs
-        )
-        item["needs_research"] = item["action"] != "writing" and not researched
+        written = [r for r in recs if r.get("mode") in WRITTEN_MODES]
+        researched = any(parse_iso(r["checked_at"]) >= opens for r in written)
+        # LCE-050: radar items about this topic published after the text was last written/researched
+        since = written[-1]["checked_at"] if written else post.get("created_at") or iso_utc(opens)
+        from lce import radar
+
+        news = radar.new_developments(store, pid, since=since) if has_text else []
+        item["new_developments"] = news
+        item["research_since"] = since
+        if item["action"] == "writing":
+            item["needs_research"] = False
+        elif news:
+            item["needs_research"] = True
+            item["research_why"] = f"{len(news)} new radar item(s) on this topic since {since}"
+        else:
+            item["needs_research"] = not researched
+            if not researched:
+                item["research_why"] = "no fresh research inside this window yet"
         out.append(item)
     return sorted(out, key=lambda x: x["slot_utc"])
 
@@ -636,6 +650,12 @@ def run_window(
                 by=by,
                 dry_run=True,
                 context={"trigger": "window", "window": win},
+            )
+            news = item.get("new_developments") or []
+            rec["new_developments"] = (
+                {"count": len(news), "items": news, "note": "radar items newer than the text; a writing "
+                 "session judges whether they change the post (lce refresh research)"}
+                if news else {"count": 0, "note": "no radar item on this topic newer than the text"}
             )
             row["result"] = {k: rec[k] for k in ("decision", "status", "reason")}
             if not dry_run:

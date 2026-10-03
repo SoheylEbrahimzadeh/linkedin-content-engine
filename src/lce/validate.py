@@ -28,6 +28,7 @@ LAYOUT: dict[str, str] = {
     "decisions/overrides.yaml": "decision_overrides",
     "posts/*/metrics.yaml": "metrics",
     "config/automation.yaml": "automation",
+    "config/radar.yaml": "radar",
     "config/linkedin.yaml": "linkedin",
     "config/cloud.yaml": "cloud",
     "posts/*/publication.json": "publication",

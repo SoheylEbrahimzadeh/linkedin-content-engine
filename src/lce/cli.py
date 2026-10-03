@@ -447,6 +447,79 @@ def cmd_plan_roll(args):
     return 0
 
 
+def cmd_radar(args):
+    """LCE-050: Content Radar (deterministic feed discovery)."""
+    from lce import radar
+
+    store = _store(args)
+    if args.sub == "collect":
+        out = radar.collect(store)
+        ok = [x for x in out["sources"] if x.get("status") == "ok"]
+        print(f"radar: {len(out['added'])} new item(s); {out['total']} kept; "
+              f"{len(ok)}/{len(out['sources'])} source(s) readable")
+        for src in out["sources"]:
+            print(f"    {src['id']}: {src.get('status')} HTTP {src.get('http')}, "
+                  f"{src.get('entries', 0)} entries, {src.get('new', 0)} new"
+                  + (f" ({src['error']})" if src.get("error") else ""))
+        for it in out["added"][:15]:
+            pil = it.get("pillar") or "unclassified"
+            print(f"    + [{pil} {it['relevance']}] {it['title'][:100]} ({it['source_name']})")
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            bad = [x["id"] for x in out["sources"] if x.get("status") != "ok"]
+            print(f"::notice title=content radar::{len(out['added'])} new, {out['total']} kept"
+                  + (f"; unreadable: {', '.join(bad)}" if bad else ""))
+        return 0
+    if args.sub == "packet":
+        doc = radar.packet(store, args.date)
+        if args.json:
+            print(json.dumps(doc, indent=2, ensure_ascii=False))
+        else:
+            print(f"packet {args.date}: {len(doc['fresh_items'])} fresh, "
+                  f"{len(doc['related_older'])} older item(s) → research/packets/{args.date}.yaml")
+            for it in doc["fresh_items"]:
+                print(f"    {it['published_at'] or it['first_seen']}  {it['title'][:90]}  ({it['source']})")
+        return 0
+    items = radar.load_items(store)
+    if args.pillar:
+        items = [i for i in items if i.get("pillar") == args.pillar]
+    for it in items[: args.limit]:
+        when = (it.get("published_at") or it["first_seen"])[:16]
+        print(f"{when}  [{it.get('pillar') or '-'} {it['relevance']}]  {it['title'][:90]}"
+              f"  ({it['source_name']})")
+    return 0
+
+
+def cmd_work(args):
+    """LCE-050: the writer's queue and the event-driven start of the writer Routine."""
+    from lce import work
+
+    store = _store(args)
+    if args.sub == "dispatch":
+        built = work.build_packets(store)
+        out = work.dispatch(store, dry_run=args.dry_run)
+        u = out.get("unit") or {}
+        line = (f"started the writer Routine for {u.get('key')}: {out['session_url']}" if out["fired"]
+                else f"not started{(' ' + u['key']) if u else ''}: {out['why']}")
+        print(("packets rebuilt: " + ", ".join(built) + "\n" if built else "") + line)
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            print(f"::notice title=writer dispatch::{line}")
+        return 0
+    if args.sub == "next":
+        u = work.next_unit(store)
+        print(json.dumps(u, indent=2, ensure_ascii=False) if args.json else (u["key"] if u else "no work"))
+        return 0
+    rows = work.units(store)
+    if args.json:
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
+        return 0
+    if not rows:
+        print("no work")
+    for u in rows:
+        print(f"{u['kind']:<12} {u.get('plan_date') or '':<11} {u.get('post_id') or u.get('pillar') or ''}"
+              f"  packet {u.get('packet') or 'none'}")
+    return 0
+
+
 def cmd_refresh(args):
     from lce import refresh
 
@@ -1430,6 +1503,24 @@ def build_parser() -> argparse.ArgumentParser:
                    help="0-based index of a recorded claim to include (repeatable)")
     p = gcmd(g, "check", cmd_image_check, "verify the image decision")
     p.add_argument("post")
+
+    g = group("radar", "Content Radar: feed discovery, dedup, pillar classification (no LLM)")
+    gcmd(g, "collect", cmd_radar, "read every configured feed once; keep only new items")
+    p = gcmd(g, "list", cmd_radar, "stored radar items, newest first")
+    p.add_argument("--pillar", default=None)
+    p.add_argument("--limit", type=int, default=30)
+    p = gcmd(g, "packet", cmd_radar, "build the research packet for one calendar slot")
+    p.add_argument("date")
+    p.add_argument("--json", action="store_true")
+
+    g = group("work", "the writer's queue and the event-driven start of the writer Routine")
+    p = gcmd(g, "list", cmd_work, "every unit of writing work, in order")
+    p.add_argument("--json", action="store_true")
+    p = gcmd(g, "next", cmd_work, "the one unit the writer takes next")
+    p.add_argument("--json", action="store_true")
+    p = gcmd(g, "dispatch", cmd_work,
+             "rebuild packets, then start the writer Routine for the next unit (once)")
+    p.add_argument("--dry-run", action="store_true")
 
     g = group("refresh", "same-day freshness check before publication (never publishes)")
     p = gcmd(g, "run", cmd_refresh, "check every post planned/scheduled for the day (sources, claims, media)")

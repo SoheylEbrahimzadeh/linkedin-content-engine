@@ -70,6 +70,12 @@
     "freshness_escalate": {
       "type": "boolean",
       "description": "a stale post automatically gets a same-slot replacement request (never approved or published automatically)"
+    },
+    "candidate_lead_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60,
+      "description": "an open slot gets its candidate written when it is this close (fresh evidence from the radar)"
     }
   }
 }

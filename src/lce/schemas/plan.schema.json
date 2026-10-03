@@ -106,6 +106,31 @@
           },
           "reserved_at": {
             "type": "string"
+          },
+          "recommendation": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "LCE-050: a radar item the owner chose as this open slot's starting point (planning only)",
+            "required": [
+              "item_id"
+            ],
+            "properties": {
+              "item_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "by": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              }
+            }
           }
         }
       }

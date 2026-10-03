@@ -374,7 +374,7 @@ test("refresh progress comes only from recorded events", () => {
   assert.equal(p.phase, "queued");
   assert.equal(p.elapsed, "05:00");
   assert.deepEqual(p.steps.filter((s) => s.state === "done").map((s) => s.key), ["recorded"]);
-  assert.equal(p.steps.find((s) => s.state === "current").key, "waiting");
+  assert.equal(p.steps.find((s) => s.state === "current").key, "dispatched");
   // applied, no worker for 40 minutes -> stalled waiting, never "processing"
   const applied = { ...base, decision: { ...d, status: "applied", resolved_at: T(10) }, mirror: { post: { state: "NEEDS_REVISION", refresh_request: { decision_id: "d-1" } } } };
   p = lib.refreshProgress(applied, Date.parse(T(50)));
@@ -430,4 +430,37 @@ test("LCE-049: a rolling-calendar slot without a post is an open slot, never a f
   assert.equal(lib.displayStatus({ planStatus: "open" }), "OPEN_SLOT");
   assert.equal(lib.displayStatus({ planStatus: "open", post: { state: "AWAITING_APPROVAL" } }), "AWAITING_APPROVAL");
   assert.equal(lib.displayStatus({ planStatus: "skipped" }), "SKIPPED");
+});
+
+
+test("LCE-050: the writer start is shown from the Worker's real dispatch event, including why it did not start", () => {
+  const T = (m) => new Date(Date.parse("2026-10-03T20:00:00Z") + m * 60000).toISOString();
+  const d = { decision_id: "d-2", status: "pending", created_at: T(0), resolved_at: null };
+  const post = { state: "AWAITING_APPROVAL", refresh_request: null };
+  let p = lib.refreshProgress({ decision: d, events: [{ stage: "dispatched", at: T(0), note: "writer started: https://claude.ai/code/session_X" }], mirror: { post } }, Date.parse(T(1)));
+  assert.equal(p.phase, "starting");
+  assert.equal(p.steps.find((s) => s.key === "dispatched").state, "done");
+  assert.equal(p.steps.find((s) => s.state === "current").key, "waiting");
+  p = lib.refreshProgress({ decision: d, events: [{ stage: "dispatched", at: T(0), note: "not started: instant start is not configured (routine API trigger); the scheduled writer run picks it up" }], mirror: { post } }, Date.parse(T(1)));
+  assert.equal(p.phase, "queued");
+  assert.match(p.note, /not configured/);
+  assert.equal(p.steps.find((s) => s.state === "current").key, "dispatched");
+});
+
+test("LCE-050: the right-now board counts only recorded facts", () => {
+  const now = Date.parse("2026-10-03T20:00:00Z");
+  const b = lib.nowBoard({ nowMs: now,
+    pipeline: { posts: [{ post_id: "a", state: "AWAITING_APPROVAL" }, { post_id: "b", state: "NEEDS_REVISION", refresh_request: { requested_at: "x" }, plan_date: "2026-10-08" }],
+      freshness_plan: { work: [{ kind: "research", post_id: "c" }, { kind: "slot", plan_date: "2026-10-06", started: { fired_at: "x" } }, { kind: "slot", plan_date: "2026-10-10", started: null }] },
+      radar: { configured: true, new_today: 3, items: [{ id: "r1", first_seen: "2026-10-03T19:00:00Z" }, { id: "r2", first_seen: "2026-09-30T19:00:00Z" }] },
+      calendar: [{ date: "2026-10-06", status: "open" }, { date: "2026-09-29", status: "in_progress" }] },
+    cloud: { decisions: [{ action: "refused", status: "refused", post_id: "a", created_at: "2026-10-03T10:00:00Z" }], consents: [], posts: [] },
+    progress: { b: { events: [{ stage: "failed", note: "network" }] } } });
+  assert.deepEqual(b.approval.map((p) => p.post_id), ["a"]);
+  assert.deepEqual(b.researching.map((u) => u.post_id), ["c"]);
+  assert.equal(b.writing.length, 2);            // the replacement, and the slot whose writer was started
+  assert.deepEqual(b.fresh.map((i) => i.id), ["r1"]);
+  assert.equal(b.failed.length, 2);
+  assert.equal(b.next.date, "2026-10-06");
+  assert.deepEqual(lib.radarRows({ items: [{ id: "x", pillar: "p", used_by: "post" }, { id: "y", pillar: "p" }] }, { unusedOnly: true }).map((i) => i.id), ["y"]);
 });

@@ -17,10 +17,20 @@ def test_committed_vectors_match_the_python_reference(tmp_path, monkeypatch):
 
 
 def test_worker_never_contains_credentials_or_llm_or_scrapers():
-    src = "\\n".join(p.read_text() for p in (ROOT / "cloud" / "src").glob("*.ts"))
+    files = {p.name: p.read_text() for p in (ROOT / "cloud" / "src").glob("*.ts")}
+    # LCE-050: the one exception is dispatch.ts, which starts the owner's Claude Code routine through
+    # its /fire trigger; that endpoint needs two vendor headers. It is checked separately below.
+    src = "\\n".join(t for n, t in files.items() if n != "dispatch.ts")
     for needle in ("anthrop" + "ic", "openai", "playwright", "puppeteer", "selenium", "li_at",
                    "publora", "buffer.com", "zapier"):
         assert needle not in src.lower(), needle
+    d = files["dispatch.ts"]
+    vendor = "anthrop" + "ic"
+    lines = [x for x in d.splitlines() if vendor in x.lower()]
+    assert all(f'"{vendor}-beta"' in x or f'"{vendor}-version"' in x for x in lines), lines
+    for needle in ("/v1/messages", "/v1/complete", "model", "openai", "max_tokens"):
+        assert needle not in d.lower(), needle  # never a model call: only the routine trigger
+    assert "ROUTINE_FIRE.test(url)" in d and "/claude_code\\/routines\\/trig_" in d
     toml = (ROOT / "cloud" / "wrangler.toml").read_text()
     config = "\n".join(line.split("#", 1)[0] for line in toml.splitlines())
     assert "database_id" not in config  # resolved by name; never an account identifier

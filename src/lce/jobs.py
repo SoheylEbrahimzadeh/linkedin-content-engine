@@ -40,7 +40,8 @@ DEFAULT_AUTOMATION = {
     "lock_minutes": 10,         # scheduler lock lifetime
     "max_revisions": 2,         # QA/duplicate failures before the job fails
     # LCE-049: rolling calendar and schedule-derived freshness
-    "plan_horizon_days": 28,       # cadence slots reserved (and filled with candidates) this far ahead
+    "plan_horizon_days": 30,       # cadence slots reserved this far ahead (rolling calendar)
+    "candidate_lead_days": 7,      # an open slot gets its candidate when it is this close
     "freshness_lead_hours": 36,    # the freshness window opens this long before the slot
     "freshness_recheck_hours": 12, # re-check inside the window when the last check is older
     "freshness_escalate": True,    # stale -> automatic same-slot replacement request

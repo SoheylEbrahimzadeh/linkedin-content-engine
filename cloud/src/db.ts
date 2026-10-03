@@ -9,6 +9,9 @@ export type Env = {
   ACCESS_AUD?: string;
   LCE_ACCESS_TEAM_DOMAIN?: string;
   LCE_ACCESS_AUD?: string;
+  // LCE-050: the writer routine's API trigger (secrets set by the owner; optional)
+  LCE_ROUTINE_FIRE_URL?: string;
+  LCE_ROUTINE_FIRE_TOKEN?: string;
 };
 
 export const SETTING_KEYS = ["auto_publish", "provider", "timezone", "cadence", "api_version",

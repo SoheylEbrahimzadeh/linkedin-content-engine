@@ -9,6 +9,7 @@ import { applyMigrations, MigrationConflict, migrationStatus } from "./migration
 import { contentHash, sha256Bytes } from "./text";
 import { IDENTITY_HTTP, linkedinIdentity } from "./identity";
 import { cancelDecision, createDecision, DecisionError, listDecisions, resolveDecision } from "./decisions";
+import { startWriter } from "./dispatch";
 import { localDate, publishNow } from "./runner";
 import { UI_BUILD } from "./ui";
 import { ProgressError, putProgress, refreshStatus } from "./progress";
@@ -94,7 +95,12 @@ export async function handleApi(request: Request, env: Env, now: number,
     if (request.method === "GET" && url.pathname === "/api/decisions") return json(200, await listDecisions(env, url.searchParams.get("status")));
     if (request.method === "POST" && url.pathname === "/api/decisions") {
       const d = await createDecision(env, now, who, await body(request));
-      return json((d as { replayed?: boolean }).replayed ? 200 : 201, d);
+      const replayed = (d as { replayed?: boolean }).replayed;
+      if (d.action === "refresh" && !replayed && d.post_id) {   // LCE-050: start the writer now, not at the next poll
+        (d as Record<string, unknown>).writer = await startWriter(env, now, fetchImpl,
+          { kind: "replacement", post_id: d.post_id, decision_id: d.decision_id });
+      }
+      return json(replayed ? 200 : 201, d);
     }
     if (request.method === "POST" && url.pathname === "/api/client-report") {
       return json(201, await putClientReport(env, now, who.subject, await body(request)));
