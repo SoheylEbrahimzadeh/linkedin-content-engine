@@ -316,6 +316,8 @@ def collect(store: DataStore, *, transport: Transport = http_get, now=None) -> d
         elif src["id"] in status and status[src["id"]].get("last_ok_at"):
             rec["last_ok_at"] = status[src["id"]]["last_ok_at"]
         status[src["id"]] = rec
+    configured = {src["id"] for src in cfg["sources"]}
+    status = {k: v for k, v in status.items() if k in configured}  # a removed source is not "unreadable"
     keep = [
         i
         for i in added + items
