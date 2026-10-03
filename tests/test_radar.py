@@ -195,6 +195,9 @@ def test_dispatch_skips_a_post_whose_writer_the_worker_already_started(store, mo
     from lce import repackage
 
     pid = awaiting_post(store)
+    post = store.load_post(pid)
+    post["plan_date"] = "2026-10-08"  # a future slot (a passed one is never written automatically)
+    store.save_post(post)
     monkeypatch.setenv("LCE_ROUTINE_FIRE_URL", "https://routines.example.test/v1/claude_code/routines/trig_X1/fire")
     monkeypatch.setenv("LCE_ROUTINE_FIRE_TOKEN", "test-token-not-real")
 
@@ -217,3 +220,21 @@ def test_dispatch_skips_a_post_whose_writer_the_worker_already_started(store, mo
                                "note": "not started: instant start is not configured"}])
         out = work.dispatch(store, post=lambda *a: sent.append(a) or (200, {}), client=not_started)
         assert out["fired"] is True and len(sent) == 1
+
+
+
+def test_a_replacement_whose_slot_passed_does_not_block_future_slots(store):
+    from lce import repackage
+
+    configure(store)
+    pid = awaiting_post(store)
+    post = store.load_post(pid)
+    post["plan_date"] = "2026-09-29"
+    store.save_post(post)
+    with use_clock(FixedClock(NOW)):
+        rolling.roll(store)
+        repackage.request(store, pid, by="owner", decision_id="d-old")
+        units = work.units(store)
+        assert units and all(u["kind"] == "slot" for u in units)  # the future slot is next
+        assert [m["post_id"] for m in work.missed(store)] == [pid]   # kept, not cancelled
+        assert store.load_post(pid)["refresh_request"]["decision_id"] == "d-old"

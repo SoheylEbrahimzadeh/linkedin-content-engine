@@ -475,3 +475,14 @@ test("a refusal the owner overrode is history, not a current failure", () => {
   assert.equal(b.failed.length, 0);
   assert.equal(lib.attention({ cloud, pipeline: { posts: [] }, decisions: cloud.decisions }).length, 0);
 });
+
+
+test("a replacement whose slot passed is not 'being written'; it asks for a reschedule", () => {
+  const now = Date.parse("2026-10-03T20:00:00Z");
+  const posts = [{ post_id: "old", state: "NEEDS_REVISION", plan_date: "2026-09-29", refresh_request: { requested_at: "x" } },
+                 { post_id: "new", state: "NEEDS_REVISION", plan_date: "2026-10-08", refresh_request: { requested_at: "y" } }];
+  const b = lib.nowBoard({ pipeline: { posts }, cloud: { decisions: [], consents: [], posts: [] }, nowMs: now });
+  assert.deepEqual(b.writing.map((w) => w.post_id), ["new"]);
+  const a = lib.attention({ cloud: { posts: [] }, pipeline: { posts }, decisions: [] });
+  assert.match(a.find((x) => x.post_id === "old").text, /Slot passed: reschedule/);
+});

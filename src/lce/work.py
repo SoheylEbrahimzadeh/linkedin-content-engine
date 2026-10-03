@@ -47,10 +47,11 @@ def units(store: DataStore, now=None) -> list[dict]:
     now = now or clock.now()
     today = refresh.today_local(store)
     out = []
-    for r in sorted(
-        repackage.pending(store),
-        key=lambda r: (str(r.get("plan_date") or "") < today.isoformat(), str(r.get("plan_date") or "")),
-    ):
+    for r in sorted(repackage.pending(store), key=lambda r: str(r.get("plan_date") or "")):
+        if r.get("plan_date") and str(r["plan_date"]) < today.isoformat():
+            # its slot has passed: writing it now cannot meet that slot. The request stays pending
+            # (never cancelled) until the owner reschedules the post; future slots go first.
+            continue
         out.append(
             {
                 "kind": "replacement",
@@ -92,6 +93,14 @@ def units(store: DataStore, now=None) -> list[dict]:
             p = radar.packet_path(store, str(day))
             u["packet"] = str(p.relative_to(store.root)) if p.exists() else None
     return out
+
+
+def missed(store: DataStore) -> list[dict]:
+    """Pending replacements whose slot has passed (shown to the owner, never written automatically)."""
+    from lce import refresh, repackage
+
+    today = refresh.today_local(store).isoformat()
+    return [r for r in repackage.pending(store) if r.get("plan_date") and str(r["plan_date"]) < today]
 
 
 def next_unit(store: DataStore, now=None) -> dict | None:
