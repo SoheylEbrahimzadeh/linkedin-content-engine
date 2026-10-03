@@ -33,6 +33,13 @@ fallback; "nothing suitable" means text-only (`no_suitable_licensed_image`).
 | attribution | `provenance.attribution_required`, `provenance.attribution` (appended to the post text when required) |
 | retrieved asset | `provenance.retrieved` (original, SHA-1 verified, or the Commons thumbnail of that file), `.retrieved_url`, `.retrieved_at`, `.original_sha1`, `sha256` |
 
+Relevance gate (LCE-043b, after a 1997 post-office photo matched only "office
+workers"): with three or more subject terms at least two must be named by the
+file's metadata (`min_matches`), every `required_terms` entry must be, and files
+marked with a personality-rights restriction (identifiable people) are refused.
+A wrong image found after the fact is corrected with `lce refresh media` (text
+kept, the wrong package kept in History as `replaced` with the reason).
+
 Licences: PD, CC0, CC BY, CC BY-SA only; NC, ND, fair use and unknown are
 refused. Sources: the Commons API only — never Google Images or pages with
 unclear rights. A later version never reuses an earlier version's file (by

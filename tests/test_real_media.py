@@ -33,6 +33,7 @@ class FakeCommons:
 
     def _info(self, f):
         meta = {
+            "Restrictions": {"value": f.get("restrictions", "")},
             "LicenseShortName": {"value": f["license"]},
             "Artist": {"value": f.get("artist", "Jane Example")},
             "ImageDescription": {"value": f.get("description", "")},
@@ -240,3 +241,96 @@ def test_commons_media_must_state_the_subject_and_why(store, fake, missing):
     with pytest.raises(StoreError, match=missing):
         repackage.package(store, pid, {**PKG, "media": {"commons": spec}})
     assert store.load_post(pid)["state"] == "NEEDS_REVISION"
+
+
+POST_OFFICE = {
+    "title": "File:Post office 1997 scales.png",
+    "license": "CC BY-SA 3.0",
+    "description": "A clerk sorts letters at a post office counter; office workers",
+    "categories": ["Post offices"],
+    "data": png_shade(50),
+}
+PORTRAIT = {
+    "title": "File:Operations engineer at a data center.png",
+    "license": "CC BY 4.0",
+    "description": "An engineer in an IT operations data center",
+    "categories": ["IT operations", "Data centers"],
+    "restrictions": "personality",
+    "data": png_shade(60),
+}
+
+
+def test_one_generic_term_is_not_relevance_and_identifiable_people_are_refused(store, monkeypatch):
+    """LCE-043b: a 1997 post-office photo matched only 'office workers' and was attached; it must not be."""
+    fake = FakeCommons([POST_OFFICE, PORTRAIT])
+    monkeypatch.setattr(repackage, "_TRANSPORT", fake)
+    pid = requested(store)
+    spec = {
+        **COMMONS,
+        "subject_terms": ["office workers", "IT operations", "data center"],
+        "candidates": [POST_OFFICE["title"], PORTRAIT["title"]],
+    }
+    repackage.package(store, pid, {**PKG, "media": {"commons": spec}})
+    doc = images.load(store, pid)
+    assert doc["kind"] == "none" and doc["text_only_reason"] == "no_suitable_licensed_image"
+    why = {t["title"]: t["why"] for t in doc["selection"]["tried"]}
+    assert "too weak a match: only office workers" in why[POST_OFFICE["title"]]
+    assert "personality rights" in why[PORTRAIT["title"]]
+
+
+def test_required_terms_must_all_be_named(store, fake):
+    pid = requested(store)
+    spec = {
+        **COMMONS,
+        "required_terms": ["service desk"],
+        "candidates": [SERVER_ROOM["title"], PD_DESK["title"]],
+    }
+    repackage.package(store, pid, {**PKG, "media": {"commons": spec}})
+    doc = images.load(store, pid)
+    assert doc["provenance"]["title"] == PD_DESK["title"]
+    assert "required term(s): service desk" in doc["selection"]["tried"][0]["why"]
+
+
+def test_media_only_correction_keeps_the_text_and_the_wrong_package_in_history(store, fake):
+    pid = requested(store)
+    repackage.package(
+        store, pid, {**PKG, "media": {"commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}}
+    )
+    text_with_credit = current_text(store, pid)
+    assert "Image: Jane Example" in text_with_credit
+    rec = repackage.replace_media(
+        store,
+        pid,
+        {"commons": {**COMMONS, "candidates": [SERVER_ROOM["title"], PD_DESK["title"]]}},
+        reason="the photo was not about the post",
+        by="session",
+    )
+    doc = images.load(store, pid)
+    assert doc["provenance"]["title"] == PD_DESK["title"]  # never the earlier version's file
+    text = current_text(store, pid)
+    assert "Jane Example, CC BY-SA" not in text  # the old credit went with the old image
+    assert text.rstrip() == text_with_credit.split("\n\nImage:")[0].rstrip()
+    last = versions.listing(store, pid)[-1]
+    assert (
+        last["status"] == "replaced" and "media replaced: the photo was not about the post" in last["reason"]
+    )
+    assert last["media"]["source_title"] == SERVER_ROOM["title"]
+    assert store.load_post(pid)["state"] == "AWAITING_APPROVAL" and rec["approval"] == "pending"
+
+
+def test_media_correction_never_touches_an_approved_version(store, fake):
+    pid = requested(store)
+    repackage.package(
+        store, pid, {**PKG, "media": {"commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}}
+    )
+    post = store.load_post(pid)
+    post["state"] = "APPROVED"
+    store.save_post(post)
+    with pytest.raises(StoreError, match="only the owner"):
+        repackage.replace_media(
+            store,
+            pid,
+            {"text_only": {"reason": "text_carries_point", "rationale": "x"}},
+            reason="x",
+            by="session",
+        )

@@ -215,7 +215,13 @@ _TRANSPORT = None  # tests replace the Commons transport
 
 
 def package(
-    store: DataStore, post_id: str, pkg: dict, *, by: str = "session", as_of: date | None = None
+    store: DataStore,
+    post_id: str,
+    pkg: dict,
+    *,
+    by: str = "session",
+    as_of: date | None = None,
+    media_only: bool = False,
 ) -> dict:
     from lce.approval import prepare
     from lce.dupcheck import run_dupcheck
@@ -237,7 +243,8 @@ def package(
     }
     history = versions.listing(store, post_id)
     last_before = history[-1]["version"] if history else 0
-    novelty_check_text(store, post_id, pkg["text"], before_text)
+    if not media_only:
+        novelty_check_text(store, post_id, pkg["text"], before_text)
     with tempfile.TemporaryDirectory() as tmp:
         versions.backup(store, post_id, Path(tmp))
         try:
@@ -388,6 +395,34 @@ def package(
         image_sha256=record["image_sha256"],
     )
     return record
+
+
+def replace_media(store: DataStore, post_id: str, media: dict, *, reason: str, by: str) -> dict:
+    """LCE-043b: the current candidate's image turned out to be wrong before the owner
+    reviewed it. Keep the text, archive the current package (status `replaced`, with
+    the reason), choose new media under the same rules as a refresh (real licensed
+    image by subject, or text-only; never an earlier version's file) and prepare a
+    fresh approval artifact. Not for an approved post: that is the owner's to change."""
+    post = _refreshable(store, post_id)
+    if S(post["state"]) in {S.APPROVED, S.READY_TO_PUBLISH}:
+        raise StoreError("the owner approved this version; only the owner can change it (Refresh or Edit)")
+    if not (reason or "").strip():
+        raise StoreError("say why the media is replaced")
+    text = current_text(store, post_id)
+    attr = ((images.load(store, post_id) or {}).get("provenance") or {}).get("attribution")
+    if attr and text.rstrip().endswith(attr):
+        text = text.rstrip()[: -len(attr)].rstrip() + "\n"  # the old image's credit line goes with it
+    pkg = {
+        "text": text,
+        "reason": "media replaced: " + reason.strip(),
+        "sources": [
+            {k: v for k, v in s.items() if k in ("url", "title", "publisher")}
+            for s in post.get("sources") or []
+        ],
+        "claims": [{"text": c["text"], "source_url": c["source_url"]} for c in post.get("claims") or []],
+        "media": media,
+    }
+    return package(store, post_id, pkg, by=by, media_only=True)
 
 
 def unskip_as_refresh(store: DataStore, post_id: str, *, by: str, note: str = "") -> dict:
