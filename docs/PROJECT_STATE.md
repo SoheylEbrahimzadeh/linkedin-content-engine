@@ -328,6 +328,25 @@ NOT_VERIFIED until an Access service token is stored in GitHub.
   resolves the existing D1 `lce` by name for deploys and `--remote` migrations
   (the placeholder made `migrations apply lce --remote` target a nonexistent id).
 
+## LCE-045/046 (2026-10-03): no stale decision state; source-first media
+
+Engine #74–#77; lce-data #56–#62. Verified in production: dashboard-check PASS, dashboard-visual PASS
+(desktop + phone), which now fails on any contradictory state and checks text-only media.
+- **Skip contradiction:** D1 had no pending skip; the skip recorded at 00:44:37 was refused at 01:15
+  (owner override). The contradictory page was a tab open since 00:44, still running pre-LCE-043 code,
+  with an unreconciled in-memory "recorded" outcome. Fixes: `outcomeNow` (recorded only while D1 has the
+  decision pending; afterwards its fate); a UI build id (a page running older code reloads); a tab
+  coming back into view reloads its state. Verified on the real Gartner record in all four states.
+- **Source first:** `source_urls` inspection (publisher pages; Internet Archive capture when the
+  publisher refuses automated clients), `media.source_check` required, `association` / `why_legal`
+  for any image.
+- **Gartner v4:** the press release's own figure "The future of agentic AI in enterprise
+  applications" (sha256 544cf6f3…) fits the post exactly, but it is © Gartner, all rights reserved,
+  and external use needs Gartner's approval → `source_visual_unavailable_or_restricted`. The licensed
+  Gartner-related files are not tied to this forecast. Media → text-only `no_suitable_licensed_image`;
+  text hash 53a6cf3977d5 unchanged; GAO figure kept as v6 (replaced). Owner option: request Gartner's
+  permission; with it, record `source_visual_used`.
+
 ## LCE-044 (2026-10-03): images chosen by visual review, several sources
 
 Engine #72; lce-data #53–#55. Verified in production (dashboard-check PASS, rights record and History visible).
