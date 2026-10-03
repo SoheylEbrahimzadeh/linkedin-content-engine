@@ -334,3 +334,11 @@ def test_media_correction_never_touches_an_approved_version(store, fake):
             reason="x",
             by="session",
         )
+
+
+def test_credit_line_goes_above_the_hashtags_and_comes_out_cleanly():
+    text = "Body.\n\nMore.\n\n#AgenticAI #ITGovernance\n"
+    out = repackage.with_credit(text, "Image: A, CC BY 4.0, via Wikimedia Commons")
+    assert out == "Body.\n\nMore.\n\nImage: A, CC BY 4.0, via Wikimedia Commons\n\n#AgenticAI #ITGovernance\n"
+    assert repackage.without_credit(out, "Image: A, CC BY 4.0, via Wikimedia Commons") == text
+    assert repackage.with_credit("Body.\n", "C") == "Body.\n\nC\n"

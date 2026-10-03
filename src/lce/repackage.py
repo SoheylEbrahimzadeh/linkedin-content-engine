@@ -194,7 +194,7 @@ def _commons_media(store, post_id, spec, text, history, used, by) -> str:
     prov = doc["provenance"]
     if prov.get("attribution_required"):
         # The licence asks for credit: it goes into the post itself, before QA and approval.
-        save_humanized(store, post_id, text.rstrip() + "\n\n" + prov["attribution"], source="session", by=by)
+        save_humanized(store, post_id, with_credit(text, prov["attribution"]), source="session", by=by)
         from lce.posts import current_text as ct
 
         sem = doc["media_relevance"].get("semantic")
@@ -212,6 +212,19 @@ def _commons_media(store, post_id, spec, text, history, used, by) -> str:
 
 
 _TRANSPORT = None  # tests replace the Commons transport
+
+
+def with_credit(text: str, credit: str) -> str:
+    """The licence's credit line, above a closing hashtag paragraph (hashtags stay last)."""
+    paras = text.rstrip().split("\n\n")
+    if len(paras) > 1 and all(w.startswith("#") for w in paras[-1].split()):
+        return "\n\n".join(paras[:-1] + [credit, paras[-1]]) + "\n"
+    return text.rstrip() + "\n\n" + credit + "\n"
+
+
+def without_credit(text: str, credit: str) -> str:
+    paras = [p for p in text.rstrip().split("\n\n") if p.strip() != credit]
+    return "\n\n".join(paras) + "\n"
 
 
 def package(
@@ -410,8 +423,8 @@ def replace_media(store: DataStore, post_id: str, media: dict, *, reason: str, b
         raise StoreError("say why the media is replaced")
     text = current_text(store, post_id)
     attr = ((images.load(store, post_id) or {}).get("provenance") or {}).get("attribution")
-    if attr and text.rstrip().endswith(attr):
-        text = text.rstrip()[: -len(attr)].rstrip() + "\n"  # the old image's credit line goes with it
+    if attr:
+        text = without_credit(text, attr)  # the old image's credit line goes with it
     pkg = {
         "text": text,
         "reason": "media replaced: " + reason.strip(),
