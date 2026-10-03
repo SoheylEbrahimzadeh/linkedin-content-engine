@@ -254,6 +254,29 @@ PUBLIC stories (OWNER INPUT) ──► personal-experience themes (until then NE
   VERIFIED: the owner's own Refresh click end to end (Dashboard → decision →
   Routine session → new version in the Control Center) — waiting for the owner.
 
+- LCE-042: Refresh = reject the current version and write a new replacement
+  (archived as `rejected`, deactivated at once; new hook, no rewording, new
+  image enforced; v1 → v2 → v3 …); Skip releases the slot and generates nothing;
+  every Control Center change carries a `request_id` (no duplicates on retry),
+  a session check, sign-in window + exactly one retry, and an explicit
+  "recorded" / "failed — not recorded" outcome; a pending decision is never
+  replaced silently (409 `pending_conflict`, owner confirms). Evidence tables
+  `access_sessions` and `client_reports` (migration 0008) and the decision
+  timeline are printed by the production dashboard check.
+  **Production findings:** the owner's Refresh WAS recorded (22:26:01 UTC) and
+  was silently superseded by a Skip 58 s later (fixed, engine #65); a browser
+  POST (that Skip) passed Access, so Access does not block POSTs per se; the
+  earlier "signed out" refusal happened before the evidence tables existed —
+  cause still unproven, now recorded on the next occurrence.
+  **VERIFIED in production:** skip undone as Refresh on the owner's decision
+  (`lce refresh unskip`), replacement v3 (agent-washing angle, framework visual,
+  0% copied text, sourced figure) shown as "Refreshed · Awaiting approval" with
+  v1 and v2 recoverable and their images in the Control Center.
+  **NOT VERIFIED / OPEN:** the Routine fired into a new session without the
+  private repository (the persistent-session binding did not hold; no repository
+  can be attached to a Routine through the API), so v3 was written by a manual
+  session; the owner's own Refresh click → v4 end to end is still open.
+
 **LCE-029 VERIFIED — authenticated production path end to end (lce-data
 `cloud-sync` on `42cfadf`, GitHub Actions → Cloudflare Access service token →
 Worker → D1 → cloud-sync → dashboard):**
