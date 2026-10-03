@@ -444,9 +444,9 @@ test("LCE-050: the writer start is shown from the Worker's real dispatch event, 
   assert.equal(p.phase, "starting");
   assert.equal(p.steps.find((s) => s.key === "dispatched").state, "done");
   assert.equal(p.steps.find((s) => s.state === "current").key, "waiting");
-  p = lib.refreshProgress({ decision: d, events: [{ stage: "dispatched", at: T(0), note: "not started: instant start is not configured (routine API trigger); the scheduled writer run picks it up" }], mirror: { post } }, Date.parse(T(1)));
+  p = lib.refreshProgress({ decision: d, events: [{ stage: "dispatched", at: T(0), note: "not started: instant start is unavailable; the hourly writer run (at :27) picks it up" }], mirror: { post } }, Date.parse(T(1)));
   assert.equal(p.phase, "queued");
-  assert.match(p.note, /not configured/);
+  assert.match(p.note, /instant start is unavailable/);
   assert.equal(p.steps.find((s) => s.state === "current").key, "dispatched");
 });
 

@@ -13,7 +13,7 @@ const day = (n, t = "06:30:00") => new Date(Date.now() + n * 86400e3).toISOStrin
 const ymd = (n) => day(n).slice(0, 10);
 const TEXT = "Most ITSM teams think the barrier to agentic AI is the model.\n\nIt is not. It is data quality, governance and skills.\n\nWhat I keep seeing in operations teams:\n- tickets without clean categories\n- no owner for automation decisions\n\n#ITSM #AgenticAI #Automation";
 const snap = {
-  mode: "cloud", now, schedule_error: null,
+  mode: "cloud", now, schedule_error: null, writer_start: { instant: false, hourly_at_minute: 27 },
   settings: { auto_publish: false, provider: "linkedin_api", timezone: "Europe/Berlin", api_version: "202609",
     person_urn: "urn:li:person:TestPerson1", visibility: "PUBLIC", token_present: true, emergency_stop: false,
     display_name: "Test Person", profile_url: "https://www.linkedin.com/in/test-person/", max_lateness_minutes: 180 },
