@@ -6,7 +6,7 @@ file whenever work, PRs, holds or gates change (see
 [ROADMAP.md](ROADMAP.md). `lce readiness` checks the same chain against the
 owner's real setup.
 
-_Last updated: 2026-10-02 (engine PRs #19–#45, lce-data PRs #1–#17; LCE-001…033)_
+_Last updated: 2026-10-03 (engine PRs up to #90, lce-data PRs up to #79; LCE-001…050)_
 
 ## Objective
 
@@ -327,6 +327,58 @@ NOT_VERIFIED until an Access service token is stored in GitHub.
 - LCE-010: `wrangler.toml` no longer carries a placeholder `database_id`; Wrangler
   resolves the existing D1 `lce` by name for deploys and `--remote` migrations
   (the placeholder made `migrations apply lce --remote` target a nonexistent id).
+
+## LCE-049/050 (2026-10-03): rolling calendar, freshness before the slot, Content Radar, event-driven writer
+
+Engine #84–#90 (and the doctor-marker fix #86); lce-data #73–#79. Production state at 20:35 UTC:
+
+**Verified in production (GitHub Actions runs and the production dashboard check)**
+- **Rolling calendar:** `lce plan roll` runs hourly (`freshness` workflow, 30-day horizon). It
+  reserved every cadence slot from 6 to 31 Oct (11 open slots, pillars balanced; DST change on
+  25 Oct handled). Existing entries were untouched and no date was reserved twice.
+- **Content Radar:** `lce radar collect` reads 18 public feeds hourly (RSS/Atom, Reddit, GitHub
+  releases, vendor newsrooms); first runs stored 460 items, 168 classified into pillars, with
+  provenance. Unreadable from GitHub Actions: Gartner newsroom (403), r/sysadmin and
+  r/automation (429 even with pacing).
+- **Research packets:** built for the slots with work (`research/packets/<date>.yaml`).
+- **Writer dispatch:** runs hourly and records the real reason it did not start a writer:
+  the routine API trigger is not configured yet (owner action below).
+- **Dashboard (dashboard-lce050 check, desktop + phone, no console errors, no overflow):**
+  - right-now board with 7 tiles;
+  - Content Radar page (80 items in the mirror, 18 sources with their state, "Use for next post");
+  - open slots in Upcoming;
+  - live progress of the real Gartner Refresh;
+  - Controls first on the post page;
+  - Freshness & research card;
+  - auto-publish Off.
+- **Refresh progress:** the Worker records a `dispatched` progress event on every Refresh (started,
+  or "not started: <reason>").
+
+**Built and tested, not yet exercised end to end in production**
+- **Instant writer start** on a Dashboard Refresh: needs the owner's writer routine with an API trigger.
+  Its URL and token go into Worker secrets and lce-data secrets as
+  `LCE_ROUTINE_FIRE_URL`/`LCE_ROUTINE_FIRE_TOKEN`.
+- **Stale → same-slot replacement** in production: the first real window opens 6 Oct 18:30 UTC
+  (Gartner slot 8 Oct 08:30 Berlin, 36 h lead). Verified so far on a copy of the real repository
+  (`freshness-acceptance`) and by tests.
+- **Slot candidates** written from packets (`lce plan fill`, package `mode: new`): no slot
+  candidate has been written yet.
+- **The writer itself** reading packets and using `source-fetch` for blocked hosts: the 19:37 run
+  (old prompt) failed because the routine environment's network policy blocks itsm.tools,
+  biztechmagazine.com and web.archive.org. The recovery trigger `trig_01KPVxwd9awVqXHcv2rvwSnt`
+  (every 2 h, bound session) now follows `automation/WRITER.md`.
+
+**Pending real requests (kept, never duplicated):**
+- Gartner `d-22ff5289`: v9 archived as rejected 19:45:41.
+- ITSM `d-a8954f9d`: slot 29 Sep, already passed.
+
+**Owner actions**
+- Create the writer routine (claude.ai/code/routines: repository lce-data, API trigger + a
+  schedule as recovery, prompt "Follow automation/WRITER.md …").
+- Set its URL and token as the two secrets above, in the Worker and in lce-data.
+
+The skills `improve-ui` and `frontend-design` are not installed in the cloud session. The audit
+and the design followed the frontend-design guidance the owner pasted.
 
 ## LCE-048 (2026-10-03): live Refresh progress from real events
 
