@@ -479,7 +479,7 @@ function planRow(i) {
   const hasImage = i.media.preview === "available" && i.post_id;
   const locked = i.pending && closedBy({ ...i.pending, status: "pending" });   // LCE-043: skip/reject/refresh recorded
   return h("div", { class: "row status-" + i.status.toLowerCase() + (hasImage ? " has-media" : "") },
-    h("div", { class: "row-time" }, i.time ?? "—", i.time && i.time_source === "planned slot" ? h("div", { class: "row-time-note" }, "planned") : null),
+    h("div", { class: "row-time" + (i.time ? "" : " none") }, i.time ?? "No time", i.time && i.time_source === "planned slot" ? h("div", { class: "row-time-note" }, "planned") : null),
     h("div", { class: "row-main" },
       hasImage ? cardImage(i.post_id, i.media) : null,
       h("div", { class: "row-title" }, href ? link(href, i.title) : i.title),
@@ -572,7 +572,7 @@ function viewOverview() {
   const unsupported = inRange.filter((i) => !i.media.type.implemented).length;
   const nextPost = next?.post_id ? pipePost(next.post_id) ?? cloudPost(next.post_id) : null;
   return [
-    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Overview"), h("p", { class: "muted" }, `Content plan · next ${S.range} days`)), rangeControls("overview")),
+    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Overview"), h("p", { class: "muted" }, `Your plan for the next ${S.range} days`)), rangeControls("overview")),
     h("div", { class: "hero" },
       card(null, publishingAs()),
       h("div", { class: "switches" },
