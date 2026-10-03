@@ -446,6 +446,9 @@ export async function snapshot(env: Env, now: number) {
     events,
     decisions: (await listDecisions(env, null)).decisions.slice(0, 100),
     ui_build: UI_BUILD,
+    // LCE-050: whether a Refresh starts the writer at once (routine API trigger configured) or the
+    // hourly writer run picks it up. Presence only; the values never leave the Worker.
+    writer_start: { instant: Boolean(env.LCE_ROUTINE_FIRE_URL && env.LCE_ROUTINE_FIRE_TOKEN), hourly_at_minute: 27 },
     preview_media: (await previewMediaList(env)).media,
     // LCE-041: tolerated until migration 0007 is applied (cloud-sync applies it after a deploy).
     ...(await evidence(env)),

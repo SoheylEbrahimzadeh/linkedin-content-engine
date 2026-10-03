@@ -479,7 +479,9 @@ describe("refresh progress (LCE-048)", () => {
     const d1 = await call("POST", "/decisions", { action: "refresh", post_id: AWAITING });
     expect(d1.status).toBe(201);
     expect(d1.body!.writer).toMatchObject({ started: false });
-    expect(String(d1.body!.writer.why)).toContain("not configured");
+    expect(String(d1.body!.writer.why)).toContain("instant start is unavailable");
+    const snap = await call("GET", "/snapshot");
+    expect(snap.body!.writer_start).toEqual({ instant: false, hourly_at_minute: 27 });
     let s = await call("GET", `/refresh-status/${AWAITING}`);
     expect(s.body!.events.map((x: { stage: string }) => x.stage)).toEqual(["dispatched"]);
     // configured: one POST to the routine's /fire endpoint with the request identity

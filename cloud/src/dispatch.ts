@@ -20,7 +20,7 @@ export async function startWriter(env: Env, now: number, fetchImpl: FetchLike,
   const token = (env.LCE_ROUTINE_FIRE_TOKEN ?? "").trim();
   let out: StartResult;
   if (!url || !token) {
-    out = { started: false, why: "instant start is not configured (routine API trigger); the scheduled writer run picks it up" };
+    out = { started: false, why: "instant start is unavailable; the hourly writer run (at :27) picks it up" };
   } else if (!ROUTINE_FIRE.test(url)) {
     out = { started: false, why: "LCE_ROUTINE_FIRE_URL is not a routine /fire endpoint" };
   } else {

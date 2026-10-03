@@ -315,7 +315,9 @@ const A = {
   async refresh(p) {
     const note = h("textarea", { rows: 3, maxlength: 500, class: "short", placeholder: "Optional: what should change (e.g. the image only repeats the text)" });
     const ok = await dialog("Refresh this post?", [h("p", {}, REFRESH_CONFIRM),
-      h("p", { class: "small muted" }, "Nothing is published. The current version stops being approvable at once; the writer starts right away (or, if instant start is not set up, at its next scheduled run) and the replacement then waits for your approval."),
+      h("p", { class: "small muted" }, "Nothing is published. The current version stops being approvable at once; " +
+        (S.snap?.writer_start?.instant ? "the writer starts right away" : `the writer picks it up at its next hourly run (at :${String(S.snap?.writer_start?.hourly_at_minute ?? 27).padStart(2, "0")})`) +
+        " and the replacement then waits for your approval."),
       h("label", { class: "small" }, "Note for the rewrite (optional)"), note],
       [{ label: "Reject and refresh", value: () => true }]);
     if (ok) decide({ action: "refresh", post_id: p.post_id, note: note.value.trim() },
@@ -585,6 +587,7 @@ function viewOverview() {
       h("div", { class: "switches" },
         h("div", { class: "switch " + (s.auto_publish ? "warn" : "ok") }, h("span", { class: "switch-label" }, "Auto-publish"), h("strong", {}, s.auto_publish ? "On" : "Off")),
         h("div", { class: "switch " + (s.emergency_stop ? "err" : "ok") }, h("span", { class: "switch-label" }, "Emergency stop"), h("strong", {}, s.emergency_stop ? "On" : "Off")),
+        writerStartSwitch(),
         h("div", { class: "switch " + (s.token_present && (days === null || days > 7) ? "ok" : "warn") }, h("span", { class: "switch-label" }, "LinkedIn access"),
           h("strong", {}, !s.token_present ? "No token" : days === null ? "Connected" : days < 0 ? "Expired" : `${days} days left`)))),
     h("div", { class: "grid2" },
@@ -607,6 +610,16 @@ function viewOverview() {
       h("p", { class: "small muted" }, `Next ${S.range} days: ${textOnly} text-only, ${withImage} with an image`,
         unsupported ? `, ${unsupported} with a media type that is not implemented` : "")),
   ];
+}
+
+// LCE-050: how a Refresh reaches the writer: at once (routine API trigger) or at the hourly run
+function writerStartSwitch() {
+  const w = S.snap?.writer_start;
+  if (!w) return null;
+  return h("div", { class: "switch " + (w.instant ? "ok" : "warn"), title: w.instant ? "A Refresh starts the writer immediately."
+      : "Instant start is unavailable (no routine API trigger). The writer runs every hour at :" + String(w.hourly_at_minute).padStart(2, "0") + " and picks up a Refresh then." },
+    h("span", { class: "switch-label" }, "Writer start"),
+    h("strong", {}, w.instant ? "Instant" : `Hourly at :${String(w.hourly_at_minute).padStart(2, "0")}`));
 }
 
 // LCE-050: what needs the owner, and what the system is doing right now (recorded facts only)
