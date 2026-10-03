@@ -132,6 +132,17 @@ def collect(spec: dict, out_dir: Path, transport=None) -> dict:
     from lce import source_visuals
 
     inspection = [source_visuals.inspect(u, out_dir, transport) for u in source_urls]
+    # the publisher's own copyright / reuse policy, as rights evidence (text only)
+    policies = []
+    for u in [u for u in spec.get("rights_policy_urls") or [] if str(u).startswith("http")]:
+        (out_dir / "policy").mkdir(exist_ok=True)
+        pol = source_visuals.inspect(u, out_dir / "policy", transport)
+        policies.append(
+            {
+                k: pol.get(k)
+                for k in ("source_url", "via", "http_status", "archive_status", "title", "rights_signals")
+            }
+        )
     seen, cands, errors = set(), [], []
     for q in queries:
         for src in sources:
@@ -165,6 +176,7 @@ def collect(spec: dict, out_dir: Path, transport=None) -> dict:
         "searched_at": now_iso(),
         "subject": spec.get("subject"),
         "source_inspection": inspection,
+        "rights_policies": policies,
         "queries": queries,
         "sources_searched": sources,
         "sources_not_searched": NOT_SEARCHED,
