@@ -328,6 +328,20 @@ def collect(store: DataStore, *, transport: Transport = http_get, now=None) -> d
     return {"added": added, "total": min(len(keep), MAX_ITEMS), "sources": list(status.values())}
 
 
+QUALITY_WEIGHT = {"analyst": 0.25, "research": 0.25, "standards": 0.2, "vendor": 0.15, "news": 0.15,
+                  "community": 0.0}
+
+
+def rank(item: dict, now) -> float:
+    """Relevance first, then freshness, then source quality (community posts rank lowest)."""
+    from lce.clock import parse_iso
+
+    when = parse_iso(item.get("published_at") or item["first_seen"])
+    age_days = max(0.0, (now - when).total_seconds() / 86400)
+    fresh = 0.4 if age_days <= 2 else 0.25 if age_days <= 7 else 0.1 if age_days <= 14 else 0.0
+    return round(item.get("relevance", 0) + fresh + QUALITY_WEIGHT.get(item.get("quality"), 0.1), 3)
+
+
 # ── usage, packets ────────────────────────────────────────────────────
 def _words(text: str) -> set[str]:
     stop = {
