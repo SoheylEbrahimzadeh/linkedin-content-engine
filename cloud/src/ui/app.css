@@ -294,3 +294,12 @@ th { color: var(--muted); font-weight: 600; border-top: 0; font-size: 12.5px; }
 .ok-text { color: var(--ok); }
 /* LCE-042: long state labels wrap instead of widening the row on phones */
 .pill { max-width: 100%; height: auto; min-height: 22px; white-space: normal; overflow-wrap: anywhere; }
+
+/* LCE-048: live Refresh progress */
+.progress-panel { display: grid; gap: 8px; }
+.progress-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline; }
+.psteps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.pstep { display: grid; grid-template-columns: 1.4em minmax(0, 1fr) auto; gap: 6px; align-items: baseline; font-size: 14px; }
+.pstep.pending { color: var(--muted); }
+.pstep.current { font-weight: 600; }
+.pstep-mark { text-align: center; }

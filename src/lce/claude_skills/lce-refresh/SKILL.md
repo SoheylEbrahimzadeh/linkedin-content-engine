@@ -15,6 +15,13 @@ publishable replacement for the same slot.** It is never a light edit and never
 `lce refresh pending` lists the posts waiting for a replacement (with the
 owner's note and the rejected version). For each one:
 
+0. **Report real progress (LCE-048)** so the owner watches it live in the Control
+   Center, at the moment each step actually starts:
+   `gh api -X POST repos/SoheylEbrahimzadeh/lce-data/actions/workflows/refresh-progress.yml/dispatches -f ref=main -f "inputs[post_id]=<id>" -f "inputs[stage]=<stage>" -f "inputs[note]=<short note>"`
+   with stage `worker_started` (now), `researching` (step 2), `writing` (step 3),
+   `media` (step 4). Humanization, QA, duplicate check, approval and "replacement
+   ready" are reported by the `refresh-package` workflow itself; if you give up,
+   report `failed` with the reason. Never report a step that has not happened.
 1. Read the rejected version(s): `lce versions list <id>`, `posts/<id>/versions/vN/post.md`,
    the topic, objective and pillar in `post.yaml`, the owner's note. Note what
    the owner did not like (the note, or: everything — a new angle is expected).

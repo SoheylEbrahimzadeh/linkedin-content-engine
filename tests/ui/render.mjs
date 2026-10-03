@@ -88,6 +88,17 @@ snap.version_media = [{ post_id: "20261006-demo-a", version: 1, sha256: "1".repe
 const identity = { ok: true, status: "verified", person_urn: "urn:li:person:TestPerson1", configured_person_urn: "urn:li:person:TestPerson1", person_urn_matches: true, api_version: "202609", api_version_valid: true };
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const files = { "/": ["index.html", "text/html"], "/app.js": ["app.txt", "text/javascript"], "/lib.js": ["lib.txt", "text/javascript"], "/app.css": ["app.css", "text/css"] };
+// LCE-048: what /api/refresh-status reports for the old approved post (driven by the test, step by step)
+const REQ = { decision_id: "d-00000000-0000-0000-0000-00000000a001", status: "applied", created_at: new Date(Date.now() - 125000).toISOString(),
+  resolved_at: new Date(Date.now() - 60000).toISOString(), result: null };
+let progressEvents = [], progressReady = false;
+function progressStatus(id) {
+  if (id !== "20260929-old-approved") return { decision: null, events: [], mirror: null };
+  const post = pipe.posts.find((p) => p.post_id === id);
+  return { now: new Date().toISOString(), post_id: id, decision: REQ, events: progressEvents,
+    mirror: { generated_at: new Date().toISOString(), post: { state: post.state, refresh_request: post.refresh_request ?? null,
+      refresh: post.refresh ?? null } } };
+}
 let reauthed = false;
 let redirectMode = "once";       // "once": Access refuses until the sign-in window ran; "always": the retry fails too
 const attempts = [];             // request_ids of every decision POST that arrived (incl. refused ones)
@@ -116,6 +127,7 @@ const srv = http.createServer(async (req, res) => {
   }
   if (req.method === "POST" && u.pathname === "/api/client-report") { reports.push(JSON.parse(await readBody(req))); return j({ report_id: "r-1" }, 201); }
   if (u.pathname === "/api/whoami") { const t = Math.floor(Date.now() / 1000); return j({ subject: "owner@example.com", human: true, session_issued_at: t - 600, session_expires_at: t - 60, server_now: t }); }
+  if (u.pathname.startsWith("/api/refresh-status/")) return j(progressStatus(decodeURIComponent(u.pathname.split("/").pop())));
   if (u.pathname === "/api/snapshot") return j(snap);
   if (u.pathname === "/api/pipeline") return j(pipe);
   if (u.pathname === "/api/migrations") return j({ applied: ["0001", "0002", "0003", "0004"], pending: [] });
@@ -297,6 +309,47 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   snap.decisions = (snap.decisions || []).filter((d) => d.decision_id !== "d-skip-recorded");   // the owner undid it
   await page.reload();
   redirectMode = "once";
+  // LCE-048: live Refresh progress on the real stages, then the replacement appears without a reload
+  if (name === "desktop") {
+    const old = pipe.posts.find((p) => p.post_id === "20260929-old-approved");
+    const saved = JSON.parse(JSON.stringify(old));
+    old.refresh_request = { requested_at: REQ.created_at, requested_by: "cloud-access:owner@example.com", decision_id: REQ.decision_id, rejected_version: 1 };
+    progressEvents = []; progressReady = false;
+    await page.goto(`http://127.0.0.1:${port}/#post/20260929-old-approved`);
+    await page.locator("#refresh").click();
+    await page.waitForTimeout(1200);
+    let t = await page.locator("main").innerText();
+    if (!/Refresh requested · writing a replacement/.test(t) || !/Waiting for writing session/.test(t)) errors.push(`${name}: no live progress panel while waiting: ${t.slice(0, 300)}`);
+    if (/actively processing/i.test(t)) errors.push(`${name}: claims processing before any worker started`);
+    if (/remaining/i.test(t)) errors.push(`${name}: shows a remaining-time estimate`);
+    const e1 = await page.locator("[data-elapsed-since]").innerText();
+    await page.waitForTimeout(2100);
+    const e2 = await page.locator("[data-elapsed-since]").innerText();
+    if (e1 === e2 || !/^Elapsed: \d{2}:\d{2}$/.test(e2)) errors.push(`${name}: elapsed time does not tick from the request (${e1} → ${e2})`);
+    progressEvents = [{ stage: "worker_started", at: new Date().toISOString(), note: "manual session", reported_by: "svc" },
+                      { stage: "researching", at: new Date().toISOString(), reported_by: "svc" }];
+    await page.locator("#refresh").click();
+    await page.waitForTimeout(1200);
+    t = await page.locator("main").innerText();
+    if (!/actively processing/i.test(t)) errors.push(`${name}: started worker not shown as processing`);
+    if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-refresh-progress.png`, fullPage: true });
+    // the backend finishes: mirror has the new version for THIS request; the page must update by itself
+    delete old.refresh_request;
+    Object.assign(old, { state: "AWAITING_APPROVAL", text: "A brand new fictional replacement hook.\n\nNew body.", actual_hash: "7".repeat(64),
+      refresh: { completed_at: new Date().toISOString(), by: "session", reason: "new angle", outcome: "refreshed", previous_version: 1, decision_id: REQ.decision_id } });
+    progressEvents.push({ stage: "replacement_ready", at: new Date().toISOString(), reported_by: "svc" });
+    await page.waitForTimeout(17000);   // one poll interval, no click, no reload
+    t = await page.locator("main").innerText();
+    if (!t.includes("A brand new fictional replacement hook")) errors.push(`${name}: the replacement did not appear automatically`);
+    if (!/refreshed · awaiting approval/i.test(t)) errors.push(`${name}: not shown as Refreshed · Awaiting approval after it was ready`);
+    if (/writing a replacement/i.test(t)) errors.push(`${name}: still shows "writing a replacement" after it was ready`);
+    if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-refresh-ready.png`, fullPage: true });
+    for (const k of Object.keys(old)) delete old[k];
+    Object.assign(old, saved);                       // back to the fixture for the checks below
+    progressEvents = [];
+    await page.locator("#refresh").click();
+    await page.waitForTimeout(800);
+  }
   // a scheduled (cloud-queued) post has no Refresh; the requested one says so
   await page.goto(`http://127.0.0.1:${port}/#upcoming`);
   await page.waitForTimeout(400);

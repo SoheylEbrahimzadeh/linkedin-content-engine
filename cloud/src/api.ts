@@ -11,6 +11,7 @@ import { IDENTITY_HTTP, linkedinIdentity } from "./identity";
 import { cancelDecision, createDecision, DecisionError, listDecisions, resolveDecision } from "./decisions";
 import { localDate, publishNow } from "./runner";
 import { UI_BUILD } from "./ui";
+import { ProgressError, putProgress, refreshStatus } from "./progress";
 import type { FetchLike } from "./linkedin";
 
 const POST_ID_RE = /^\d{8}-[a-z0-9-]{1,56}$/;
@@ -117,6 +118,12 @@ export async function handleApi(request: Request, env: Env, now: number,
       return json(200, await putFreshness(env, now, actor, r[1], await body(request)));
     }
     if (request.method === "GET" && url.pathname === "/api/preview-media") return json(200, await previewMediaList(env));
+    // LCE-048: real Refresh progress (events reported by the components doing the work)
+    if (request.method === "PUT" && (r = m(/^\/api\/refresh-progress\/([^/]+)$/))) {
+      if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "refresh progress is reported by lce (CLI)");
+      return json(200, await putProgress(env, now, actor, r[1], await body(request)));
+    }
+    if (request.method === "GET" && (r = m(/^\/api\/refresh-status\/([^/]+)$/))) return json(200, await refreshStatus(env, now, r[1]));
     if (request.method === "PUT" && (r = m(/^\/api\/preview-media\/([^/]+)$/))) {
       if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "preview media is uploaded by lce cloud sync");
       return json(200, await putPreviewMedia(env, now, actor, r[1], await body(request)));
@@ -145,6 +152,7 @@ export async function handleApi(request: Request, env: Env, now: number,
     if (err instanceof AuthError) return json(err.status, { error: err.message });
     if (err instanceof HttpError) return json(err.status, { error: err.message });
     if (err instanceof DecisionError) return json(err.status, { error: err.message });
+    if (err instanceof ProgressError) return json(err.status, { error: err.message });
     if (err instanceof ScheduleError) return json(422, { error: err.message });
     if (err instanceof MigrationConflict) return json(409, { error: err.message });
     if (isSchemaMissing(err)) return json(503, { error: "database schema missing: apply cloud/migrations to D1" });

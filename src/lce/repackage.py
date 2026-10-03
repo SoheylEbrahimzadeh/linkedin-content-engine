@@ -245,6 +245,13 @@ def _credit(store, post_id, doc, text, by) -> None:
         store.write_doc(images.path(store, post_id), "image", doc)
 
 
+def _progress(store, post_id, stage, req, note=""):
+    """LCE-048: a real stage reached (sent only where cloud credentials exist)."""
+    from lce import cloud
+
+    cloud.report_progress(store, post_id, stage, note=note, decision_id=(req or {}).get("decision_id") or "")
+
+
 _TRANSPORT = None  # tests replace the Commons transport
 _SOURCE_CHECK: dict = {}
 
@@ -358,20 +365,25 @@ def package(
                 d = images.load(store, post_id)
                 d["source_visual"] = media["source_check"]
                 store.write_doc(images.path(store, post_id), "image", d)
+            _progress(store, post_id, "humanization", req)
             qa = run_qa(store, post_id)
             if qa["status"] != "passed":
                 raise StoreError(
                     "QA failed: " + "; ".join(f"{f['code']}: {f['message']}" for f in qa["errors"])
                 )
+            _progress(store, post_id, "qa", req, "QA passed")
             dup = run_dupcheck(store, post_id)
             if dup["status"] != "passed":
                 raise StoreError(
                     f"duplicate check failed ({len(dup['exact'])} exact, {len(dup['near'])} near)"
                 )
+            _progress(store, post_id, "duplicate_check", req,
+                      f"passed against {dup['compared_against']} archived post(s)")
             errors, _ = images.check(store, post_id)
             if errors:
                 raise StoreError("media: " + "; ".join(errors))
             prepare(store, post_id)
+            _progress(store, post_id, "approval_prepared", req)
         except Exception:
             versions.restore_backup(store, post_id, Path(tmp))
             versions.drop_after(store, post_id, last_before)  # only what THIS call archived

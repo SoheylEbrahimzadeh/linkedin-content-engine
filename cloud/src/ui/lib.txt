@@ -263,6 +263,80 @@ export function displayStatus({ post = null, cloudPost = null, consent = null, p
   return "PLANNED";
 }
 
+// ── LCE-048: real Refresh progress, derived only from recorded events ─────────────────────
+export const PROGRESS_STEPS = [
+  { key: "recorded", label: "Request recorded" },
+  { key: "waiting", label: "Waiting for writing session" },
+  { key: "researching", label: "Researching" },
+  { key: "writing", label: "Writing new post" },
+  { key: "media", label: "Selecting/verifying media" },
+  { key: "humanization", label: "Humanization" },
+  { key: "qa", label: "QA" },
+  { key: "duplicate_check", label: "Duplicate check" },
+  { key: "approval_prepared", label: "Preparing approval" },
+  { key: "replacement_ready", label: "Replacement ready" },
+];
+export const WAIT_STALL_MIN = 30;     // applied to the repository, yet no writing session has started
+export const APPLY_STALL_MIN = 75;    // still not picked up by the private run (it runs hourly)
+export const WORK_STALL_MIN = 20;     // a writing session started, then reported nothing more
+
+const ms = (t) => (t ? Date.parse(t) : NaN);
+export function fmtElapsed(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+/** The state of one post's Refresh from GET /api/refresh-status (never estimated). */
+export function refreshProgress(st, nowMs = Date.now()) {
+  const d = st?.decision;
+  if (!d) return null;
+  const post = st.mirror?.post ?? null;
+  const ev = (st.events ?? []).filter((e) => !e.decision_id || e.decision_id === d.decision_id);
+  const at = (stage) => ev.filter((e) => e.stage === stage).at(-1)?.at ?? null;
+  const ready = Boolean(post?.refresh?.decision_id === d.decision_id && !post?.refresh_request) || Boolean(at("replacement_ready") && !post?.refresh_request);
+  const failedAt = at("failed");
+  const failed = !ready && failedAt && ev.at(-1)?.stage === "failed";
+  const started = at("worker_started");
+  const applied = d.status === "applied" ? d.resolved_at : null;
+  const steps = PROGRESS_STEPS.map((s) => ({ ...s, at: null, state: "pending" }));
+  const set = (key, t) => { const x = steps.find((s) => s.key === key); if (x && t) { x.at = t; x.state = "done"; } };
+  set("recorded", d.created_at);
+  set("waiting", started);
+  for (const k of ["researching", "writing", "media", "humanization", "qa", "duplicate_check", "approval_prepared"]) set(k, at(k));
+  if (ready) set("replacement_ready", at("replacement_ready") ?? post?.refresh?.completed_at ?? st.mirror?.generated_at);
+  // a later stage implies the earlier ones happened; their own time is unknown (shown without one)
+  const lastDone = steps.map((s) => s.state).lastIndexOf("done");
+  steps.forEach((s, i) => { if (i < lastDone && s.state !== "done") s.state = "done_untimed"; });
+  const current = ready || failed ? null : steps.find((s) => s.state === "pending");
+  if (current) current.state = "current";
+  const lastEvent = ev.at(-1)?.at ?? null;
+  const mins = (t) => (nowMs - ms(t)) / 60000;
+  let phase, note = null, stalled = false;
+  if (ready) phase = "ready";
+  else if (failed) { phase = "failed"; note = ev.at(-1)?.note ?? null; }
+  else if (!applied && !started) {
+    phase = "queued";
+    note = "Recorded in the cloud; the private run adds it to the repository (it runs hourly).";
+    if (mins(d.created_at) > APPLY_STALL_MIN) { stalled = true; note = `Not picked up by the private run after ${Math.round(mins(d.created_at))} minutes.`; }
+  } else if (!started) {
+    phase = "waiting";
+    note = "In the repository; no writing session has started yet.";
+    if (applied && mins(applied) > WAIT_STALL_MIN) { stalled = true; note = `Waiting for writing session — no worker has started yet (${Math.round(mins(applied))} min since it reached the repository).`; }
+  } else {
+    phase = "working";
+    note = ev.at(-1)?.note ? `Last report: ${ev.at(-1).note}.` : null;
+    if (lastEvent && mins(lastEvent) > WORK_STALL_MIN) {
+      stalled = true;
+      note = `The writing session has reported nothing for ${Math.round(mins(lastEvent))} minutes (last: ${ev.at(-1).stage}).`;
+    }
+  }
+  return { decision_id: d.decision_id, phase, stalled, note, steps, ready, failed: Boolean(failed),
+    started_at: d.created_at, elapsed: fmtElapsed(((ready || failed ? ms(lastEvent ?? d.created_at) : nowMs) - ms(d.created_at)) / 1000),
+    events: ev };
+}
+
 /** LCE-047: how long the Access session Cloudflare issued actually lasts (from the token's own iat/exp,
  * reported by /api/whoami), in honest units, and whether it is too short to use the Control Center. */
 export function sessionLength(w) {
