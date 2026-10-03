@@ -346,8 +346,13 @@ checkout (#67, #69).
 **Open:**
 - The scheduled refresh Routine `trig_01734Ek3cKiMV4Vzdyykj6ws` is paused. Its prompt predates the
   source-first rules and progress reporting, and can only be edited from its own conversation.
-- The Access session is still 10 s (LCE-047), so the open page's 15 s polling is refused by Access
-  until the owner sets a longer Session Duration.
+- ~~Access session 10 s~~ **Resolved 2026-10-03 by the owner (Session Duration 24 hours).**
+  Re-verified at 18:16 UTC with `access-probe`:
+  - the owner's token since 16:47:42 lives 86400 s and served 98 requests over 40 minutes with no
+    new sign-in;
+  - the service-token cookie is `CF_Authorization` (Path /, Secure, SameSite=None) and expires
+    after 86401 s;
+  - with that cookie alone, the page, app.js, whoami, snapshot and the protected image all return 200.
 
 ## LCE-047 (2026-10-03): Access session lost between tabs, pages and images
 
@@ -356,8 +361,7 @@ Engine #79; lce-data #63–#64. Root cause, measured in production (`access-prob
 (9 of 9 sessions on 2026-10-03, including 16:20–16:28 UTC). After 10 s Access redirects every request
 (new tab, API call, `<img>`) to its sign-in page; right after a sign-in images load. Our side is clean:
 same origin, credentials sent, no cookies set by the Worker, image route 200 with valid credentials,
-302 to Access without. **Owner action (open):** Zero Trust → Access → Applications →
-linkedin-content-engine → Session Duration (e.g. 24 h), and the Session Duration on its Allow policy.
+302 to Access without. **Owner action: done (Session Duration 24 h, verified 18:16 UTC, see LCE-048).**
 The UI now reports the real length and, below 5 min, where to change it; images refused by Access
 wait for the single sign-in banner.
 
