@@ -71,6 +71,16 @@ owner's note and the rejected version). For each one:
    failure restores the post exactly and the job fails with the reason; fix the
    package and push again. Where Commons is reachable locally you can also run
    `lce refresh package <id> --file <pkg.yaml>` yourself.
+   **First (LCE-046): the post's own source.** Put the post's source URLs in the
+   request as `source_urls`. The workflow inspects those pages: their visuals and
+   their rights notices. If the source has a relevant visual AND an explicit reuse
+   licence or permission, use it (`association: source_visual`,
+   `source_check.status: source_visual_used`). If its visual is copyrighted or
+   restricted, record `source_visual_unavailable_or_restricted` with the evidence,
+   and look for the original creator's licensed asset or a licensed asset directly
+   tied to the same subject. A topically similar image from elsewhere is not a
+   source visual; never present it as one. Nothing fits → text-only
+   `no_suitable_licensed_image` with the source_check.
    **Preferred (LCE-044): choose by looking.** Commit `media/requests/<id>.yaml`
    (`subject`, `queries`, `sources: [commons, openverse]`); the `media-search`
    workflow saves previews and `candidates.yaml` under `media/candidates/<id>/`.

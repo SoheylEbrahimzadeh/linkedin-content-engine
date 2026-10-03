@@ -7,7 +7,7 @@ import urllib.parse
 
 import pytest
 import yaml
-from test_real_media import COMMONS, PD_DESK, SERVER_ROOM, FakeCommons, png_shade, requested
+from test_real_media import COMMONS, PD_DESK, SC, SERVER_ROOM, FakeCommons, png_shade, requested
 from test_repackage import PKG
 
 from lce import images, media_search, repackage, versions
@@ -71,6 +71,9 @@ REVIEW = {
     "alt_text": "Photo of industrial robot arms working along an automated production line in a factory",
     "relation": "real automation acting on its own, the standard the post sets for an agent",
     "reviewed_by": "claude-code session (looked at the preview)",
+    "association": "same_subject_licensed",
+    "why_belongs_to_source": "the report is about automation on factory floors; this photo shows that floor",
+    "why_legal": "CC BY 2.0 at the source (Flickr), credit line added to the post as the licence requires",
 }
 
 
@@ -95,7 +98,9 @@ def test_collect_searches_commons_and_openverse_and_saves_previews(tmp_path, sou
 def test_media_only_replacement_with_a_reviewed_openverse_image(store, sources):
     pid = requested(store)
     repackage.package(
-        store, pid, {**PKG, "media": {"commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}}
+        store,
+        pid,
+        {**PKG, "media": {"source_check": SC, "commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}},
     )
     text_before = current_text(store, pid).split("\n\nImage:")[0].rstrip()
     sel = {
@@ -106,7 +111,9 @@ def test_media_only_replacement_with_a_reviewed_openverse_image(store, sources):
             {"title": "File:Server room racks.png", "outcome": "refused", "why": "decorative racks"}
         ],
     }
-    repackage.replace_media(store, pid, {"reviewed": sel}, reason="the old image was weak", by="session")
+    repackage.replace_media(
+        store, pid, {"source_check": SC, "reviewed": sel}, reason="the old image was weak", by="session"
+    )
     doc = images.load(store, pid)
     prov = doc["provenance"]
     assert prov["source_id"] == f"openverse:{ROBOT['id']}" and prov["license"] == "CC BY 2.0"
@@ -137,14 +144,16 @@ def test_media_only_replacement_with_a_reviewed_openverse_image(store, sources):
 def test_a_reviewed_selection_is_refused_without_rights_or_a_real_review(store, sources, change, match):
     pid = requested(store)
     repackage.package(
-        store, pid, {**PKG, "media": {"commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}}
+        store,
+        pid,
+        {**PKG, "media": {"source_check": SC, "commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}},
     )
     before = images.load(store, pid)["sha256"]
     with pytest.raises(StoreError, match=match):
         repackage.replace_media(
             store,
             pid,
-            {"reviewed": {**REVIEW, "source": "openverse", "id": ROBOT["id"], **change}},
+            {"source_check": SC, "reviewed": {**REVIEW, "source": "openverse", "id": ROBOT["id"], **change}},
             reason="x",
             by="session",
         )

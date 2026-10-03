@@ -337,6 +337,31 @@
           ]
         }
       }
+    },
+    "source_visual": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "LCE-046: the source-first decision: the post's source page was inspected for its own visual.",
+      "required": [
+        "status",
+        "source_url",
+        "evidence"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "source_visual_used",
+            "source_visual_unavailable_or_restricted",
+            "no_source_visual"
+          ]
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
     }
   }
 }

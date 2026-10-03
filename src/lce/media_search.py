@@ -119,12 +119,19 @@ def collect(spec: dict, out_dir: Path, transport=None) -> dict:
     """Search every supported source for every query; save a preview of each reusable
     candidate and `candidates.yaml` for a visual review. Attaches nothing."""
     queries = [q for q in spec.get("queries") or [] if q and q.strip()]
-    if not queries:
-        raise StoreError("the media search needs queries")
+    source_urls = [u for u in spec.get("source_urls") or [] if str(u).startswith("http")]
+    if not queries and not source_urls:
+        raise StoreError(
+            "the media search needs source_urls (the post's own sources, inspected first) or queries"
+        )
     sources = [s for s in spec.get("sources") or SOURCES if s in SOURCES]
     per_query = int(spec.get("per_query", 12))
     cap = int(spec.get("max_candidates", 60))
     out_dir.mkdir(parents=True, exist_ok=True)
+    # LCE-046: the post's own source first - what visuals it has and what its rights allow.
+    from lce import source_visuals
+
+    inspection = [source_visuals.inspect(u, out_dir, transport) for u in source_urls]
     seen, cands, errors = set(), [], []
     for q in queries:
         for src in sources:
@@ -157,6 +164,7 @@ def collect(spec: dict, out_dir: Path, transport=None) -> dict:
     record = {
         "searched_at": now_iso(),
         "subject": spec.get("subject"),
+        "source_inspection": inspection,
         "queries": queries,
         "sources_searched": sources,
         "sources_not_searched": NOT_SEARCHED,
@@ -238,7 +246,7 @@ REVIEW_MIN = {"depicts": 40, "why_relevant": 60, "alt_text": 40, "relation": 20,
 
 
 def attach_reviewed(
-    store, post_id: str, sel: dict, *, transport=None, exclude_sha256=(), exclude_ids=()
+    store, post_id: str, sel: dict, *, transport=None, exclude_sha256=(), exclude_ids=(), source_check=None
 ) -> dict:
     """Attach the candidate a reviewer chose after looking at it, with that review."""
     for k, n in REVIEW_MIN.items():
@@ -246,6 +254,9 @@ def attach_reviewed(
             raise StoreError(f"the reviewed selection needs {k} (at least {n} characters)")
     if not (sel.get("reviewed_by") or "").strip():
         raise StoreError("say who looked at the image (reviewed_by)")
+    from lce import source_visuals
+
+    source_visuals.validate_association(sel, source_check)
     data, ext, prov = fetch(sel, transport)
     if prov["source_id"] in set(exclude_ids) or prov.get("title") in set(exclude_ids):
         raise StoreError("an earlier version of this post used this file")
@@ -286,6 +297,9 @@ def attach_reviewed(
         "reviewed_by": sel["reviewed_by"].strip(),
         "metadata_checked": False,
         "matched_terms": [],
+        "association": sel["association"],
+        "why_belongs_to_source": sel["why_belongs_to_source"].strip(),
+        "why_legal": sel["why_legal"].strip(),
     }
     doc["selection"] = {
         "source": "reviewed search: " + ", ".join(sel.get("sources_searched") or SOURCES),

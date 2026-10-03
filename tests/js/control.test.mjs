@@ -346,3 +346,13 @@ test("an outcome follows the decision's real fate", () => {
   assert.equal(lib.outcomeNow(o, []).kind, "recorded");   // absence proves nothing
   assert.equal(lib.outcomeNow({ state: "failed", label: "skip" }, []).kind, "failed");
 });
+
+test("the media record shows the source-first decision (LCE-046)", () => {
+  const rec = lib.mediaRecord({ image: { kind: "none", text_only_reason: "no_suitable_licensed_image", rationale: "r",
+    source_visual: { status: "source_visual_unavailable_or_restricted", source_url: "https://firm.example/press", evidence: "figure 1 exists; all rights reserved" } } });
+  const rows = Object.fromEntries(rec.rows.map(([k, v]) => [k, v]));
+  assert.equal(rows["Source visual"], "source_visual_unavailable_or_restricted");
+  assert.equal(rows["Source checked"].href, "https://firm.example/press");
+  assert.match(rows["Source evidence"], /all rights reserved/);
+  assert.equal(rows.Reason, "No suitable licensed image");
+});

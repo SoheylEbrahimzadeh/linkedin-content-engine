@@ -159,7 +159,7 @@ def _image_view(store: DataStore, pid: str) -> dict | None:
             "width": doc.get("width"), "height": doc.get("height"), "bytes": doc.get("bytes"),
             "mime": doc.get("mime"), "decided_by": doc.get("decided_by"), "decided_at": doc.get("decided_at"),
             "media_relevance": view.get("media_relevance"), "spec": doc.get("spec"),
-            "selection": doc.get("selection")}
+            "selection": doc.get("selection"), "source_visual": doc.get("source_visual")}
 
 
 def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[dict],
