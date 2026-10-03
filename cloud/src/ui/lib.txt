@@ -197,7 +197,9 @@ export function attention({ cloud, pipeline, decisions }) {
   }
   for (const p of pipeline?.posts ?? []) {
     if (p.state === "AWAITING_APPROVAL") out.push({ level: "info", post_id: p.post_id, text: "Ready for your approval" });
-    if (p.state === "NEEDS_REVISION") out.push({ level: "warn", post_id: p.post_id, text: "Needs revision" });
+    if (p.refresh_request && p.plan_date && p.plan_date < new Date().toISOString().slice(0, 10)) {
+      out.push({ level: "warn", post_id: p.post_id, text: "Slot passed: reschedule it to get the replacement written" });
+    } else if (p.state === "NEEDS_REVISION") out.push({ level: "warn", post_id: p.post_id, text: "Needs revision" });
     if (p.state === "NEEDS_INPUT") out.push({ level: "warn", post_id: p.post_id, text: "Needs your input" });
   }
   const rank = { err: 0, warn: 1, info: 2 };
@@ -741,11 +743,12 @@ export function nowBoard({ pipeline, cloud, progress = {}, nowMs = Date.now() })
   const pending = (cloud?.decisions ?? []).filter((d) => d.status === "pending");
   const closing = new Set(pending.filter((d) => ["skip", "reject", "refresh"].includes(d.action)).map((d) => d.post_id));
   const work = pipeline?.freshness_plan?.work ?? [];
+  const today = new Date(nowMs).toISOString().slice(0, 10);
   const lastStage = (id) => (progress[id]?.events ?? []).at(-1)?.stage ?? null;
   const approval = posts.filter((p) => p.state === "AWAITING_APPROVAL" && !closing.has(p.post_id));
   const researching = work.filter((u) => u.kind === "research" || (u.post_id && lastStage(u.post_id) === "researching"));
   const writing = [
-    ...posts.filter((p) => p.refresh_request || pending.some((d) => d.action === "refresh" && d.post_id === p.post_id))
+    ...posts.filter((p) => (p.refresh_request && !(p.plan_date && p.plan_date < today)) || pending.some((d) => d.action === "refresh" && d.post_id === p.post_id))
       .map((p) => ({ post_id: p.post_id, plan_date: p.plan_date, kind: "replacement" })),
     ...work.filter((u) => u.kind === "slot" && u.started),
   ];
@@ -757,7 +760,6 @@ export function nowBoard({ pipeline, cloud, progress = {}, nowMs = Date.now() })
   const radar = pipeline?.radar ?? {};
   const fresh = (radar.items ?? []).filter((i) => Date.parse(i.published_at ?? i.first_seen) > nowMs - 86400e3);
   const scheduled = (cloud?.consents ?? []).filter((c) => c.status === "active");
-  const today = new Date(nowMs).toISOString().slice(0, 10);
   const next = (pipeline?.calendar ?? []).filter((e) => String(e.date) >= today && !["skipped", "rejected", "published"].includes(e.status))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)))[0] ?? null;
   return { approval, researching, writing, fresh, scheduled, failed, next,
