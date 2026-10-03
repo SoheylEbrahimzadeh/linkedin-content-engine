@@ -41,7 +41,7 @@ const link = (href, text, cls) => h("a", { href, class: cls }, text);
 const ext = (href, text) => h("a", { href, target: "_blank", rel: "noopener noreferrer" }, text);
 const short = (x, n = 12) => (x ? String(x).slice(0, n) : "—");
 const statusPill = (code) => { const s = STATUSES[code] ?? { label: code, tone: "muted" }; return h("span", { class: "pill " + s.tone }, s.label); };
-const typeChip = (t) => h("span", { class: "type type-" + t.key + (t.implemented ? "" : " unsupported"), title: t.note }, t.label, t.implemented ? null : " · not implemented");
+const typeChip = (t) => h("span", { class: "type type-" + t.key + (t.implemented ? "" : " unsupported"), title: t.note }, t.label, t.implemented ? null : " (not implemented)");
 const DECISION_TONE = { pending: "info", applied: "ok", refused: "err", superseded: "muted", cancelled: "muted" };
 const PUB_TONE = { published: "ok", publish_failed: "err", needs_reconcile: "err", publishing: "warn" };
 const stateBadge = (s) => badge(s ? String(s).replaceAll("_", " ").toLowerCase() : UNKNOWN, DECISION_TONE[s] || PUB_TONE[s] || "muted");
@@ -412,7 +412,7 @@ function publishingAs(compact) {
       h("div", { class: "target-label" }, "Publishing as"),
       h("div", { class: "target-name" }, targetName(), h("span", { class: "muted" }, " — Personal Profile")),
       h("div", { class: "small muted" }, s.profile_url ? ext(s.profile_url, s.profile_url.replace("https://www.", "")) : "Profile URL not configured",
-        " · LinkedIn identity ", identityBadge())));
+        ", LinkedIn identity ", identityBadge())));
 }
 
 // LCE-039: a real <img> (eager, with intrinsic size so layout reserves space). If the browser cannot
@@ -460,12 +460,12 @@ function feedPreview(p, cp) {
   return h("article", { class: "feed" },
     h("header", { class: "feed-head" }, h("div", { class: "avatar" }, initials(s.display_name)),
       h("div", {}, h("div", { class: "feed-name" }, targetName()),
-        h("div", { class: "small muted" }, "Personal profile · ", (s.visibility || "PUBLIC") === "PUBLIC" ? "Anyone on or off LinkedIn" : s.visibility))),
+        h("div", { class: "small muted" }, "Personal profile, ", (s.visibility || "PUBLIC") === "PUBLIC" ? "Anyone on or off LinkedIn" : s.visibility))),
     text ? h("div", { class: "feed-text" }, segments(text).map((x) => x.tag ? h("span", { class: "tag" }, x.text) : x.text))
       : empty("No text written yet."),
     mediaView(p ?? cp, m, true),
     h("footer", { class: "feed-foot" }, typeChip(m.type), h("span", { class: "small muted" },
-      `${text.trim().length} / 3,000 characters`, hashtags(text).length ? ` · ${hashtags(text).length} hashtags` : "")));
+      `${text.trim().length} / 3,000 characters`, hashtags(text).length ? `, ${hashtags(text).length} hashtags` : "")));
 }
 
 function planRow(i) {
@@ -494,7 +494,7 @@ function planRow(i) {
         p && !p.image ? h("span", { class: "small muted" }, "no media decision") : null,
         i.objective ? h("span", { class: "small muted" }, objectiveLabel(i.objective)) : null,
         i.note ? h("span", { class: "small muted" }, i.note) : null,
-        refreshPill(p)),
+        i.status === "REPLACEMENT_PENDING" ? null : refreshPill(p)),   // design plan 02: one label per state
       outcomeLine(i.post_id ?? (i.plan_date ? "plan:" + i.plan_date : null)),
       p && !["PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) ? freshLine(freshOf(p, cloudPost(p.post_id), activeConsent(p.post_id))) : null,
       h("div", { class: "row-actions" },
@@ -589,14 +589,14 @@ function viewOverview() {
           h("strong", {}, !s.token_present ? "No token" : days === null ? "Connected" : days < 0 ? "Expired" : `${days} days left`)))),
     h("div", { class: "grid2" },
       card("Next post", next ? h("div", { class: "next" },
-        h("div", { class: "next-when" }, fmtDate(next.date), next.time ? ` · ${next.time}` : "", next.time_source === "planned slot" ? h("span", { class: "muted" }, " (planned time)") : null),
+        h("div", { class: "next-when" }, fmtDate(next.date), next.time ? `, ${next.time}` : "", next.time_source === "planned slot" ? h("span", { class: "muted" }, " (planned time)") : null),
         h("a", { class: "next-title", href: next.post_id ? `#post/${next.post_id}` : "#upcoming" }, next.title),
         nextPost?.text ? h("p", { class: "next-snippet" }, nextPost.text.split("\n").filter(Boolean).slice(1, 3).join(" ").slice(0, 220)) : null,
         h("div", { class: "meta" }, statusPill(next.status), typeChip(next.media.type), next.objective ? h("span", { class: "small muted" }, objectiveLabel(next.objective)) : null),
         h("p", { class: "small muted" }, next.status === "SCHEDULED" ? (s.auto_publish ? "Publishes at its time." : "Scheduled, but auto-publish is off: it will not publish.") : "Not scheduled yet."))
         : empty(`Nothing planned in the next ${S.range} days.`)),
       card("Needs your attention", needs.length ? h("ul", { class: "attn" }, needs.slice(0, 6).map((n) =>
-        h("li", {}, h("span", { class: "dot " + n.level }), n.post_id ? link(`#post/${n.post_id}`, hook(pipePost(n.post_id)?.text, 60) ?? n.post_id) : "", h("span", { class: "muted" }, " · " + n.text))))
+        h("li", {}, h("span", { class: "dot " + n.level }), n.post_id ? link(`#post/${n.post_id}`, hook(pipePost(n.post_id)?.text, 60) ?? n.post_id) : "", h("span", { class: "attn-why" }, n.text))))
         : empty("Nothing needs you right now."))),
     cp.pastDue.length ? card("Earlier, not yet published", h("p", { class: "small muted" }, "Planned dates that have passed. Reschedule, schedule or skip them."),
       h("div", { class: "rows" }, cp.pastDue.map((i) => h("div", { class: "past" }, h("span", { class: "past-date" }, fmtDate(i.date)), planRow(i))))) : null,
@@ -604,15 +604,15 @@ function viewOverview() {
       const items = d.items.filter((i) => i.kind !== "slot");
       return items.length ? [h("div", { class: "day-label" }, fmtDate(d.date)), items.map(planRow)] : [];
     })), cp.days.slice(0, 7).every((d) => !d.items.some((i) => i.kind !== "slot")) ? empty("No posts planned this week.") : null,
-      h("p", { class: "small muted" }, `Next ${S.range} days: ${textOnly} text-only · ${withImage} with an image`,
-        unsupported ? ` · ${unsupported} with a media type that is not implemented` : "")),
+      h("p", { class: "small muted" }, `Next ${S.range} days: ${textOnly} text-only, ${withImage} with an image`,
+        unsupported ? `, ${unsupported} with a media type that is not implemented` : "")),
   ];
 }
 
 // LCE-050: what needs the owner, and what the system is doing right now (recorded facts only)
 function boardView() {
   const b = nowBoard({ pipeline: S.pipe, cloud: S.snap, progress: S.progress, nowMs: Date.now() });
-  const title = (id) => hook(pipePost(id)?.text, 48) ?? pipePost(id)?.topic ?? id;
+  const title = (id) => (hook(pipePost(id)?.text, 48) ?? pipePost(id)?.topic ?? id).replace(/[.:;,]+$/, "");
   const tile = (key, label, count, tone, href, detail) => h("a", { class: `tile tile-${key} ${count ? tone : "quiet"}`, href },
     h("span", { class: "tile-label" }, label), h("span", { class: "tile-count" }, String(count)), h("span", { class: "tile-detail" }, detail));
   const first = (list, f) => (list.length ? f(list[0]) + (list.length > 1 ? ` and ${list.length - 1} more` : "") : null);
@@ -630,7 +630,7 @@ function boardView() {
     tile("failed", "Failed", b.failed.length, "err", b.failed[0]?.post_id ? `#post/${b.failed[0].post_id}` : "#system",
       first(b.failed, (f) => f.why) ?? "Nothing failed"),
     tile("next", "Next slot", b.next ? 1 : 0, "info", b.next?.draft_ref ? `#post/${b.next.draft_ref}` : "#upcoming",
-      b.next ? `${fmtDate(b.next.date)} · ${b.next.status === "open" ? "open slot" : b.next.topic}` : "Nothing planned"));
+      b.next ? `${fmtDate(b.next.date)}: ${b.next.status === "open" ? "open slot" : b.next.topic}` : "Nothing planned"));
 }
 
 // LCE-050: Content Radar: what the feeds brought in, with provenance; "Use" only plans
@@ -695,7 +695,7 @@ function viewUpcoming() {
   const cp = plan(S.range);
   const filtered = (list) => list.filter((i) => applyFilter(i, S.filter));
   return [
-    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Upcoming"), h("p", { class: "muted" }, `${fmtDate(cp.from)} – ${fmtDate(cp.to)} · from your content plan`)), null),
+    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Upcoming"), h("p", { class: "muted" }, `${fmtDate(cp.from)} – ${fmtDate(cp.to)}, from your content plan`)), null),
     rangeControls("upcoming"),
     cp.pastDue.length && filtered(cp.pastDue).length ? card("Earlier, not yet published", h("div", { class: "rows" }, filtered(cp.pastDue).map((i) =>
       h("div", { class: "past" }, h("span", { class: "past-date" }, fmtDate(i.date)), planRow(i))))) : null,
@@ -707,7 +707,7 @@ function viewUpcoming() {
         items.length ? h("div", { class: "rows" }, items.map(planRow)) : h("p", { class: "empty small" }, "Nothing planned."));
     })),
     cp.undated.length ? card("Without a date", h("div", { class: "rows" }, filtered(cp.undated).map(planRow))) : null,
-    h("p", { class: "small muted legend" }, statusPill("PLANNED"), " planned in your content plan · ", statusPill("SCHEDULED"), " has a publishing time · open times are shown only where nothing is planned. Nothing here publishes."),
+    h("p", { class: "small muted legend" }, statusPill("PLANNED"), " planned in your content plan; ", statusPill("SCHEDULED"), " has a publishing time; open times are shown only where nothing is planned. Nothing here publishes."),
   ];
 }
 
@@ -782,7 +782,7 @@ function viewPost(id) {
           ["Status", statusPill(code)],
           ["Objective", p?.objective ? objectiveLabel(p.objective) : "not recorded"],
           ["Topic", p?.topic ?? entry?.topic],
-          ["Planned", item?.date ? `${fmtDate(item.plan_date ?? item.date)}${item.time && item.time_source === "planned slot" ? " · " + item.time + " (planned time)" : ""}` : "no date"],
+          ["Planned", item?.date ? `${fmtDate(item.plan_date ?? item.date)}${item.time && item.time_source === "planned slot" ? ", " + item.time + " (planned time)" : ""}` : "no date"],
           ["Scheduled", consent ? fmtWhen(consent.slot_utc) : "not scheduled"],
           ["Media", typeChip(media(p ?? c, S.snap).type)],
           ["Visibility", (st().visibility || "PUBLIC") === "PUBLIC" ? "Public" : st().visibility],
@@ -802,7 +802,7 @@ function viewPost(id) {
 // ── LCE-041: refresh state, versions (previous → refreshed) ─────────
 // LCE-043: what a recorded (not yet applied) closing decision means for the owner, right now.
 const CLOSED_NOTE = {
-  skip: (d) => `Skipped · slot released (recorded ${fmtWhen(d.created_at)}). This version is no longer a candidate and nothing will be regenerated; the repository records it at the next private run and keeps the version in History. `,
+  skip: (d) => `Skipped, slot released (recorded ${fmtWhen(d.created_at)}). This version is no longer a candidate and nothing will be regenerated; the repository records it at the next private run and keeps the version in History. `,
   reject: (d) => `Rejected (recorded ${fmtWhen(d.created_at)}). This version is no longer a candidate; the repository records it at the next private run. `,
   refresh: (d) => `Refresh requested (recorded ${fmtWhen(d.created_at)}). This version is rejected and cannot be approved; it is archived in History and a new replacement is written for the same slot. `,
 };
@@ -871,7 +871,7 @@ function progressPanel(p, d) {
   const pr = refreshProgress(st);
   if (!pr || pr.ready) return null;
   const title = pr.failed ? "Refresh failed — no replacement was created"
-    : pr.auto ? "Sources changed · writing an updated version" : "Refresh requested · writing a replacement";
+    : pr.auto ? "Sources changed, writing an update" : "Refresh requested, writing replacement";
   const phaseLabel = { queued: "Queued: waiting for the private run", starting: "Starting the writer", waiting: "Waiting for writing session",
     working: "Claude Code is actively processing", failed: "Failed" }[pr.phase];
   const stepRow = (s) => h("li", { class: "pstep " + s.state },
@@ -917,7 +917,7 @@ function versionsCard(p) {
   const col = (title, body) => h("div", { class: "version-col" }, h("div", { class: "small muted version-title" }, title), body);
   return card("Versions",
     h("div", { class: "version-cmp" },
-      col(`Previous version · v${prev.version} · ${fmtWhen(prev.created_at)}`, [
+      col(`Previous version: v${prev.version}, ${fmtWhen(prev.created_at)}`, [
         thumb(prev),
         h("p", { class: "version-hook" }, prev.hook ?? "—"),
         h("dl", { class: "kv small" }, [["Text hash", h("code", {}, short(prev.content_hash))], ["Image hash", prev.image_sha256 ? h("code", {}, short(prev.image_sha256)) : "none"],
@@ -926,7 +926,7 @@ function versionsCard(p) {
         prev.text ? h("details", { class: "rules" }, h("summary", {}, "Full previous text"), h("div", { class: "version-text" }, prev.text)) : null,
       ]),
       h("div", { class: "version-arrow", "aria-hidden": "true" }, "→"),
-      col(`Current version${cur.refresh?.outcome === "refreshed" ? " · refreshed " + fmtWhen(cur.refresh.completed_at) : ""}`, [
+      col(`Current version${cur.refresh?.outcome === "refreshed" ? ", refreshed " + fmtWhen(cur.refresh.completed_at) : ""}`, [
         p.image?.kind && p.image.kind !== "none" ? postImage(p.post_id, "version-img", { alt: p.image.alt_text }) : h("div", { class: "media-note" }, "Text-only"),
         h("p", { class: "version-hook" }, cur.hook ?? "—"),
         h("dl", { class: "kv small" }, [["Text hash", h("code", {}, short(cur.content_hash))], ["Image hash", cur.image_sha256 ? h("code", {}, short(cur.image_sha256)) : "none"],
@@ -1030,8 +1030,8 @@ function viewTest(id) {
   const parts = [
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Controlled test publish"), h("p", { class: "muted" }, "One post, now, as your personal profile"))),
     h("div", { class: "notice warn" }, "This sends ONE post to LinkedIn immediately. It never runs automatically, does not change auto-publish, and asks for your confirmation twice."),
-    card("1 · Pre-flight", h("ul", { class: "checks" }, checks.map(([label, ok]) => h("li", {}, h("span", { class: "dot " + (ok ? "ok" : "err") }), label, ok ? null : h("span", { class: "err small" }, " — blocked"))))),
-    card("2 · Choose an approved post", pick),
+    card("1. Pre-flight", h("ul", { class: "checks" }, checks.map(([label, ok]) => h("li", {}, h("span", { class: "dot " + (ok ? "ok" : "err") }), label, ok ? null : h("span", { class: "err small" }, " — blocked"))))),
+    card("2. Choose an approved post", pick),
   ];
   if (c && c.state === "READY_TO_PUBLISH") {
     const type = media(pipePost(c.post_id) ?? c, S.snap).type;
@@ -1050,9 +1050,9 @@ function viewTest(id) {
       }
       await load();
     });
-    parts.push(card("3 · Exact final post", publishingAs(true), feedPreview(pipePost(c.post_id), c),
+    parts.push(card("3. Exact final post", publishingAs(true), feedPreview(pipePost(c.post_id), c),
         type.implemented ? null : h("p", { class: "err small" }, "This content type is not implemented and cannot be published.")),
-      card("4 · Confirm", h("p", { class: "small" }, "Type ", h("code", {}, `PUBLISH NOW ${c.post_id}`), ". A final dialog appears before anything is sent."),
+      card("4. Confirm", h("p", { class: "small" }, "Type ", h("code", {}, `PUBLISH NOW ${c.post_id}`), ". A final dialog appears before anything is sent."),
         input, h("div", { class: "controls" }, go), allOk ? null : h("p", { class: "err small" }, "Blocked: fix the pre-flight items first.")));
   }
   const pb = id ? pub(id) : null;

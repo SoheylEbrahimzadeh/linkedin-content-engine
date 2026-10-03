@@ -193,7 +193,7 @@ export function attention({ cloud, pipeline, decisions }) {
     if (d.status === "refused") out.push({ level: "warn", post_id: d.post_id, text: `Decision refused (${d.action}): ${d.result ?? ""}` });
   }
   for (const p of pipeline?.posts ?? []) {
-    if (p.state === "AWAITING_APPROVAL") out.push({ level: "info", post_id: p.post_id, text: "Awaiting your approval" });
+    if (p.state === "AWAITING_APPROVAL") out.push({ level: "info", post_id: p.post_id, text: "Ready for your approval" });
     if (p.state === "NEEDS_REVISION") out.push({ level: "warn", post_id: p.post_id, text: "Needs revision" });
     if (p.state === "NEEDS_INPUT") out.push({ level: "warn", post_id: p.post_id, text: "Needs your input" });
   }
@@ -218,15 +218,15 @@ export function parseHash(hash) {
 // One status per post, in publishing order. Derived only from recorded data.
 export const STATUSES = {
   PLANNED: { label: "Planned", tone: "muted" },
-  OPEN_SLOT: { label: "Open slot · candidate being prepared", tone: "muted" },
-  AWAITING_APPROVAL: { label: "Awaiting approval", tone: "info" },
+  OPEN_SLOT: { label: "Open slot", tone: "muted" },
+  AWAITING_APPROVAL: { label: "Ready for approval", tone: "info" },
   APPROVED: { label: "Approved", tone: "ok" },
   SCHEDULED: { label: "Scheduled", tone: "accent" },
   PUBLISHED: { label: "Published", tone: "ok" },
   REJECTED: { label: "Rejected", tone: "muted" },
-  NEEDS_REGENERATION: { label: "Needs regeneration", tone: "warn" },
-  REPLACEMENT_PENDING: { label: "Rejected · replacement being written", tone: "warn" },
-  SKIPPED: { label: "Skipped · slot released", tone: "muted" },
+  NEEDS_REGENERATION: { label: "Needs a rewrite", tone: "warn" },
+  REPLACEMENT_PENDING: { label: "Writing replacement", tone: "warn" },
+  SKIPPED: { label: "Skipped", tone: "muted" },
   FAILED: { label: "Failed", tone: "err" },
   NEEDS_RECONCILE: { label: "Needs reconcile", tone: "err" },
 };
@@ -271,13 +271,13 @@ export const PROGRESS_STEPS = [
   { key: "dispatched", label: "Starting writer" },
   { key: "waiting", label: "Writer session started" },
   { key: "researching", label: "Researching" },
-  { key: "writing", label: "Writing new post" },
-  { key: "media", label: "Selecting/verifying media" },
+  { key: "writing", label: "Writing" },
+  { key: "media", label: "Media" },
   { key: "humanization", label: "Humanization" },
   { key: "qa", label: "QA" },
   { key: "duplicate_check", label: "Duplicate check" },
-  { key: "approval_prepared", label: "Preparing approval" },
-  { key: "replacement_ready", label: "Replacement ready" },
+  { key: "approval_prepared", label: "Approval prepared" },
+  { key: "replacement_ready", label: "Ready" },
 ];
 export const WAIT_STALL_MIN = 30;     // applied to the repository, yet no writing session has started
 export const APPLY_STALL_MIN = 75;    // still not picked up by the private run (it runs hourly)
@@ -318,6 +318,12 @@ export function refreshProgress(st, nowMs = Date.now()) {
   // a later stage implies the earlier ones happened; their own time is unknown (shown without one)
   const lastDone = steps.map((s) => s.state).lastIndexOf("done");
   steps.forEach((s, i) => { if (i < lastDone && s.state !== "done") s.state = "done_untimed"; });
+  // design plan 03: while waiting for a writer, "Starting writer" is behind us (time unknown) and the
+  // writer session is what we wait for, so the list never contradicts the phase shown above it
+  if (!ready && !failed && !started && applied && !writerStarted) {
+    const ds = steps.find((s) => s.key === "dispatched");
+    if (ds.state === "pending") ds.state = "done_untimed";
+  }
   const current = ready || failed ? null : steps.find((s) => s.state === "pending");
   if (current) current.state = "current";
   const lastEvent = ev.at(-1)?.at ?? null;
@@ -659,25 +665,25 @@ export function refreshState(post, pending = null) {
   }
   if (post?.refresh_request?.origin === "freshness") {   // LCE-049
     const rr = post.refresh_request, v = rr.rejected_version;
-    return { key: "stale", label: "Sources changed · writing an updated version", tone: "info", auto: true,
+    return { key: "stale", label: "Sources changed, writing an update", tone: "info", auto: true,
       note: `The freshness check before this slot found: ${rr.stale?.reason ?? "the content is out of date"}. ` +
         `${v ? `The earlier version is kept as v${v} and its approval no longer applies. ` : ""}` +
         "A writing session is producing an updated post for the same slot; it will need your approval." };
   }
   if (post?.refresh_request) {
     const v = post.refresh_request.rejected_version;
-    return { key: "requested", label: "Refresh requested · writing a replacement", tone: "info",
+    return { key: "requested", label: "Refresh requested", tone: "info",
       note: `${v ? `The rejected version is kept as v${v}. ` : ""}A writing session (the scheduled Routine, every 2 hours, or a manual session) is producing a new replacement; it will need your approval.` };
   }
   const r = post?.refresh;
   if (r?.outcome === "refreshed" && r.origin === "freshness" && post.state === "AWAITING_APPROVAL") {
-    return { key: "refreshed", label: "Updated for current sources · Awaiting approval", tone: "warn", note: r.reason ?? null };
+    return { key: "refreshed", label: "Updated for current sources, ready for approval", tone: "warn", note: r.reason ?? null };
   }
   if (r?.outcome === "refreshed" && post.state === "AWAITING_APPROVAL") {
-    return { key: "refreshed", label: "Refreshed · Awaiting approval", tone: "warn", note: r.reason ?? null };
+    return { key: "refreshed", label: "Refreshed, ready for approval", tone: "warn", note: r.reason ?? null };
   }
   if (r?.outcome === "refreshed") return { key: "refreshed_done", label: "Refreshed", tone: "muted", note: r.reason ?? null };
-  if (r?.outcome === "kept") return { key: "kept", label: "Refresh checked · current version kept", tone: "ok", note: r.reason ?? null };
+  if (r?.outcome === "kept") return { key: "kept", label: "Refresh checked, current version kept", tone: "ok", note: r.reason ?? null };
   return null;
 }
 

@@ -172,7 +172,13 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
     if (overflow) errors.push(`${name} ${view}: horizontal overflow ` + JSON.stringify(await page.evaluate(() => [...document.querySelectorAll("main *")]
       .filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).slice(-3)
       .map((e) => `${e.tagName}.${e.className} ${Math.round(e.getBoundingClientRect().right)} ${(e.innerText || "").slice(0, 50)}`))));
+    // the post preview must keep a readable width (a squeezed grid column does not overflow, so check it)
+    if (view.startsWith("post/")) {
+      const w = await page.evaluate(() => document.querySelector(".feed")?.getBoundingClientRect().width ?? 999);
+      if (w < Math.min(320, vp.width - 48)) errors.push(`${name} ${view}: post preview squeezed to ${Math.round(w)}px`);
+    }
     if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-${view.replace("/", "_")}.png`, fullPage: true });
+    if (process.env.OUT && view.startsWith("post/")) await page.screenshot({ path: `${process.env.OUT}/${name}-${view.replace("/", "_")}-viewport.png` });
   }
   // technical details of an old post (no humanization/media records) must be informative
   await page.goto(`http://127.0.0.1:${port}/#post/20260929-old-approved`);
@@ -226,7 +232,7 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
   await page.waitForTimeout(500);
   const pa = await page.locator("main").innerText();
-  for (const want of ["Refreshed · Awaiting approval", "Versions", "Previous version · v1", "An older fictional hook", "Current version", "Compare with v1"]) {
+  for (const want of ["Refreshed, ready for approval", "Versions", "Previous version: v1", "An older fictional hook", "Current version", "Compare with v1"]) {
     if (!pa.toLowerCase().includes(want.toLowerCase())) errors.push(`${name}: refreshed post lacks "${want}"`);
   }
   const vimg = await page.locator("img.version-img").first().evaluate((i) => ({ w: i.naturalWidth, src: i.getAttribute("src") }));
@@ -300,14 +306,14 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   for (const gone of ["Approve", "Refresh", "Edit", "Reschedule", "Reject"]) {
     if (await page.locator("section.card", { hasText: "Controls" }).getByRole("button", { name: gone, exact: true }).count()) errors.push(`${name}: "${gone}" still offered after a recorded skip (${ctl2})`);
   }
-  if (!/skipped · slot released/i.test(main2)) errors.push(`${name}: status after a recorded skip is not "Skipped · slot released"`);
+  if (!/skipped, slot released/i.test(main2)) errors.push(`${name}: status after a recorded skip is not "Skipped · slot released"`);
   if (!(await page.getByRole("button", { name: "Undo skip" }).count())) errors.push(`${name}: no Undo skip after a recorded skip`);
   if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-skip-recorded.png`, fullPage: true });
   await page.goto(`http://127.0.0.1:${port}/#upcoming`);
   await page.waitForTimeout(400);
   const skRow = page.locator(".row", { has: page.locator('a[href="#post/20261006-demo-a"]') }).first();
   const rowText = await skRow.innerText();
-  if (!/skipped · slot released/i.test(rowText)) errors.push(`${name}: upcoming row not released after skip (${rowText.slice(0, 160)})`);
+  if (!/\bskipped\b/i.test(rowText)) errors.push(`${name}: upcoming row not released after skip (${rowText.slice(0, 160)})`);
   for (const gone of ["Approve", "Refresh", "Edit", "Reschedule"]) if (await skRow.getByRole("button", { name: gone, exact: true }).count()) errors.push(`${name}: upcoming row still offers ${gone} after skip`);
   if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-upcoming-after-skip.png`, fullPage: true });
   // LCE-045 (the production case): the page stays open while the private run resolves the skip as refused
@@ -337,7 +343,7 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
     await page.locator("#refresh").click();
     await page.waitForTimeout(1200);
     let t = await page.locator("main").innerText();
-    if (!/Refresh requested · writing a replacement/.test(t) || !/Waiting for writing session/.test(t)) errors.push(`${name}: no live progress panel while waiting: ${t.slice(0, 300)}`);
+    if (!/Refresh requested, writing replacement/.test(t) || !/Waiting for writing session/.test(t)) errors.push(`${name}: no live progress panel while waiting: ${t.slice(0, 300)}`);
     if (/actively processing/i.test(t)) errors.push(`${name}: claims processing before any worker started`);
     if (/remaining/i.test(t)) errors.push(`${name}: shows a remaining-time estimate`);
     const e1 = await page.locator("[data-elapsed-since]").innerText();
@@ -359,7 +365,7 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
     await page.waitForTimeout(17000);   // one poll interval, no click, no reload
     t = await page.locator("main").innerText();
     if (!t.includes("A brand new fictional replacement hook")) errors.push(`${name}: the replacement did not appear automatically`);
-    if (!/refreshed · awaiting approval/i.test(t)) errors.push(`${name}: not shown as Refreshed · Awaiting approval after it was ready`);
+    if (!/refreshed, ready for approval/i.test(t)) errors.push(`${name}: not shown as Refreshed · Awaiting approval after it was ready`);
     if (/writing a replacement/i.test(t)) errors.push(`${name}: still shows "writing a replacement" after it was ready`);
     if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-refresh-ready.png`, fullPage: true });
     for (const k of Object.keys(old)) delete old[k];
@@ -372,7 +378,7 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   await page.goto(`http://127.0.0.1:${port}/#upcoming`);
   await page.waitForTimeout(400);
   const upr = await page.locator("main").innerText();
-  if (!upr.includes("Refresh requested")) errors.push(`${name}: upcoming lacks the refresh request`);
+  if (!upr.includes("Writing replacement")) errors.push(`${name}: upcoming does not show the requested refresh as "Writing replacement"`);
   const queuedRow = page.locator(".row.status-scheduled").first();
   if (await queuedRow.getByRole("button", { name: "Refresh" }).count()) errors.push(`${name}: a scheduled post offers Refresh`);
   // media relevance in the media card
