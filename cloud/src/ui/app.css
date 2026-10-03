@@ -154,7 +154,7 @@ input[type=text] { width: 100%; }
 .row.status-scheduled { border-left-color: var(--accent); }
 .row.status-awaiting_approval { border-left-color: var(--info); }
 .row.status-approved, .row.status-published { border-left-color: var(--ok); }
-.row.status-needs_regeneration { border-left-color: var(--warn); }
+.row.status-needs_regeneration, .row.status-replacement_pending { border-left-color: var(--warn); }
 .row.status-failed, .row.status-needs_reconcile { border-left-color: var(--err); }
 .row.slot, .row.status-open_slot { background: transparent; border-style: dashed; border-left-width: 1px; }
 .row-time { font-weight: 650; font-variant-numeric: tabular-nums; color: var(--ink); }
@@ -376,3 +376,53 @@ th { color: var(--muted); font-weight: 600; border-top: 0; font-size: 12.5px; }
   .radar-side { justify-items: start; grid-auto-flow: column; justify-content: start; }
 }
 .more { justify-self: center; }
+
+/* ── Desk pass (improve-ui findings + frontend-design plan) ─────────────────────────────
+ * One bold element: the board is a single segmented strip, not seven cards. Everything else
+ * stays quiet: the post page's side column is one panel with sections, the preview leads. */
+.board { gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.tile { border: 0; border-radius: 0; border-top: 0; border-right: 1px solid var(--line); min-height: 112px;
+  background: transparent; box-shadow: inset 0 3px 0 var(--line-2); transform: none !important; }
+.tile:last-child { border-right: 0; }
+.tile:hover { background: var(--raised); }
+.tile.info { box-shadow: inset 0 3px 0 var(--info); } .tile.accent { box-shadow: inset 0 3px 0 var(--accent); }
+.tile.ok { box-shadow: inset 0 3px 0 var(--ok); } .tile.err { box-shadow: inset 0 3px 0 var(--err); background: var(--err-soft); }
+.tile-approval.info { background: var(--accent); box-shadow: none; }
+.tile-approval.info .tile-label, .tile-approval.info .tile-count, .tile-approval.info .tile-detail { color: var(--accent-ink); }
+.tile-approval.info:hover { background: color-mix(in srgb, var(--accent) 90%, var(--ink)); }
+.tile-count { font-size: 32px; }
+@media (max-width: 1180px) { .tile:nth-child(4) { border-right: 0; } .tile:nth-child(-n+4) { border-bottom: 1px solid var(--line); } }
+
+.detail { grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr); gap: 24px; }
+.feed { padding: 20px 24px; border-radius: 14px; }
+.feed-text { font-size: 15.5px; line-height: 1.65; max-width: 66ch; }
+.side { gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.side > .card { border: 0; border-radius: 0; box-shadow: none; border-top: 1px solid var(--line); padding: 18px 20px; }
+.side > .card:first-child { border-top: 0; background: var(--raised); }
+.side > details.card { border-top: 1px solid var(--line); }
+.progress-panel { border-radius: 14px; }
+.pstep { transition: color .2s; }
+.pstep.current .pstep-label { color: var(--accent); }
+
+@media (max-width: 760px) {
+  .board { border-radius: 12px; }
+  .tile { min-height: 92px; box-shadow: inset 0 3px 0 var(--line-2); }
+  .tile:nth-child(odd) { border-right: 1px solid var(--line); } .tile:nth-child(even) { border-right: 0; }
+  .tile { border-bottom: 1px solid var(--line); }
+  .tile-count { font-size: 24px; }
+  .detail { gap: 16px; }
+  /* the primary actions stay reachable while reading the post */
+  .side > .card:first-child { position: fixed; left: 0; right: 0; bottom: calc(47px + env(safe-area-inset-bottom)); z-index: 9;
+    padding: 8px 12px; border-top: 1px solid var(--line); box-shadow: 0 -6px 16px rgba(22, 32, 42, .08); }
+  .detail { padding-bottom: 72px; }
+  .side { overflow: visible; }
+  .side > .card:first-child .card-title { display: none; }
+  .side > .card:first-child .controls { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .side > .card:first-child .controls > * { flex: none; min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .pstep { transition: none; } }
+.attn li { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 0; }
+.attn li > a { grid-column: 2; }
+.attn-why { grid-column: 2; display: block; font-size: 13.5px; color: var(--muted); }
+/* keep after the desk pass: the post page stacks below 1080px (the preview first) */
+@media (max-width: 1080px) { .detail { grid-template-columns: minmax(0, 1fr); } }

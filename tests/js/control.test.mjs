@@ -255,7 +255,7 @@ test("refresh (LCE-041): who may refresh and what state is shown", () => {
   assert.equal(refreshState(p, { action: "refresh" }).label, "Refresh requested");
   assert.equal(refreshState({ ...p, refresh_request: { requested_at: "t" } }).key, "requested");
   const done = refreshState({ ...p, refresh: { outcome: "refreshed", reason: "new visual", previous_version: 1 } });
-  assert.equal(done.label, "Refreshed · Awaiting approval");
+  assert.equal(done.label, "Refreshed, ready for approval");
   assert.equal(refreshState({ ...p, state: "APPROVED", refresh: { outcome: "refreshed" } }).label, "Refreshed");
   assert.match(REFRESH_CONFIRM, /preserved in History/);
   assert.match(REFRESH_CONFIRM, /rejects the current version/);
@@ -299,12 +299,12 @@ test("LCE-042: Refresh rejects the version (replacement pending), Skip is distin
   const { displayStatus, canRefresh, refreshState, SKIP_CONFIRM, STATUSES } = lib;
   const rejected = { post_id: "p1", state: "NEEDS_REVISION", text: "x", refresh_request: { requested_at: "t", rejected_version: 2 } };
   assert.equal(displayStatus({ post: rejected }), "REPLACEMENT_PENDING");
-  assert.equal(STATUSES.REPLACEMENT_PENDING.label, "Rejected · replacement being written");
+  assert.equal(STATUSES.REPLACEMENT_PENDING.label, "Writing replacement");
   assert.equal(canRefresh(rejected, false), false);                      // already being replaced
   assert.match(refreshState(rejected).note, /kept as v2/);
   const skipped = { post_id: "p2", state: "REJECTED", approval: { state: "rejected", reason: "skipped: not this week" } };
   assert.equal(displayStatus({ post: skipped }), "SKIPPED");
-  assert.equal(STATUSES.SKIPPED.label, "Skipped · slot released");
+  assert.equal(STATUSES.SKIPPED.label, "Skipped");
   assert.equal(displayStatus({ post: { ...skipped, approval: { state: "rejected", reason: "off-topic" } } }), "REJECTED");
   assert.match(SKIP_CONFIRM, /No replacement is generated/);
   // after a replacement exists, Refresh is possible again (v3, v4, …)
@@ -317,7 +317,7 @@ test("a pending skip releases the slot in the plan before the private run applie
   const cp = contentPlan({ pipeline, cloud: { ...cloud, decisions: [skip] }, now: NOW, tz: "Europe/Berlin", days: 14 });
   const a = cp.items.find((i) => i.post_id === "20261006-demo-a");
   assert.equal(a.status, "SKIPPED");
-  assert.equal(lib.STATUSES[a.status].label, "Skipped · slot released");
+  assert.equal(lib.STATUSES[a.status].label, "Skipped");
   assert.equal(a.pending.action, "skip");
   assert.equal(lib.closedBy(skip), "skip");
   // resolved decisions no longer lock; a cancelled skip gives the version back
@@ -381,6 +381,9 @@ test("refresh progress comes only from recorded events", () => {
   assert.equal(p.phase, "waiting");
   assert.equal(p.stalled, true);
   assert.match(p.note, /no worker has started yet/);
+  // design plan 03: the list agrees with the phase: waiting for the writer session
+  assert.equal(p.steps.find((s) => s.state === "current").key, "waiting");
+  assert.equal(p.steps.find((s) => s.key === "dispatched").state, "done_untimed");
   // worker started and reported qa -> earlier stages done, qa done, duplicate current
   const working = { ...applied, events: [{ stage: "worker_started", at: T(51) }, { stage: "researching", at: T(52) }, { stage: "qa", at: T(60) }] };
   p = lib.refreshProgress(working, Date.parse(T(61)));
