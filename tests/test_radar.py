@@ -238,3 +238,15 @@ def test_a_replacement_whose_slot_passed_does_not_block_future_slots(store):
         assert units and all(u["kind"] == "slot" for u in units)  # the future slot is next
         assert [m["post_id"] for m in work.missed(store)] == [pid]   # kept, not cancelled
         assert store.load_post(pid)["refresh_request"]["decision_id"] == "d-old"
+
+
+
+def test_a_removed_source_is_no_longer_reported(store):
+    configure(store)
+    with use_clock(FixedClock(NOW)):
+        radar.collect(store, transport=transport)
+        assert "broken" in radar.load_sources(store)
+        (store.root / "config" / "radar.yaml").write_text(
+            "sources:\n  - {id: vendor, name: Fictional vendor, kind: feed, url: 'https://vendor.example.com/feed'}\n")
+        radar.collect(store, transport=transport)
+    assert set(radar.load_sources(store)) == {"vendor"}
