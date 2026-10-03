@@ -71,6 +71,15 @@ owner's note and the rejected version). For each one:
    failure restores the post exactly and the job fails with the reason; fix the
    package and push again. Where Commons is reachable locally you can also run
    `lce refresh package <id> --file <pkg.yaml>` yourself.
+   **Preferred (LCE-044): choose by looking.** Commit `media/requests/<id>.yaml`
+   (`subject`, `queries`, `sources: [commons, openverse]`); the `media-search`
+   workflow saves previews and `candidates.yaml` under `media/candidates/<id>/`.
+   Open every preview (Read tool). For each one, write down what it actually
+   depicts and why it does or does not show the post's subject. Generic offices,
+   unrelated screenshots, random people and decorative tech images are not
+   enough. Then use `media: {reviewed: {source, id, depicts, why_relevant,
+   alt_text, relation, concept, reviewed_by, reviewed: [{title, outcome, why}]}}`,
+   or text-only `no_suitable_licensed_image` if none is genuinely relevant.
 7. Look at the attached image (Read tool) and the media record before telling
    the owner what is new. Nothing is approved or published. If the image is not
    actually about the post (metadata can match words without matching meaning),

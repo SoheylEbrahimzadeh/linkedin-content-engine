@@ -460,6 +460,21 @@ def cmd_image_commons(args):
     return cmd_image_check(args)
 
 
+def cmd_image_search(args):
+    from lce import media_search
+
+    spec = yaml.safe_load(Path(args.file).read_text(encoding="utf-8")) or {}
+    rec = media_search.collect(spec, Path(args.out))
+    ok = [c for c in rec["candidates"] if c["reusable"]]
+    print(f"✓ {len(rec['candidates'])} candidates from {', '.join(rec['sources_searched'])} "
+          f"({len(ok)} reusable, {sum(1 for c in ok if c.get('preview_file'))} previews) → {args.out}")
+    for e in rec["errors"]:
+        print(f"  ! {e['source']} '{e['query']}': {e['error']}")
+    for k, why in rec["sources_not_searched"].items():
+        print(f"  - {k} not searched: {why}")
+    return 0
+
+
 def cmd_image_show(args):
     from lce.images import media_view
 
@@ -1308,6 +1323,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--visual-type", dest="visual_type", required=True, help="e.g. photo, illustration")
     p.add_argument("--relevance-reason", dest="relevance_reason", required=True,
                    help="what the image adds beyond the text")
+    p = gcmd(g, "search", cmd_image_search,
+             "search licensed sources (Commons, Openverse) and save candidate previews for a visual review; "
+             "attaches nothing")
+    p.add_argument("--file", required=True, help="YAML: subject, queries [..], sources [commons, openverse]")
+    p.add_argument("--out", required=True, help="directory for previews and candidates.yaml")
     p = gcmd(g, "show", cmd_image_show, "the post's media decision (type, status, source, rights)")
     p.add_argument("post")
     p = gcmd(g, "chart", cmd_image_chart, "chart from the post's recorded claims (visuals extra)")

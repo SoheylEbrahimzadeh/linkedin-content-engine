@@ -15,6 +15,30 @@ reason, never a silent default.
 | alt text | `alt_text` |
 | text-only reason | `text_only_reason` + `rationale` |
 
+## LCE-044: real images are chosen by looking at them
+
+Matching words in metadata is not relevance: in production it picked a 1997
+post-office photo and then a generic accounting screenshot. The selection is
+now two steps:
+
+1. `lce image search --file spec.yaml --out DIR` (in the private repo: commit
+   `media/requests/<post_id>.yaml`; the `media-search` workflow runs it where
+   the sources are reachable). It searches **Wikimedia Commons** and
+   **Openverse** (openly licensed images from Flickr, museums, StockSnap,
+   Rawpixel and more) through their public APIs. It keeps only PD, CC0, CC BY
+   and CC BY-SA (no NC/ND), and saves a preview and the licence record of each
+   candidate. Nothing is attached. **Unsplash and Pexels are not searched**:
+   their APIs need a key, which would be a new secret, and their sites may not
+   be scraped.
+2. A session **looks at every preview** and records what each one depicts and
+   why it is or is not about the post. It then names one candidate in
+   `media: {reviewed: {source, id, depicts, why_relevant, alt_text, relation,
+   concept, reviewed_by, reviewed: [...]}}`, or chooses text-only
+   `no_suitable_licensed_image`. `lce refresh media` (only the media changes)
+   or `lce refresh package` fetches that exact file again, re-checks its
+   licence at the source, hashes it and attaches it with the review. The
+   credit line goes into the post when the licence requires it.
+
 ## LCE-043: a real image first; generated diagrams only on request
 
 The default for a post is a **real, relevant, legally reusable image**: a photo

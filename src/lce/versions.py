@@ -84,7 +84,8 @@ def snapshot(store: DataStore, post_id: str, *, reason: str, by: str, status: st
                 "alt_text": doc.get("alt_text"),
                 "text_only_reason": doc.get("text_only_reason"),
                 # LCE-043: where a real image came from, so a later version never reuses it
-                "source_title": (doc.get("provenance") or {}).get("title"),
+                "source_title": (doc.get("provenance") or {}).get("source_id")
+                or (doc.get("provenance") or {}).get("title"),
                 "source_url": (doc.get("provenance") or {}).get("source_url"),
                 "license": (doc.get("provenance") or {}).get("license"),
             }

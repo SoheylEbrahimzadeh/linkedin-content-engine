@@ -138,6 +138,13 @@
         },
         "original_sha1": {
           "type": "string"
+        },
+        "source_id": {
+          "type": "string",
+          "description": "LCE-044: the file's identifier at its source (Commons title, openverse:<uuid>)."
+        },
+        "source_name": {
+          "type": "string"
         }
       }
     },
