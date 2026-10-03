@@ -47,6 +47,19 @@ is reported to D1 `client_reports`; D1 `access_sessions` records which Access
 sessions reached the Worker with GETs and with changes. The dashboard check prints
 both, which is the production evidence for why a POST was refused.
 
+**Access session length (LCE-047).** Cloudflare Access decides how long a sign-in
+lasts: the application token it issues (the `cf-access-jwt-assertion` the Worker
+verifies) carries its own `iat`/`exp`. When that token expires, Access answers
+the next request with a redirect to its sign-in page. For a new tab or a page
+load, that means a sign-in prompt. For an API call or an `<img>` from an open
+page, the request fails. The Control Center cannot extend the session and does
+not try: it sets no cookies of its own, every request is same-origin with
+credentials, and nothing is made public. It reports the real length in honest
+units. Below 5 minutes it says where to change it: Zero Trust → Access →
+Applications → Session Duration, and any Session Duration on the Allow policy.
+An image refused by Access waits for the single sign-in banner and loads again
+after sign-in. A pending action is kept and sent exactly once after sign-in.
+
 On every unpublished post that is not in the cloud publish queue, the Control
 Center offers **Refresh** (next to Approve | Edit | Reschedule | Skip | Reject).
 It means: regenerate the whole post package (text, hook, sources, claims, image,

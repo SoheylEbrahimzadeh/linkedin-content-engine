@@ -164,7 +164,11 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   // an image that cannot load shows a visible diagnostic, not bare alt text
   await page.goto(`http://127.0.0.1:${port}/#test/20261012-demo-c`);
   await page.waitForTimeout(800);
-  if (!(await page.locator("main").innerText()).includes("could not be displayed")) errors.push(`${name}: failed image has no visible diagnostic`);
+  // LCE-047: an image refused by Access waits for the one sign-in flow (banner) instead of a dead end
+  if (!(await page.locator("main").innerText()).includes("Image waiting for sign-in")) errors.push(`${name}: image refused by Access is not shown as waiting for sign-in`);
+  if (!(await page.locator("#session-banner").count())) errors.push(`${name}: no sign-in banner after an image was refused by Access`);
+  const banner = await page.locator("#session-banner").innerText().catch(() => "");
+  if (/0 min/.test(banner)) errors.push(`${name}: session length shown as "0 min"`);
   // a loading image is a visible <img> of real size, not a link
   await page.goto(`http://127.0.0.1:${port}/#post/20261008-demo-b`);
   await page.waitForTimeout(500);

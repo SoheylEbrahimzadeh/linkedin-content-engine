@@ -356,3 +356,11 @@ test("the media record shows the source-first decision (LCE-046)", () => {
   assert.match(rows["Source evidence"], /all rights reserved/);
   assert.equal(rows.Reason, "No suitable licensed image");
 });
+
+test("the Access session length is reported in honest units (LCE-047)", () => {
+  assert.deepEqual(lib.sessionLength({ session_issued_at: 100, session_expires_at: 110 }), { seconds: 10, text: "10 seconds", tooShort: true });
+  assert.equal(lib.sessionLength({ session_issued_at: 0, session_expires_at: 86400 }).text, "24 hours");
+  assert.equal(lib.sessionLength({ session_issued_at: 0, session_expires_at: 86400 }).tooShort, false);
+  assert.equal(lib.sessionLength({}), null);
+  assert.match(lib.SHORT_SESSION_ADVICE, /Zero Trust → Access → Applications/);
+});
