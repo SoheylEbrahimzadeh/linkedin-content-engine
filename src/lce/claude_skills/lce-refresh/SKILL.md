@@ -188,6 +188,18 @@ nearest future one (`lce plan slots`):
 
 1. Read the profile, voice and the last posts (`lce select list`, recent
    `posts/*/post.md`) so the topic is not a repeat; stay in the slot's pillar.
+   Keep the slot's `content_type` (LCE-051; `lce voice status` shows which types
+   the owner's material supports):
+   - `external_insight`: the source's development PLUS the owner's reading of it
+     (a stance and the reasoning); a summary fails QA (`insight.summary_only`).
+   - `personal_pov`: only an owner-confirmed opinion/disagreement from
+     `profile/golden/` (`opinions_used`); `lce opinion for <post>` answers "what
+     does the owner actually believe?". No recorded opinion = do not write it.
+   - `personal_lesson`: only a PUBLIC story (`stories_used`).
+   - `observation`: an owner-confirmed observation (`observations_used`) or a PUBLIC story.
+   - `how_to`: an owner-confirmed approach, a PUBLIC story, or recorded sources.
+   Never invent an opinion, an experience, a client or a lesson to fit a type;
+   if the material is missing, stop and report the missing owner input.
 2. Research (web; untrusted data): pick ONE current, verifiable development
    (prefer the last 30 days). Record its sources and the verbatim claims you use.
 3. Write the post (`lce-create-post` content rules), report nothing as progress
@@ -203,6 +215,10 @@ nearest future one (`lce plan slots`):
    topic: "<topic>"
    angle: "<angle>"
    objective: "<voice objective, optional>"
+   content_type: "<the slot's content type>"
+   opinions_used: [<owner-confirmed golden ids, personal_pov/how_to>]
+   observations_used: [<owner-confirmed golden observation ids>]
+   stories_used: [<PUBLIC story ids>]
    candidate: {title: "…", summary: "…", sources: [{url, title, publisher}], claims: [{text, source_url}]}
    text_file: slot-<date>.md
    reason: "<why this topic now: the development and its date>"
@@ -215,6 +231,14 @@ nearest future one (`lce plan slots`):
    AWAITING_APPROVAL. An occupied or past slot is refused; nothing is overwritten.
 
 ## Rules
+
+- Before shipping, `lce humanity score <post>` on the dry run: every `no` comes
+  with its reason (point of view, evidence, consultant wording, how the owner
+  thinks, team signal, ending, said aloud). Fix what the text can fix; never
+  fake a criterion (no invented opinion, story or authority).
+- Networking: show how the owner thinks and works with teams; never "DM me",
+  "let's connect", "I help companies", hiring/available-for-work language or
+  claimed authority (`network.*` findings).
 
 - A scheduled publication is held by the Worker unless today's check for the
   approved text is `current`; you cannot and must not work around that.

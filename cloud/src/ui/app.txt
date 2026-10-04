@@ -859,6 +859,7 @@ function viewPost(id) {
         ])),
         p && !locked ? freshCard(p, c, consent) : null,
         p && !locked ? researchCard(p) : null,
+        humanityCard(p),
         mediaCard(p, c),
         card("Humanization", h("ul", { class: "hz" }, humanizationRows(p, voice).map((r) =>
           h("li", {}, h("span", { class: "hz-label" }, r.label), h("span", { class: "pill " + r.tone }, r.value), r.note ? h("div", { class: "small muted" }, r.note) : null))),
@@ -1064,6 +1065,43 @@ function techDetails(id, p, c, pb, state) {
   ]);
 }
 
+// LCE-051: what the engine can write without inventing anything, and what still needs the owner
+const CT_LABEL = { external_insight: "External insight", personal_pov: "Personal point of view", personal_lesson: "Personal lesson",
+  how_to: "Practical how-to", observation: "Experience-based observation" };
+function personaCard() {
+  const ps = S.pipe?.persona;
+  if (!ps || ps.error) return ps?.error ? card("Voice & content readiness", h("p", { class: "err small" }, ps.error)) : null;
+  const set = ps.voice_traits_total - (ps.voice_gaps ?? []).length;
+  const kinds = { samples: "Real posts and messages", opinions: "Opinions", disagreements: "Disagreements", approaches: "How you approach problems", observations: "Observations" };
+  return card("Voice & content readiness",
+    h("dl", { class: "kv" },
+      h("dt", {}, "Voice traits"), h("dd", {}, `${set} of ${ps.voice_traits_total} set`, ps.voice_review ? h("span", { class: "muted" }, ` (review: ${ps.voice_review.replaceAll("_", " ")})`) : null),
+      h("dt", {}, "PUBLIC stories"), h("dd", {}, String(ps.public_stories)),
+      Object.entries(ps.golden ?? {}).map(([k, v]) => [h("dt", {}, kinds[k] ?? k),
+        h("dd", {}, h("span", { class: "pill " + (v.ready ? "ok" : "warn") }, `${v.confirmed} of ${v.target_min}`), v.drafts ? h("span", { class: "muted" }, ` (${v.drafts} draft)`) : null)])),
+    h("h3", { class: "small" }, "Content types"),
+    h("ul", { class: "hz" }, (ps.mix?.types ?? []).map((t) => h("li", {}, h("span", { class: "hz-label" }, CT_LABEL[t.content_type] ?? t.content_type),
+      h("span", { class: "pill " + (t.producible ? "ok" : "warn") }, t.producible ? `target ${Math.round(t.target * 100)}%` : "needs your input"),
+      t.producible ? null : h("div", { class: "small muted" }, "Needs " + t.needs + ".")))),
+    (ps.voice_gaps ?? []).length ? h("details", { class: "rules" }, h("summary", {}, `Voice traits still open (${ps.voice_gaps.length})`),
+      h("ul", { class: "list small" }, ps.voice_gaps.map((g) => h("li", {}, g.label, g.question ? h("span", { class: "muted" }, ` — ${g.question}`) : null)))) : null,
+    h("p", { class: "small muted" }, "Counts only. Your material stays in the private repository (profile/golden, story bank); nothing is invented to fill a gap."));
+}
+
+function humanityCard(p) {
+  const hm = p ? (S.pipe?.posts ?? []).find((x) => x.post_id === p.post_id)?.humanity : null;
+  if (!hm || hm.error) return null;
+  const mark = { pass: "ok", fail: "warn", unknown: "muted" };
+  return card("Humanity test",
+    h("p", { class: "humanity-score" }, h("span", { class: "humanity-num" }, String(hm.score)), ` of ${hm.of}`,
+      hm.unknown ? h("span", { class: "muted" }, `, ${hm.unknown} not judgeable yet`) : null,
+      h("span", { class: "muted" }, `, ${CT_LABEL[hm.content_type] ?? "no content type recorded"}`)),
+    h("ul", { class: "hz" }, hm.criteria.map((c) => h("li", {}, h("span", { class: "hz-label" }, c.label),
+      h("span", { class: "pill " + mark[c.result] }, c.result === "pass" ? "yes" : c.result === "fail" ? "no" : "unknown"),
+      c.result === "pass" ? null : h("div", { class: "small muted" }, c.why)))),
+    h("p", { class: "small muted" }, "Deterministic checks of the current text; your judgement at approval still decides."));
+}
+
 function voiceSummary(v) {
   const list = (xs) => (xs?.length ? xs.join(", ") : "—");
   return h("div", { class: "voice" },
@@ -1184,6 +1222,7 @@ function viewSystem() {
       s.emergency_stop ? h("button", { type: "button", onclick: () => A.emergency(false) }, "Release emergency stop…")
         : h("button", { type: "button", class: "danger solid", onclick: () => A.emergency(true) }, "Emergency stop")),
       h("p", { class: "small muted" }, "Enabling auto-publish and releasing the emergency stop need you (signed in) and a typed phrase. Turning things off never does.")),
+    personaCard(),
     S.pipe?.voice ? card("Voice profile", voiceSummary(S.pipe.voice)) : null,
     card("Content types", h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Type"), h("th", {}, "Status"), h("th", {}, "Notes"))),
       h("tbody", {}, CONTENT_TYPES.map((t) => h("tr", {}, h("td", {}, typeChip(t)), h("td", {}, h("span", { class: "pill " + (t.implemented ? "ok" : "muted") }, t.implemented ? "implemented" : "not implemented")), h("td", { class: "small" }, t.note))))))),

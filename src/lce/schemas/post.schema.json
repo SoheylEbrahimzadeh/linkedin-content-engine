@@ -451,6 +451,32 @@
           ]
         }
       }
+    },
+    "content_type": {
+      "enum": [
+        "external_insight",
+        "personal_pov",
+        "personal_lesson",
+        "how_to",
+        "observation"
+      ],
+      "description": "external_insight | personal_pov | personal_lesson | how_to | observation (LCE-051)."
+    },
+    "opinions_used": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"
+      },
+      "description": "Golden-set ids (opinions, disagreements, approaches) whose owner-confirmed view this post expresses."
+    },
+    "observations_used": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"
+      },
+      "description": "Golden-set observation ids backing first-person observations."
     }
   }
 }

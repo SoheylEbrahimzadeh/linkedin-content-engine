@@ -193,7 +193,7 @@
       "additionalProperties": {
         "type": "string"
       },
-      "description": "Where each field comes from: owner answer, or 'derived: \u2026' from profile/brand (LCE-037)."
+      "description": "Where each field comes from: owner answer, or 'derived: …' from profile/brand (LCE-037)."
     },
     "review": {
       "type": "object",
@@ -270,6 +270,110 @@
           }
         }
       }
+    },
+    "rhythm": {
+      "$ref": "#/$defs/trait",
+      "description": "sentence rhythm and length variation"
+    },
+    "opinion_style": {
+      "$ref": "#/$defs/trait",
+      "description": "how opinions are stated"
+    },
+    "disagreement_style": {
+      "$ref": "#/$defs/trait",
+      "description": "how disagreement is expressed"
+    },
+    "humor": {
+      "$ref": "#/$defs/trait",
+      "description": "degree and type of humour"
+    },
+    "openings": {
+      "$ref": "#/$defs/trait",
+      "description": "how posts open"
+    },
+    "transitions": {
+      "$ref": "#/$defs/trait",
+      "description": "how ideas connect"
+    },
+    "endings": {
+      "$ref": "#/$defs/trait",
+      "description": "how posts end"
+    },
+    "networking": {
+      "$ref": "#/$defs/trait",
+      "description": "how the owner invites professional contact (never transactional)"
+    },
+    "technical_business_balance": {
+      "$ref": "#/$defs/trait",
+      "description": "technical vs business emphasis"
+    },
+    "explanation_style": {
+      "$ref": "#/$defs/trait",
+      "description": "how problems are explained"
+    },
+    "uncertainty_style": {
+      "$ref": "#/$defs/trait",
+      "description": "how uncertainty is expressed"
+    },
+    "challenge_style": {
+      "$ref": "#/$defs/trait",
+      "description": "how common assumptions are challenged"
+    },
+    "signature_patterns": {
+      "$ref": "#/$defs/trait",
+      "description": "recognizable writing patterns (from real samples)"
+    },
+    "anti_generic": {
+      "$ref": "#/$defs/trait",
+      "description": "owner rules against corporate/generic writing"
+    },
+    "first_person_style": {
+      "$ref": "#/$defs/trait",
+      "description": "how first person is used"
+    },
+    "preferred_vocabulary": {
+      "$ref": "#/$defs/trait",
+      "description": "words and phrases the owner actually uses"
+    },
+    "avoided_vocabulary": {
+      "$ref": "#/$defs/trait",
+      "description": "words the owner never uses"
+    }
+  },
+  "$defs": {
+    "trait": {
+      "description": "A voice trait in the owner's terms, or an explicit request for owner input (never guessed).",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "owner_input_required"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "owner_input_required": {
+              "const": true
+            },
+            "question": {
+              "type": "string"
+            },
+            "derived_hint": {
+              "type": "string"
+            }
+          }
+        }
+      ]
     }
   }
 }

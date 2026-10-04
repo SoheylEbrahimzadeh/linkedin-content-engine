@@ -11,6 +11,7 @@ import re
 from collections import Counter
 from dataclasses import asdict, dataclass
 
+from lce import persona
 from lce.posts import current_text, set_state
 from lce.privacy.scan import load_denylist
 from lce.rules import RulesetNotReady, ready_ruleset
@@ -90,7 +91,8 @@ def _similar(a: str, b: str, threshold: float) -> bool:
 
 def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict,
                stories: dict[str, dict], denylist: list[str],
-               brand: dict | None = None, recent: list[str] | None = None) -> list[Finding]:
+               brand: dict | None = None, recent: list[str] | None = None,
+               golden_items: dict | None = None) -> list[Finding]:
     f: list[Finding] = []
     add = lambda code, sev, msg: f.append(Finding(code, sev, msg))  # noqa: E731
     body = text.strip()
@@ -273,6 +275,13 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
                 add("privacy.sensitive_term", ERROR,
                     f"contains a sensitive term from story {story['story_id']}")
                 break
+    # ── LCE-051: realism, point of view, networking signal ───────────
+    from lce.humanity import findings as realism
+
+    for code, sev, msg in realism(body, rules=rules, post=post, stories=stories,
+                                  golden_items=golden_items or {}, recent=recent):
+        add(code, ERROR if sev == "error" else WARNING, msg)
+
     known = {s["url"].rstrip("/") for s in sources}
     for url in URL_RE.findall(body):
         if url.rstrip("/.,") not in known:
@@ -310,6 +319,7 @@ def run_qa(store: DataStore, post_id: str, denylist: list[str] | None = None) ->
             stories=store.stories(),
             denylist=load_denylist() if denylist is None else denylist,
             brand=store.brand(), recent=_recent_texts(store, post, rules),
+            golden_items=persona.confirmed(store),
         )
     except RulesetNotReady as exc:
         findings = [Finding("language.not_ready", ERROR, str(exc))]

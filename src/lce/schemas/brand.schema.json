@@ -6,11 +6,22 @@
   "type": "object",
   "additionalProperties": false,
   "$defs": {
-    "strings": {"type": "array", "items": {"type": "string", "minLength": 1}},
-    "id": {"type": "string", "pattern": "^[a-z0-9-]+$"}
+    "strings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    }
   },
   "properties": {
-    "demo": {"type": "boolean"},
+    "demo": {
+      "type": "boolean"
+    },
     "objective": {
       "type": "string",
       "description": "The long-term reputation goal the content serves."
@@ -28,14 +39,31 @@
           "description": "Career chapters, oldest first. Each chapter can cite story ids as evidence.",
           "items": {
             "type": "object",
-            "required": ["id", "title"],
+            "required": [
+              "id",
+              "title"
+            ],
             "additionalProperties": false,
             "properties": {
-              "id": {"$ref": "#/$defs/id"},
-              "title": {"type": "string", "minLength": 1},
-              "period": {"type": "string"},
-              "summary": {"type": "string"},
-              "stories": {"type": "array", "items": {"$ref": "#/$defs/id"}}
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "period": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "stories": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/id"
+                }
+              }
             }
           }
         }
@@ -45,9 +73,15 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "markets": {"$ref": "#/$defs/strings"},
-        "roles": {"$ref": "#/$defs/strings"},
-        "industries": {"$ref": "#/$defs/strings"}
+        "markets": {
+          "$ref": "#/$defs/strings"
+        },
+        "roles": {
+          "$ref": "#/$defs/strings"
+        },
+        "industries": {
+          "$ref": "#/$defs/strings"
+        }
       }
     },
     "themes": {
@@ -55,15 +89,34 @@
       "description": "Recurring themes that cut across pillars.",
       "items": {
         "type": "object",
-        "required": ["id", "name"],
+        "required": [
+          "id",
+          "name"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": {"$ref": "#/$defs/id"},
-          "name": {"type": "string", "minLength": 1},
-          "description": {"type": "string"},
-          "pillars": {"type": "array", "items": {"$ref": "#/$defs/id"}},
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "pillars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/id"
+            }
+          },
           "evidence": {
-            "enum": ["personal", "external", "either"],
+            "enum": [
+              "personal",
+              "external",
+              "either"
+            ],
             "description": "personal = needs a PUBLIC story; external = sourced facts; either = both allowed."
           }
         }
@@ -76,12 +129,40 @@
         "pillars": {
           "type": "object",
           "description": "Target share per pillar id (0..1; the sum may not exceed 1).",
-          "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
         },
-        "window_days": {"type": "integer", "minimum": 7, "maximum": 180},
+        "window_days": {
+          "type": "integer",
+          "minimum": 7,
+          "maximum": 180
+        },
         "min_personal_share": {
-          "type": "number", "minimum": 0, "maximum": 1,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
           "description": "Minimum share of recent posts backed by a personal story."
+        },
+        "content_types": {
+          "type": "object",
+          "description": "Target share per content type (0..1; the sum may not exceed 1).",
+          "propertyNames": {
+            "enum": [
+              "external_insight",
+              "personal_pov",
+              "personal_lesson",
+              "how_to",
+              "observation"
+            ]
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
         }
       }
     },
@@ -89,7 +170,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "rules": {"$ref": "#/$defs/strings"}
+        "rules": {
+          "$ref": "#/$defs/strings"
+        }
       }
     }
   }

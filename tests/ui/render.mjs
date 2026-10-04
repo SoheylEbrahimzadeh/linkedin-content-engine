@@ -28,7 +28,17 @@ const snap = {
               { decision_id: "d-2", action: "edit", post_id: "20261010-demo-d", status: "refused", result: "the text changed", created_at: day(-1), created_by: "owner@example.com", payload: {} }],
 };
 const pipe = { meta: { mirror: { received_at: day(0) } },
-  posts: [{ post_id: "20261006-demo-a", state: "AWAITING_APPROVAL", text: TEXT, actual_hash: "d".repeat(64), plan_date: ymd(1), topic: "Agentic AI in ITSM", qa: { status: "passed" }, image: null, sources: [{ url: "https://example.com/report", title: "Example report" }], history: [{ at: day(-2), state: "AWAITING_APPROVAL" }] },
+  persona: { voice_version: 2, voice_review: "pending_owner_review", voice_traits_total: 20, public_stories: 0,
+    voice_gaps: [{ trait: "humor", label: "Humour", status: "missing" }],
+    golden: { samples: { confirmed: 0, drafts: 0, target_min: 10, target_max: 20, ready: false },
+              opinions: { confirmed: 2, drafts: 1, target_min: 5, target_max: 10, ready: false } },
+    mix: { types: [{ content_type: "external_insight", target: 0.3, producible: true },
+                   { content_type: "personal_pov", target: 0.2, producible: false, needs: "an owner-confirmed opinion or disagreement from the Golden Voice Set" }] } },
+  posts: [{ post_id: "20261006-demo-a", state: "AWAITING_APPROVAL", text: TEXT, actual_hash: "d".repeat(64), plan_date: ymd(1), topic: "Agentic AI in ITSM", qa: { status: "passed" }, image: null, sources: [{ url: "https://example.com/report", title: "Example report" }], history: [{ at: day(-2), state: "AWAITING_APPROVAL" }],
+    humanity: { score: 7, of: 10, unknown: 1, content_type: "external_insight", criteria: [
+      { id: "pov", label: "Clear point of view", result: "pass", why: "2 stance markers" },
+      { id: "voice", label: "Recognizably the owner's voice", result: "unknown", why: "0 owner-confirmed samples; at least 3 are needed" },
+      { id: "thinking", label: "Shows how the owner thinks", result: "fail", why: "1 reasoning marker" }] } },
           { post_id: "20261008-demo-b", state: "READY_TO_PUBLISH", text: TEXT, actual_hash: "a".repeat(64), plan_date: ymd(3), topic: "B", image: { kind: "diagram", file: "diagram.png", alt_text: "A diagram", sha256: "e" } },
           { post_id: "20261010-demo-d", state: "NEEDS_REVISION", text: "Needs work.", actual_hash: "f".repeat(64), plan_date: ymd(4), format: "video", topic: "D" }],
   calendar: [{ date: ymd(1), topic: "Agentic AI in ITSM", status: "awaiting_approval", draft_ref: "20261006-demo-a" },
@@ -180,6 +190,19 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
     }
     if (process.env.OUT) await page.screenshot({ path: `${process.env.OUT}/${name}-${view.replace("/", "_")}.png`, fullPage: true });
     if (process.env.OUT && view.startsWith("post/")) await page.screenshot({ path: `${process.env.OUT}/${name}-${view.replace("/", "_")}-viewport.png` });
+  }
+  // LCE-051: humanity test on the post page; voice and content readiness on System
+  await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
+  await page.waitForTimeout(300);
+  const hum = await page.locator("section.card", { hasText: "Humanity test" }).innerText().catch(() => "");
+  for (const want of ["7", "of 10", "not judgeable yet", "External insight", "Recognizably the owner's voice", "unknown"]) {
+    if (!hum.includes(want)) errors.push(`${name}: humanity card lacks "${want}"`);
+  }
+  await page.goto(`http://127.0.0.1:${port}/#system`);
+  await page.waitForTimeout(300);
+  const per = await page.locator("section.card", { hasText: "Voice & content readiness" }).innerText().catch(() => "");
+  for (const want of ["19 of 20 set", "Opinions", "2 of 5", "Personal point of view", "needs your input", "Voice traits still open (1)"]) {
+    if (!per.includes(want)) errors.push(`${name}: voice readiness card lacks "${want}"`);
   }
   // technical details of an old post (no humanization/media records) must be informative
   await page.goto(`http://127.0.0.1:${port}/#post/20260929-old-approved`);

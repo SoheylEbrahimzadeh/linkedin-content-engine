@@ -64,13 +64,14 @@ def write(root: Path, rel: str, text: str) -> None:
     p.write_text(text, encoding="utf-8")
 
 
-def selected_post(store: DataStore, stories=("demo-ticket-routing",)) -> str:
+def selected_post(store: DataStore, stories=("demo-ticket-routing",), **kw):
+    """Post id (default), or the whole post when content-type keywords are given (LCE-051)."""
     from lce.planning import select
 
     post = select(store, candidate_id="c-demo-rules-first", pillar="automation",
                   angle="rules before models", fmt="text", plan_date=date(2025, 5, 6),
-                  stories=list(stories))
-    return post["post_id"]
+                  stories=list(stories), **kw)
+    return post if kw else post["post_id"]
 
 
 def awaiting_post(store: DataStore, text: str = GOOD_POST) -> str:

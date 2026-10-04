@@ -341,6 +341,10 @@ details.tech[open] summary { margin-bottom: 12px; }
   background: var(--sunk); margin-bottom: 12px; }
 .card h3.small { margin: 16px 0 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 
+/* LCE-051: humanity test */
+.humanity-score { margin: 0 0 12px; font-size: 14px; }
+.humanity-num { font: 400 34px/1 var(--serif); font-variant-numeric: lining-nums tabular-nums; margin-right: 2px; }
+
 /* versions */
 .version-cmp { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: start; }
 .version-col { min-width: 0; }
