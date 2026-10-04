@@ -603,3 +603,17 @@ The cloud path is verified up to publishing. Remaining gates:
   - engine #105 adds the punctuation rules.
 - Writer cadence stays hourly (:27). A 5-minute cadence was declined: the writer's persistent session already has a large context and the account is near its weekly usage warning, so frequent idle runs would burn usage for nothing.
 - Fast path instead: when the owner wants a Refresh written now, they ask in this session and the writer Routine is fired once on demand.
+
+## Update 19:10 UTC 4 Oct (first real freshness window; owner approvals; source images)
+
+- Source images:
+  - owner policy `visuals.source_image_policy: owner_accepts_copyright_risk`, engine #107 (10a2a2f);
+  - the three awaiting posts got their cited source's own Open Graph image, with the credit line `Image: <publisher>`, via media-only packages (lce-data #106, run 37222127788).
+- The owner approved the 6 Oct and 8 Oct posts in the Control Center at 18:28 UTC (cloud-access login). Both are READY_TO_PUBLISH and delegated to the cloud publisher.
+- Auto-publish is OFF and neither post is scheduled, so nothing publishes until the owner schedules a post with auto-publish on, or runs a controlled test publish.
+- **Verified:** the first real freshness window (6 Oct post). The window opened at 18:30 UTC, and freshness run (18:48 UTC schedule) checked it at 18:49 UTC:
+  - status `current`, decision `unchanged`, no material change;
+  - the source returned HTTP 200 and all 3 recorded claims were found;
+  - the media was re-evaluated;
+  - plan date (2026-10-06) and approval are unchanged; no replacement was requested.
+- Not verified: a fresh production dashboard check after these changes. Dispatching it was refused by the permission classifier; the last cloud-sync of the mirror succeeded.
