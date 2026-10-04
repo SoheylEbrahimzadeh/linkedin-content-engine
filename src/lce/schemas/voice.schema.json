@@ -144,6 +144,14 @@
         },
         "line_breaks": {
           "type": "string"
+        },
+        "em_dash_allowed": {
+          "type": "boolean",
+          "description": "false: an em dash (—) blocks QA (owner rule)."
+        },
+        "guillemets_allowed": {
+          "type": "boolean",
+          "description": "false: guillemets (« ») block QA (owner rule)."
         }
       }
     },
@@ -338,6 +346,10 @@
     "avoided_vocabulary": {
       "$ref": "#/$defs/trait",
       "description": "words the owner never uses"
+    },
+    "registers": {
+      "$ref": "#/$defs/trait",
+      "description": "Which registers posts use and in what balance (owner decision)."
     }
   },
   "$defs": {

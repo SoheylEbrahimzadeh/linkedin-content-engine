@@ -47,6 +47,7 @@ RULES = [
     ("cta", "CTA style", ("cta.not_allowed",)),
     ("format", "Format (length, paragraphs, no Markdown)",
      ("length.voice_max", "length.hard_max", "structure.markdown", "structure.wall_of_text",
+      "style.em_dash_forbidden", "style.guillemets_forbidden",
       "structure.long_paragraph", "structure.bullets")),
 ]
 NOT_MACHINE_CHECKABLE = [

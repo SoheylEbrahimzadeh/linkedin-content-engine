@@ -122,6 +122,11 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
             add("structure.long_paragraph", WARNING, f"paragraph {i} has {len(p)} characters")
     if MARKDOWN_RE.search(body):
         add("structure.markdown", WARNING, "Markdown syntax is not rendered by LinkedIn")
+    if voice.get("formatting", {}).get("em_dash_allowed") is False and "—" in body:
+        add("style.em_dash_forbidden", ERROR,
+            f"{body.count('—')} em dash(es); your voice profile never uses them")
+    if voice.get("formatting", {}).get("guillemets_allowed") is False and ("«" in body or "»" in body):
+        add("style.guillemets_forbidden", ERROR, "guillemets (« ») are not used in your posts")
     if voice.get("formatting", {}).get("bullets_allowed") is False and BULLET_RE.search(body):
         add("structure.bullets", WARNING, "bullet lists are disabled in your voice profile")
 

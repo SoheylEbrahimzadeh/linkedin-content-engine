@@ -60,3 +60,9 @@ Every scored post carries `stance_origin`: `owner` when the text expresses an ow
 (`opinions_used`), `proposed` when the writer proposed the stance (typical for an external insight,
 where QA requires a reading of the source), `none` without a stance. The post page says so at
 approval time: a proposed view is the owner's only once the owner approves it as theirs.
+
+## Owner punctuation rules
+
+`voice.yaml` `formatting.em_dash_allowed: false` and `formatting.guillemets_allowed: false` make an em dash
+(`style.em_dash_forbidden`) or guillemets (`style.guillemets_forbidden`) a QA error. `registers` records which
+registers posts use and in what balance.

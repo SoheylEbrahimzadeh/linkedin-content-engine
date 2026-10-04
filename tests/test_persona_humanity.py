@@ -280,3 +280,58 @@ def test_stance_origin_says_whose_view_it_is():
     proposed = score(STANCE, rules=RULES, codes=set(), post={"sources": [{"url": "x"}]}, samples=[])
     owner = score(STANCE, rules=RULES, codes=set(), post={"opinions_used": ["op-owner"]}, samples=[])
     assert proposed["stance_origin"] == "proposed" and owner["stance_origin"] == "owner"
+
+
+def test_owner_punctuation_rules_block_em_dashes_and_guillemets():
+    voice = {"formatting": {"em_dash_allowed": False, "guillemets_allowed": False}}
+    base = {"sources": [], "claims": [], "stories_used": []}
+    found = {
+        f.code: f.severity
+        for f in run_checks(
+            STANCE + "A rule — and an owner.",
+            rules=RULES,
+            voice=voice,
+            profile={},
+            post=base,
+            stories={},
+            denylist=[],
+        )
+    }
+    assert found.get("style.em_dash_forbidden") == "error"
+    found = {
+        f.code
+        for f in run_checks(
+            STANCE + "Das ist «wichtig».",
+            rules=RULES,
+            voice=voice,
+            profile={},
+            post=base,
+            stories={},
+            denylist=[],
+        )
+    }
+    assert "style.guillemets_forbidden" in found
+    allowed = {
+        f.code
+        for f in run_checks(
+            STANCE + "A rule — and an owner.",
+            rules=RULES,
+            voice={},
+            profile={},
+            post=base,
+            stories={},
+            denylist=[],
+        )
+    }
+    assert "style.em_dash_forbidden" not in allowed
+
+
+def test_stance_and_reasoning_cover_plain_owner_phrasing():
+    from lce.humanity import signals
+
+    s = signals(
+        "In my opinion, we need to discuss this with the team. Since many operations depend on it, "
+        "we must first identify the flaws. Only then can we decide.",
+        RULES,
+    )
+    assert s["stance"] >= 2 and s["reasoning"] >= 2
