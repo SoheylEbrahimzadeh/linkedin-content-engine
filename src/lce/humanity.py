@@ -317,8 +317,12 @@ def score(text: str, *, rules: dict, codes: set[str], post: dict, samples: list[
     )
     passed = sum(1 for v in res.values() if v["result"] == "pass")
     unknown = sum(1 for v in res.values() if v["result"] == "unknown")
+    # Whose view is it? Only a referenced owner-confirmed item makes it the owner's; any other
+    # stance was proposed by the writer and must be confirmed by the owner at approval.
+    origin = "owner" if post.get("opinions_used") else ("proposed" if s["stance"] else "none")
     return {
         "content_type": ct,
+        "stance_origin": origin,
         "score": passed,
         "of": len(CRITERIA),
         "unknown": unknown,

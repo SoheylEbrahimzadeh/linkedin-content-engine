@@ -53,3 +53,10 @@ on each post and the voice and content readiness on System.
 `brand.yaml` `mix.content_types` (default: insight 30%, POV 20%, how-to 20%, observation 15%,
 lesson 15%). `lce plan roll` gives each new open slot the producible type furthest below its
 share; `lce brand mix` shows target, actual and what blocks each type.
+
+## Whose view is it?
+
+Every scored post carries `stance_origin`: `owner` when the text expresses an owner-confirmed item
+(`opinions_used`), `proposed` when the writer proposed the stance (typical for an external insight,
+where QA requires a reading of the source), `none` without a stance. The post page says so at
+approval time: a proposed view is the owner's only once the owner approves it as theirs.
