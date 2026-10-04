@@ -567,3 +567,28 @@ The cloud path is verified up to publishing. Remaining gates:
   - Gartner post: Approve first;
   - auto-publish: Off.
 - Not verified in production: the Refresh progress timeline. No Refresh is active in production, so it has only been checked with synthetic events in `tests/ui/render.mjs`.
+
+## Update 06:30 UTC 4 Oct (LCE-051 production-readiness audit: voice system)
+
+- Engine #102 (LCE-051):
+  - content types (external insight, personal POV, personal lesson, how-to, observation);
+  - private Golden Voice Set and opinion engine (a personal POV without an owner-confirmed opinion stays NEEDS_INPUT);
+  - realism checks: invented experience, summary-only insights, transactional networking, claimed authority, consultant wording, generic openings, filler, jargon, repeated structures;
+  - ten-criterion humanity test plus a bundled evaluation set (15 scenarios over 10 areas);
+  - content-type mix, with the rolling calendar assigning producible types;
+  - dashboard cards.
+- Engine #103: `stance_origin` (owner / proposed / none); the post page says when a view was proposed by the writer.
+- lce-data:
+  - #96: `profile/golden/` templates (empty), voice.yaml v3 with 15 owner-input traits, WRITER.md content-type rules, skills synced;
+  - #97: pin at 02c4974;
+  - #98: production check covers the new cards.
+- Production evidence:
+  - the writer Routine filled the 10 Oct slot unattended at 05:27 UTC as an external_insight post (lce-data #95): sources read via source-fetch, source-first media, text-only (no reuse licence), QA and duplicate check passed, humanity 9/10 with voice `unknown`, AWAITING_APPROVAL;
+  - freshness run 37182676756 assigned content types to all open slots;
+  - dashboard check 37182735735 passed (desktop and phone).
+- Measured voice readiness:
+  - 5/20 voice traits set;
+  - Golden Voice Set empty, 0 PUBLIC stories;
+  - producible types: external_insight and how_to only.
+- **Owner hold**: personal POV, lesson and observation content, and the voice comparison, need the owner's material (see the LCE-051 report).
+- Not verified yet: the first real freshness window (6 Oct post, opens 4 Oct 18:30 UTC).
