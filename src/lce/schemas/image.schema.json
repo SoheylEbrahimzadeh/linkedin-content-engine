@@ -83,9 +83,10 @@
             "licensed",
             "permitted",
             "public_domain",
-            "needs_review"
+            "needs_review",
+            "owner_accepted_risk"
           ],
-          "description": "needs_review blocks approval until the owner resolves it."
+          "description": "needs_review blocks approval until the owner resolves it. owner_accepted_risk: a source's own image used by the owner's decision without a licence (always credited)."
         },
         "generation": {
           "type": "object",

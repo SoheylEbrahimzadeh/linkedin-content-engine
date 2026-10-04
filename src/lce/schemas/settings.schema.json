@@ -200,6 +200,13 @@
         "accent": {
           "type": "string",
           "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "source_image_policy": {
+          "enum": [
+            "licensed_only",
+            "owner_accepts_copyright_risk"
+          ],
+          "description": "licensed_only (default): a source's own image only with an explicit reuse licence. owner_accepts_copyright_risk: the owner decided to post the cited source's own image without a licence, always with a credit line naming the source; the owner carries the copyright risk."
         }
       }
     }
