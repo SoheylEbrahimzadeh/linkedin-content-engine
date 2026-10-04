@@ -5,6 +5,8 @@
 import { AuthError, verifyAccess, type CertsFetcher } from "./auth";
 import type { Env } from "./db";
 import css from "./ui/app.css";
+import inter from "./ui/fonts/inter.woff2";
+import newsreader from "./ui/fonts/newsreader.woff2";
 import js from "./ui/app.txt";
 import lib from "./ui/lib.txt";
 import html from "./ui/index.html";
@@ -24,7 +26,7 @@ export const UI_BUILD = fnv1a(html + css + js + lib);
 const appJs = js.replaceAll("__UI_BUILD__", UI_BUILD);
 
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; " +
-  "img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+  "img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const FILES: Record<string, [string, string]> = {
   "/": [html, "text/html; charset=utf-8"],
   "/app.css": [css, "text/css; charset=utf-8"],
@@ -40,8 +42,11 @@ const FILES: Record<string, [string, string]> = {
     "text/javascript; charset=utf-8"],
 };
 
+// Self-hosted typefaces (no third-party font host; the CSP allows fonts from this origin only).
+const FONTS: Record<string, ArrayBuffer> = { "/fonts/inter.woff2": inter, "/fonts/newsreader.woff2": newsreader };
+
 export function isUiPath(path: string): boolean {
-  return path in FILES || path === "/pipeline";
+  return path in FILES || path in FONTS || path === "/pipeline";
 }
 
 export async function handleUi(request: Request, env: Env, now: number, certs?: CertsFetcher): Promise<Response> {
@@ -57,6 +62,10 @@ export async function handleUi(request: Request, env: Env, now: number, certs?: 
   }
   const path = new URL(request.url).pathname;
   if (path === "/pipeline") return new Response(null, { status: 301, headers: { ...headers, Location: "/pipeline/" } });
+  if (path in FONTS) {
+    return new Response(FONTS[path], { status: 200, headers: { ...headers, "Content-Type": "font/woff2",
+      "Cache-Control": "private, max-age=86400" } });
+  }
   const [body, type] = FILES[path];
   return new Response(body, { status: 200, headers: { ...headers, "Content-Type": type } });
 }

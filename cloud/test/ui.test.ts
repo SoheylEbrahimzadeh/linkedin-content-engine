@@ -37,6 +37,19 @@ describe("remote dashboard", () => {
     }
   });
 
+  it("serves the two self-hosted typefaces behind Access, and the CSP allows fonts from itself only", async () => {
+    for (const path of ["/fonts/inter.woff2", "/fonts/newsreader.woff2"]) {
+      const ok = await get(path);
+      expect(ok.status, path).toBe(200);
+      expect(ok.headers.get("content-type")).toBe("font/woff2");
+      const bytes = new Uint8Array(await ok.arrayBuffer());
+      expect(String.fromCharCode(...bytes.slice(0, 4))).toBe("wOF2");
+      expect((await get(path, false)).status).toBe(401);
+    }
+    expect((await get("/")).headers.get("content-security-policy")).toContain("font-src 'self';");
+    expect(await (await get("/app.css")).text()).not.toMatch(/fonts\.(googleapis|gstatic)/);
+  });
+
   it("serves the Web Control Center at /pipeline/ behind the same Access check", async () => {
     for (const [path, type] of [["/pipeline/", "text/html"], ["/pipeline/app.js", "text/javascript"],
       ["/pipeline/lib.js", "text/javascript"], ["/pipeline/styles.css", "text/css"], ["/pipeline/config.js", "text/javascript"]]) {

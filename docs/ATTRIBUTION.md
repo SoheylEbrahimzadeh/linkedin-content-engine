@@ -22,3 +22,17 @@ detection, scheduling.
 
 Not used: LinkedIn scraping, comment/reply/engagement tooling, employee
 advocacy, unverified algorithm claims as facts.
+
+## Typefaces (Control Center)
+
+The Control Center serves two typefaces from its own Worker (no third-party font
+host). Both are under the SIL Open Font License 1.1; the licence texts sit next
+to the files in `cloud/src/ui/fonts/`.
+
+| Typeface | Copyright | File |
+|---|---|---|
+| Newsreader (variable, latin, wght) | 2020 The Newsreader Project Authors | `cloud/src/ui/fonts/newsreader.woff2` |
+| Inter (variable, latin, wght) | 2016 The Inter Project Authors | `cloud/src/ui/fonts/inter.woff2` |
+
+The `.woff2` subsets were taken unmodified from the `@fontsource-variable/newsreader`
+and `@fontsource-variable/inter` npm packages.
