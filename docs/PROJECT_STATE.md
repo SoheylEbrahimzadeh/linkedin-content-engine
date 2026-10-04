@@ -554,3 +554,16 @@ The cloud path is verified up to publishing. Remaining gates:
 - The gh-pages demo is stale; rebuilding it publishes public content (owner's call).
 - An exact-SHA view of a rewritten `phase-4b` commit may stay cached on GitHub until
   garbage collection; purging needs GitHub Support (owner's choice).
+
+## Update 00:30 UTC 4 Oct (executive briefing redesign)
+
+- Engine #100 (c2d9f29): visual and UX redesign of the Control Center. No business logic changed.
+  Record: `design-plans/04-executive-briefing.md`. Newsreader and Inter are self-hosted (OFL); the CSP adds `font-src 'self'` only.
+- lce-data #92: ENGINE_REF pinned at c2d9f29. `dashboard-lce050` now also checks History, System, loaded fonts, the preview stage and the phone action bar.
+- Production check run 37164748573 passed on desktop 1440 and phone 390, with no failures, no console errors and no overflow. Results:
+  - briefing: "2 posts wait for your approval";
+  - radar: 20 items, 17 of 18 sources readable;
+  - Upcoming: 8 open slots;
+  - Gartner post: Approve first;
+  - auto-publish: Off.
+- Not verified in production: the Refresh progress timeline. No Refresh is active in production, so it has only been checked with synthetic events in `tests/ui/render.mjs`.
