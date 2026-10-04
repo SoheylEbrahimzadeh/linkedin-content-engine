@@ -63,7 +63,7 @@ patterns:                     # structural tells → warning
 generic_close:                # closing sentence that asks for reactions without saying anything → warning
   - "^(?:so,?\\s+)?(?:thoughts|any thoughts|your thoughts)\\s*\\?$"
   - "^(?:so,?\\s+)?what (?:do you think|are your thoughts|about you)\\s*\\?$"
-  - "^(?:agree or disagree|am i wrong|who else|anyone else|right)\\s*\\?$"
+  - "^(?:agree|agree or disagree|am i wrong|who else|anyone else|right|thoughts|makes sense)\\s*\\?$"
   - "^(?:let me know (?:what you think|your thoughts)|share your thoughts)(?: (?:below|in the comments))?[.!]?$"
 cta_markers:                  # closing call-to-action wording; checked against the voice profile's cta.allowed
   - "\\b(?:dm|message) me\\b"
@@ -102,6 +102,7 @@ placeholders:                 # → error (case-sensitive unless (?i))
   - "(?i)\\blorem ipsum\\b"
   - "\\bTODO\\b"
 metrics:
+  max_buzzwords_per_100_words: 2.0
   max_em_dashes_per_100_words: 1.5
   max_triads: 1
   max_same_opener_run: 2
@@ -112,3 +113,118 @@ metrics:
   overused_word_share: 0.04
   recent_days: 30             # posts compared for repeated hooks and closings
   recent_similarity: 0.6      # word overlap (or same first three words) = repeated
+# ── LCE-051: realism, point of view and networking signal ─────────────────
+consultant_language:          # generic consultant / corporate wording → warning (voice.consultant_language)
+  - leverage
+  - leveraging
+  - unlock value
+  - drive value
+  - drive results
+  - value-add
+  - best-in-class
+  - world-class
+  - holistic approach
+  - robust framework
+  - synergies
+  - actionable insights
+  - move the needle
+  - low-hanging fruit
+  - transformation journey
+  - digital journey
+  - empower your
+  - empowering teams
+  - stakeholders alike
+  - mission-critical
+  - future-proof
+  - end-to-end solution
+  - thought leadership
+  - key takeaways
+  - key takeaway
+  - circle back
+  - deep dive
+  - north star
+  - unprecedented
+generic_openings:             # first line that could open any AI-written post → warning (pattern.generic-opening)
+  - "^(?:in today'?s|in an era|in a world where|we live in|now more than ever|it'?s no secret)\\b"
+  - "^as (?:ai|technology|automation|the world) (?:continues|keeps|evolves)\\b"
+  - "^(?:ai|automation|technology|digital transformation) is (?:transforming|changing|reshaping|revolutionizing|disrupting)\\b"
+  - "^the (?:world|landscape|future) of [^.\\n]{1,40} is (?:changing|evolving|here)\\b"
+  - "^(?:let'?s talk about|let'?s dive into|today i want to talk about)\\b"
+empty_leadership:             # thought-leadership filler with no content → warning (pattern.empty-leadership)
+  - "\\b(?:the key|success) (?:is|lies in) (?:to )?(?:embrac|adapt|mindset|culture|people)"
+  - "\\bit'?s all about (?:the )?(?:people|mindset|culture|value|balance)\\b"
+  - "\\bmindset is everything\\b"
+  - "\\bthe future belongs to\\b"
+  - "\\bthose who (?:adapt|embrace|innovate) will\\b"
+  - "\\b(?:organizations|companies|leaders) (?:must|need to) (?:embrace|adapt|rethink)\\b"
+buzzwords:                    # jargon density metric (per 100 words) → warning (style.jargon)
+  - ai-driven
+  - ai-powered
+  - data-driven
+  - next-gen
+  - scalable
+  - ecosystem
+  - paradigm
+  - disruptive
+  - innovative
+  - transformative
+  - streamline
+  - optimize
+  - operationalize
+  - frictionless
+  - hyperautomation
+  - agile mindset
+experience_markers:           # first-person experience claims → need a PUBLIC story or confirmed observation (error)
+  - "\\bin my (?:experience|projects?|work with|last (?:role|job|project))\\b"
+  - "\\bi(?:'ve| have) (?:seen|watched|worked with|been in|helped|run|been brought in)\\b"
+  - "\\b(?:a|one of my|my) (?:client|customer)s?\\b"
+  - "\\bwhen i (?:worked|was working|led|ran|joined)\\b"
+  - "\\b(?:years|months) ago,? i\\b"
+  - "\\bi once\\b"
+  - "\\bon a (?:recent|previous) project\\b"
+  - "\\bat my (?:last|previous|current) (?:job|company|employer|role)\\b"
+stance_markers:               # the author takes a position (point-of-view evidence in the text)
+  - "\\bi (?:think|believe|disagree|doubt|would(?:n't)?|wouldn't|'d|prefer|argue|suspect|am convinced|am not convinced|don't buy|reject)\\b"
+  - "\\bi (?:don't|do not|wouldn't|would not|no longer|now|always|never) (?:think|believe|trust|buy|sign|start|write|ask|check|accept)\\b"
+  - "\\b(?:since then|these days|now) i\\b"
+  - "\\bmy (?:view|take|position|read|bet|rule|default)\\b"
+  - "\\bin my view\\b"
+  - "\\bi'?m (?:skeptical|not sure|convinced|wary)\\b"
+  - "\\b(?:this is|that is|that's|it's) (?:wrong|backwards|the wrong|a mistake|the real|where)\\b"
+  - "\\b(?:should|shouldn't|should not) (?:be|start|stop|ask|measure)\\b"
+  - "\\bthe (?:better|wrong|right|real) question\\b"
+reasoning_markers:            # reveals how the author thinks (every occurrence counts)
+  - "\\bbecause\\b"
+  - "\\bwhich means\\b"
+  - "\\bso (?:the|i|my|that)\\b"
+  - "\\btrade-?offs?\\b"
+  - "\\binstead\\b"
+  - "\\bthe (?:question|test|check) i (?:ask|use|run)\\b"
+  - "\\bi (?:start|would start|'d start|begin) (?:with|by)\\b"
+  - "\\bfirst,? (?:i|check|ask|look)\\b"
+  - "\\bthe (?:cost|risk|constraint|bottleneck) (?:is|was)\\b"
+  - "\\b(?:the reason|that is why|that's why|since that|if they can|if it cannot|if the)\\b"
+  - "\\bmy (?:rule|default|test)\\b"
+network_transactional:        # transactional networking / self-promotion → error (network.transactional)
+  - "\\b(?:dm|message|inbox) me\\b"
+  - "\\b(?:open to work|#opentowork|hire me)\\b"
+  - "\\bi help (?:companies|businesses|teams|organizations|leaders|founders)\\b"
+  - "\\blooking for (?:new )?(?:opportunities|a new role|clients|projects)\\b"
+  - "\\blet'?s connect\\b"
+  - "\\b(?:reach out|get in touch)(?: to me| with me)? if you\\b"
+  - "\\b(?:reach out|talk) to me\\b"
+  - "\\b(?:book|schedule) (?:a|your) (?:free )?(?:call|consultation|session)\\b"
+  - "\\bavailable for (?:new )?(?:projects|consulting|roles)\\b"
+  - "\\bconnect with me\\b"
+fake_authority:               # claimed authority instead of shown thinking → warning (network.fake_authority)
+  - "\\bas an? (?:expert|seasoned|veteran|thought leader|industry leader)\\b"
+  - "\\bthought leader\\b"
+  - "\\btrust me\\b"
+  - "\\bi(?:'ve| have) helped (?:hundreds|thousands|dozens|countless)\\b"
+  - "\\b(?:top|leading) (?:expert|voice|consultant)\\b"
+team_signal_markers:          # shows how the author works with people and decisions (networking value)
+  - "\\b(?:the|our|a) team\\b"
+  - "\\bstakeholders?\\b"
+  - "\\b(?:owner|ownership|handover|hand-off|on-call|service desk|operations team)\\b"
+  - "\\b(?:decide|decision|prioriti[sz]e|trade-?off|scope)\\b"
+  - "\\b(?:ask|asked|agree|agreed|align|explain|explained) (?:the|with|them|what|why|how)\\b"

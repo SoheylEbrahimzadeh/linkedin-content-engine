@@ -188,3 +188,53 @@ def recommend(store: DataStore, today: date, count: int = 3) -> list[dict]:
             "reasons": reasons or ["balanced; least recent use"],
         })
     return out
+
+
+# ── LCE-051: content mix by content type ───────────────────────────────
+# Used when brand.yaml has no `mix.content_types`: external commentary may not dominate, and
+# personal types get room as soon as the owner provides the material for them.
+DEFAULT_CONTENT_MIX = {"external_insight": 0.3, "personal_pov": 0.2, "how_to": 0.2,
+                       "observation": 0.15, "personal_lesson": 0.15}
+
+
+def content_mix(store: DataStore, today: date) -> dict:
+    """Target vs actual share per content type over the mix window, and what blocks each."""
+    from lce import persona
+    from lce.planning import recent_posts
+
+    mix = store.brand().get("mix") or {}
+    targets = mix.get("content_types") or DEFAULT_CONTENT_MIX
+    window = mix.get("window_days", DEFAULT_WINDOW)
+    posts = recent_posts(store, today, window)
+    used = Counter(p.get("content_type") for p in posts if p.get("content_type"))
+    total = sum(used.values())
+    can = persona.producible(store)
+    rows = []
+    for ct, meta in persona.CONTENT_TYPES.items():
+        actual = used[ct] / total if total else 0.0
+        target = targets.get(ct, 0.0)
+        rows.append({"content_type": ct, "label": meta["label"], "posts": used[ct], "target": target,
+                     "actual": round(actual, 2), "deficit": round(max(0.0, target - actual), 2),
+                     "producible": can[ct], "needs": None if can[ct] else meta["rule"]})
+    return {"targets_from": "brand.yaml" if mix.get("content_types") else "default",
+            "window_days": window, "classified_posts": total,
+            "unclassified_posts": len(posts) - total, "types": rows}
+
+
+def content_type_for(store: DataStore, entries: list[dict], today: date) -> str:
+    """Next content type for a slot: the producible type furthest below its share."""
+    from datetime import timedelta
+
+    from lce import persona
+
+    mix = store.brand().get("mix") or {}
+    targets = mix.get("content_types") or DEFAULT_CONTENT_MIX
+    can = persona.producible(store)
+    window = today - timedelta(days=mix.get("window_days", DEFAULT_WINDOW))
+    used = Counter(e.get("content_type") for e in entries
+                   if e.get("content_type") and e.get("status") != "skipped"
+                   and date.fromisoformat(str(e["date"])) >= window)
+    total = sum(used.values()) + 1
+    order = list(persona.CONTENT_TYPES)
+    ok = [ct for ct in order if can[ct] and targets.get(ct, 0) > 0] or ["external_insight"]
+    return max(ok, key=lambda ct: (targets.get(ct, 0.0) - used.get(ct, 0) / total, -order.index(ct)))

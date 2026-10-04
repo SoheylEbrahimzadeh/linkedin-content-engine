@@ -8,7 +8,8 @@ own (past any month end).
 - `roll` reserves the missing slots as `open` entries (origin `rolling`) with a
   target pillar that keeps the mix balanced. It never touches an existing entry:
   a date that already has an entry (planned, written, approved, published, or
-  skipped by the owner) is left exactly as it is; no slot is reserved twice.
+  skipped by the owner) is left exactly as it is; no slot is reserved twice. The one
+  exception: its own still-open reservations without a content type get one (LCE-051).
 - `fill` turns one open slot into a real candidate: the writing session's package
   (fresh research with sources and claims, new text, humanization, media decided
   source-first) goes through `repackage.package`, i.e. the same checks as any
@@ -27,6 +28,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from lce import clock
+from lce.brand import content_type_for
 from lce.store import DataStore, StoreError, now_iso
 
 ROLLING_TOPIC = "Open slot (a candidate is being prepared)"
@@ -71,6 +73,13 @@ def roll(store: DataStore, *, now=None, dry_run: bool = False) -> dict:
     entries = plan.setdefault("entries", [])
     taken = {str(e["date"]) for e in entries}
     added = []
+    # LCE-051: its own open reservations made before content types existed get one (nothing else changes)
+    typed = []
+    for e in sorted(entries, key=lambda e: str(e["date"])):
+        if e.get("origin") == "rolling" and e.get("status") == "open" and not e.get("draft_ref") \
+                and not e.get("content_type"):
+            e["content_type"] = content_type_for(store, entries, date.fromisoformat(str(e["date"])))
+            typed.append(str(e["date"]))
     slots = cadence_slots(store, now)
     for slot in slots:
         day = slot.local.date()
@@ -80,6 +89,7 @@ def roll(store: DataStore, *, now=None, dry_run: bool = False) -> dict:
             "date": day.isoformat(),
             "topic": ROLLING_TOPIC,
             "pillar": _pillar_for(store, entries, day),
+            "content_type": content_type_for(store, entries, day),
             "status": "open",
             "origin": "rolling",
             "reserved_at": now_iso(),
@@ -90,12 +100,13 @@ def roll(store: DataStore, *, now=None, dry_run: bool = False) -> dict:
         entries.append(entry)
         taken.add(entry["date"])
         added.append({**entry, "slot_local": slot.local.isoformat()})
-    if added and not dry_run:
+    if (added or typed) and not dry_run:
         entries.sort(key=lambda e: str(e["date"]))
         store.write_doc(store.plan_path, "plan", plan)
-        store.log_event("plan.rolled", added=[a["date"] for a in added])
+        store.log_event("plan.rolled", added=[a["date"] for a in added], typed=typed)
     last = slots[-1].local.date().isoformat() if slots else None
-    return {"horizon_days": _horizon(store), "through": last, "slots": len(slots), "added": added}
+    return {"horizon_days": _horizon(store), "through": last, "slots": len(slots), "added": added,
+            "typed": typed}
 
 
 def open_slots(store: DataStore, *, today: date | None = None) -> list[dict]:
@@ -162,9 +173,14 @@ def fill(store: DataStore, pkg: dict, *, by: str = "session") -> dict:
                 plan_date=day,
                 topic=pkg["topic"],
                 objective=pkg.get("objective"),
+                content_type=pkg.get("content_type") or entry.get("content_type"),
+                opinions=pkg.get("opinions_used"),
+                observations=pkg.get("observations_used"),
+                stories=pkg.get("stories_used"),
             )
             if post["state"] != "SELECTED":
-                raise StoreError(f"the candidate needs input first ({post['state']})")
+                why = (post.get("history") or [{}])[-1].get("note", "")
+                raise StoreError(f"the candidate needs input first ({post['state']}: {why})")
             rec = repackage.package(store, post["post_id"], pkg, by=by)
         except Exception:
             for rel in ("plan", "research", "posts"):

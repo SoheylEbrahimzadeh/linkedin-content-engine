@@ -109,7 +109,9 @@ def _new_post_id(store: DataStore, plan_date: date, topic: str) -> str:
 def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt: str,
            plan_date: date, topic: str | None = None, stories: list[str] | None = None,
            theme: str | None = None, evidence: str | None = None,
-           chapter: str | None = None, objective: str | None = None) -> dict:
+           chapter: str | None = None, objective: str | None = None,
+           content_type: str | None = None, opinions: list[str] | None = None,
+           observations: list[str] | None = None) -> dict:
     """Create a post from a research candidate: RESEARCHED → SELECTED (or NEEDS_INPUT).
 
     Brand placement: an optional theme and career chapter from brand.yaml, and an
@@ -149,6 +151,25 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
         mode = brand_engine.resolve_evidence(store, theme, evidence, usable)
     except ValueError as exc:
         raise StoreError(str(exc)) from exc
+    # LCE-051: a personal content type needs the owner's own material; never invented
+    from lce import persona
+
+    if content_type and content_type not in persona.CONTENT_TYPES:
+        raise StoreError(f"unknown content_type {content_type!r}")
+    golden_ok = persona.confirmed(store)
+    for ref in (opinions or []) + (observations or []):
+        if ref not in golden_ok:
+            raise StoreError(f"{ref!r} is not an owner-confirmed item of the Golden Voice Set")
+    needs_input = None
+    has_view = any(golden_ok[r]["kind"] in persona.POV_KINDS for r in opinions or [])
+    if content_type == "personal_pov" and not has_view:
+        needs_input = ("point of view required: the owner's opinion on this is not recorded "
+                       "(add an owner-confirmed opinion to profile/golden/opinions.yaml)")
+    elif content_type == "personal_lesson" and not usable:
+        needs_input = "personal lesson required: add or publish a PUBLIC story"
+    elif content_type == "observation" and not (usable or observations):
+        needs_input = ("experience-based observation required: add an owner-confirmed observation "
+                       "or a PUBLIC story")
     placement = {"evidence": mode}
     if theme:
         placement["theme"] = theme
@@ -171,6 +192,9 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
         "stories_used": usable,
         "brand": placement,
         **({"objective": objective} if objective else {}),
+        **({"content_type": content_type} if content_type else {}),
+        **({"opinions_used": list(opinions)} if opinions else {}),
+        **({"observations_used": list(observations)} if observations else {}),
         "state": S.RESEARCHED.value,
         "history": [{"at": now_iso(), "state": S.RESEARCHED.value, "note": "from candidate"}],
     }
@@ -198,6 +222,8 @@ def select(store: DataStore, *, candidate_id: str, pillar: str, angle: str, fmt:
     if blocked:
         return set_state(store, post, S.NEEDS_INPUT,
                          "non-public stories requested: " + ", ".join(blocked))
+    if needs_input:
+        return set_state(store, post, S.NEEDS_INPUT, needs_input)
     if mode == "personal" and not usable:
         return set_state(store, post, S.NEEDS_INPUT,
                          "personal evidence required: add or publish a PUBLIC story, "

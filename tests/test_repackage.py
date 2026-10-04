@@ -22,8 +22,8 @@ NEW_TEXT = (
     "Before buying a triage model, look at the rules your team already understands.\n\n"
     "Manual triage dropped from about 40 minutes a day to about 10 in our pilot, and the work was plain "
     "keyword matching.\n\n"
-    "A model is worth it when the rules stop covering the queue. Until then it adds cost and makes routing "
-    "harder to explain.\n\n"
+    "I would not buy a model until the rules stop covering the queue, because until then it adds cost and "
+    "makes routing harder to explain.\n\n"
     "Which routing rule would you write first?\n"
 )
 THIRD_TEXT = (

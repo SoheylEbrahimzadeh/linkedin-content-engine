@@ -57,6 +57,26 @@ def check(store: DataStore, today: date, *, token_present: bool | None,
     rows.append(_row("3 strategy (brand)", status, detail,
                      "add PUBLIC stories (story bank) for personal themes" if personal_gaps else ""))
 
+    from lce import persona
+
+    ps = persona.status(store)
+    set_traits = ps["voice_traits_total"] - len(ps["voice_gaps"])
+    voice_ok = not ps["voice_gaps"] and ps["voice_review"] == "confirmed"
+    rows.append(_row("3b voice system", OK if voice_ok else TODO,
+                     f"{set_traits}/{ps['voice_traits_total']} voice traits set; "
+                     f"review {ps['voice_review'] or 'none'}",
+                     "" if not ps["voice_gaps"] else "answer the owner-input traits in profile/voice.yaml "
+                     "(`lce voice status`)"))
+    short = [k for k, v in ps["golden"].items() if not v["ready"]]
+    rows.append(_row("3c golden voice set", OK if not short else TODO,
+                     ", ".join(f"{k} {v['confirmed']}/{v['target_min']}" for k, v in ps["golden"].items()),
+                     "" if not short else "add your own material to profile/golden/ (`lce golden init`)"))
+    blocked = [ct for ct, ok in ps["producible"].items() if not ok]
+    rows.append(_row("3d content mix", OK if not blocked else TODO,
+                     "all content types can be drafted" if not blocked else
+                     "cannot draft without owner material: " + ", ".join(blocked),
+                     "" if not blocked else "opinions, observations and PUBLIC stories unlock these"))
+
     feeds = (store.settings().get("research") or {}).get("feeds") or []
     fresh = [c for c in store.candidates().values() if c.get("status") == "new"]
     rows.append(_row("2 research", OK if feeds or fresh else TODO,

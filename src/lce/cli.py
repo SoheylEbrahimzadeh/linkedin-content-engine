@@ -256,6 +256,110 @@ def cmd_brand_next(args):
     return 0
 
 
+def cmd_brand_mix(args):
+    from lce.brand import content_mix
+
+    store = _store(args)
+    m = content_mix(store, date.fromisoformat(args.date) if args.date else _today_local(store))
+    if args.json:
+        print(json.dumps(m, indent=2, ensure_ascii=False))
+        return 0
+    print(f"targets from {m['targets_from']}; {m['classified_posts']} classified, "
+          f"{m['unclassified_posts']} unclassified post(s) in {m['window_days']} days")
+    for r in m["types"]:
+        block = "" if r["producible"] else f"  ← owner input: {r['needs']}"
+        print(f"  {r['content_type']:<17} target {r['target']:.2f}  actual {r['actual']:.2f}  "
+              f"posts {r['posts']}{block}")
+    return 0
+
+
+def cmd_voice_status(args):
+    from lce import persona
+
+    st = persona.status(_store(args))
+    if args.json:
+        print(json.dumps(st, indent=2, ensure_ascii=False))
+        return 0
+    print(f"voice v{st['voice_version']} ({st['voice_review']}); "
+          f"{st['voice_traits_total'] - len(st['voice_gaps'])}/{st['voice_traits_total']} traits set")
+    for g in st["voice_gaps"]:
+        print(f"  ? {g['label']} ({g['status']}){': ' + g['question'] if g.get('question') else ''}")
+    for k, v in st["golden"].items():
+        mark = "✓" if v["ready"] else "✗"
+        target = f"{v['target_min']}-{v['target_max']}"
+        print(f"  {mark} golden {k:<14} {v['confirmed']} confirmed (target {target}), "
+              f"{v['drafts']} draft(s)")
+    print(f"  PUBLIC stories: {st['public_stories']}")
+    for ct, ok in st["producible"].items():
+        print(f"  {'✓' if ok else '✗'} can draft {ct}")
+    return 0
+
+
+def cmd_golden_init(args):
+    from lce import persona
+
+    made = persona.init_templates(_store(args))
+    print("\n".join(f"✓ {m}" for m in made) or "all Golden Voice Set files exist (unchanged)")
+    return 0
+
+
+def cmd_opinion_for(args):
+    from lce import persona
+
+    store = _store(args)
+    out = persona.opinion_for(store, store.load_post(args.post))
+    if args.json:
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+        return 0
+    if out["answer"] == "recorded":
+        for v in out["views"]:
+            print(f"- {v['id']} ({v['kind']}, {v['source']}): {v['text']}")
+        return 0
+    print(f"! {out['note']}")
+    for c in out["candidates"]:
+        print(f"  candidate {c['id']} ({c['kind']}): {c['text']}")
+    return 1
+
+
+def cmd_humanity_score(args):
+    from lce.humanity import score_post
+
+    store = _store(args)
+    rows = [score_post(store, p) for p in args.post]
+    if args.json:
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
+        return 0
+    for r in rows:
+        unk = f", {r['unknown']} unknown" if r["unknown"] else ""
+        print(f"{r['post_id']}: {r['score']}/{r['of']}{unk} ({r['content_type'] or 'no content type'})")
+        for c in r["criteria"]:
+            mark = {"pass": "✓", "fail": "✗", "unknown": "?"}[c["result"]]
+            print(f"  {mark} {c['label']}: {c['why']}")
+        if r["errors"]:
+            print(f"  QA errors: {', '.join(r['errors'])}")
+    return 0
+
+
+def cmd_humanity_eval(args):
+    from importlib import resources
+
+    import yaml
+
+    from lce.humanity import evaluate
+
+    text = (Path(args.file).read_text("utf-8") if args.file
+            else resources.files("lce.data").joinpath("humanity_eval.yaml").read_text("utf-8"))
+    rows = evaluate(yaml.safe_load(text))
+    if args.json:
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
+    else:
+        for r in rows:
+            print(f"{'✓' if r['ok'] else '✗'} {r['id']:<30} {r['kind']:<5} {r['score']}/{r['of']}"
+                  + (f"  {'; '.join(r['problems'])}" if r["problems"] else ""))
+        print(f"{sum(r['ok'] for r in rows)}/{len(rows)} scenarios as expected")
+    return 0 if all(r["ok"] for r in rows) else 1
+
+
 def cmd_image_decide(args):
     from lce.images import decide
 
@@ -736,7 +840,8 @@ def cmd_select_pick(args):
     post = select(store, candidate_id=args.candidate, pillar=args.pillar, angle=args.angle,
                   fmt=args.format, plan_date=plan_date, topic=args.topic, stories=args.story,
                   theme=args.theme, evidence=args.evidence, chapter=args.chapter,
-                  objective=args.objective)
+                  objective=args.objective, content_type=args.content_type,
+                  opinions=args.opinion, observations=args.observation)
     print(f"✓ {post['post_id']} → {post['state']}")
     if args.job:
         from lce.scheduler import link_post
@@ -1434,8 +1539,32 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--evidence", choices=["personal", "external"], default=None,
                    help="personal needs a PUBLIC story; default follows the theme")
     p.add_argument("--objective", default=None, help="content objective id (voice.yaml objectives)")
+    p.add_argument("--content-type", default=None,
+                   choices=["external_insight", "personal_pov", "personal_lesson", "how_to", "observation"])
+    p.add_argument("--opinion", action="append", default=[], help="owner-confirmed golden opinion id")
+    p.add_argument("--observation", action="append", default=[], help="owner-confirmed golden observation id")
 
     g = group("brand", "personal brand strategy")
+    p = gcmd(g, "mix", cmd_brand_mix, "content-type mix: target vs actual, and what blocks each type")
+    p.add_argument("--date", default=None)
+    p.add_argument("--json", action="store_true")
+
+    gv = group("voice", "the owner's voice system (LCE-051)")
+    p = gcmd(gv, "status", cmd_voice_status, "voice traits, Golden Voice Set, producible content types")
+    p.add_argument("--json", action="store_true")
+    g2 = group("golden", "the private Golden Voice Set")
+    gcmd(g2, "init", cmd_golden_init, "create the empty templates (never content)")
+    g3 = group("opinion", "the owner's recorded opinions")
+    p = gcmd(g3, "for", cmd_opinion_for, "what does the owner actually believe about this post?")
+    p.add_argument("post")
+    p.add_argument("--json", action="store_true")
+    g4 = group("humanity", "humanity test (10 criteria, deterministic)")
+    p = gcmd(g4, "score", cmd_humanity_score, "score a post's current text (read-only)")
+    p.add_argument("post", nargs="+")
+    p.add_argument("--json", action="store_true")
+    p = gcmd(g4, "eval", cmd_humanity_eval, "run the evaluation set (bundled, or --file)")
+    p.add_argument("--file", default=None)
+    p.add_argument("--json", action="store_true")
     p = gcmd(g, "status", cmd_brand_status, "pillar balance, themes, evidence, problems")
     p.add_argument("--date", default=None)
     p.add_argument("--json", action="store_true")

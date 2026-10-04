@@ -131,6 +131,15 @@
                 "type": "string"
               }
             }
+          },
+          "content_type": {
+            "enum": [
+              "external_insight",
+              "personal_pov",
+              "personal_lesson",
+              "how_to",
+              "observation"
+            ]
           }
         }
       }

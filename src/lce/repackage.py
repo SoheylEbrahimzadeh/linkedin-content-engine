@@ -169,6 +169,10 @@ def _validate_package(pkg: dict) -> None:
     for c in pkg.get("claims") or []:
         if c.get("source_url") not in urls:
             raise StoreError(f"claim without one of the package's sources: {c.get('text')!r}")
+    from lce.persona import CONTENT_TYPES
+
+    if pkg.get("content_type") and pkg["content_type"] not in CONTENT_TYPES:
+        raise StoreError(f"unknown content_type {pkg['content_type']!r} ({', '.join(CONTENT_TYPES)})")
     media = pkg.get("media") or {}
     if "keep" in media:
         raise StoreError("Refresh replaces the media too: a new real image (commons) or text_only")
@@ -359,6 +363,10 @@ def package(
                 {"text": c["text"], "source_url": c["source_url"]} for c in pkg.get("claims") or []
             ]
             post.pop("regeneration", None)
+            # LCE-051: the package says what kind of post it is and which owner material it uses
+            for key in ("content_type", "opinions_used", "observations_used", "stories_used"):
+                if pkg.get(key):
+                    post[key] = pkg[key]
             store.save_post(post)
             if S(post["state"]) == S.SELECTED:
                 from lce.posts import save_draft

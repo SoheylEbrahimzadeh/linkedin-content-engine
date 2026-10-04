@@ -609,6 +609,17 @@ def _safe(fn):
         return {"error": str(exc)[:300]}
 
 
+def persona_view(store: DataStore) -> dict:
+    """LCE-051: voice system, Golden Voice Set counts and the content-type mix (no item text)."""
+    from zoneinfo import ZoneInfo
+
+    from lce import brand, persona
+    from lce.clock import now
+
+    today = now().astimezone(ZoneInfo(store.settings().get("timezone") or "UTC")).date()
+    return {**persona.status(store), "mix": brand.content_mix(store, today)}
+
+
 def radar_view(store: DataStore, limit: int = 80) -> dict:
     """LCE-050: what the Content Radar found (provenance kept; nothing here is post copy)."""
     from datetime import timedelta
@@ -738,6 +749,13 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
         hz = p.get("humanization")
         if hz:
             p["humanization"] = {**hz, "profile_current": all(hz.get(k) == v for k, v in current.items())}
+    from lce.humanity import score_post
+
+    for p in posts:   # LCE-051: the humanity test for every text still in play (read-only)
+        if p.get("state") not in ("PUBLISHED", "REJECTED", "RESEARCHED", "SELECTED", "NEEDS_INPUT"):
+            res = _safe(lambda pid=p["post_id"]: score_post(store, pid))
+            p["humanity"] = res
+        p["content_type"] = store.load_post(p["post_id"]).get("content_type")
     states = {p["post_id"]: p["state"] for p in posts}
     calendar = [{**e, "post_state": states.get(e.get("draft_ref"))} for e in plan]
     calendar.sort(key=lambda e: str(e.get("date", "")))
@@ -786,6 +804,7 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
         "voice": voice.view(store),
         "radar": _safe(lambda: radar_view(store)),
         "freshness_plan": _safe(lambda: freshness_plan_view(store)),
+        "persona": _safe(lambda: persona_view(store)),
     }
     return redact(snapshot)
 

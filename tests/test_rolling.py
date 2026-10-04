@@ -85,6 +85,7 @@ def slot_pkg(day="2026-10-08"):
         "claims": [{"text": CLAIM, "source_url": SRC}],
         "media": {"text_only": {"reason": "text_carries_point", "rationale": "the argument is the text"}},
         "reason": "fresh research for the open slot",
+        "content_type": "external_insight",
     }
 
 
@@ -133,3 +134,22 @@ def test_existing_posts_keep_their_slot(store):
     with use_clock(FixedClock(NOW)):
         out = rolling.roll(store)
     assert "2026-10-06" not in [e["date"] for e in out["added"]]
+
+
+def test_a_personal_pov_slot_without_an_owner_opinion_stays_open_and_says_what_is_missing(store):
+    with use_clock(FixedClock(NOW)):
+        rolling.roll(store)
+        pkg = {**slot_pkg(), "content_type": "personal_pov"}
+        with pytest.raises(StoreError, match="point of view required"):
+            rolling.fill(store, pkg, by="test session")
+    entry = next(e for e in store.plan()["entries"] if str(e["date"]) == "2026-10-08")
+    assert entry["status"] == "open" and not entry.get("draft_ref")
+
+
+def test_roll_assigns_only_content_types_the_owner_material_supports(store):
+    with use_clock(FixedClock(NOW)):
+        out = rolling.roll(store)
+    from lce import persona
+
+    can = persona.producible(store)
+    assert out["added"] and all(can[a["content_type"]] for a in out["added"])
