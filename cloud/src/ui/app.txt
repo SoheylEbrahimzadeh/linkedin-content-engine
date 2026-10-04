@@ -1096,6 +1096,8 @@ function humanityCard(p) {
     h("p", { class: "humanity-score" }, h("span", { class: "humanity-num" }, String(hm.score)), ` of ${hm.of}`,
       hm.unknown ? h("span", { class: "muted" }, `, ${hm.unknown} not judgeable yet`) : null,
       h("span", { class: "muted" }, `, ${CT_LABEL[hm.content_type] ?? "no content type recorded"}`)),
+    hm.stance_origin === "proposed" ? h("p", { class: "notice warn small" }, "The view in this post was proposed by the writer, not taken from your recorded opinions. Approve it only if it is what you think.")
+      : hm.stance_origin === "owner" ? h("p", { class: "small ok-text" }, "The view comes from your recorded opinions.") : null,
     h("ul", { class: "hz" }, hm.criteria.map((c) => h("li", {}, h("span", { class: "hz-label" }, c.label),
       h("span", { class: "pill " + mark[c.result] }, c.result === "pass" ? "yes" : c.result === "fail" ? "no" : "unknown"),
       c.result === "pass" ? null : h("div", { class: "small muted" }, c.why)))),

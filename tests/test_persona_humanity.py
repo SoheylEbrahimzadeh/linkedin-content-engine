@@ -274,3 +274,9 @@ def test_rolling_entries_validate_with_a_content_type(store):
     assert all(e.get("content_type") for e in store.plan()["entries"] if e.get("origin") == "rolling")
     _, errors = validate_dir(store.root)
     assert not errors
+
+
+def test_stance_origin_says_whose_view_it_is():
+    proposed = score(STANCE, rules=RULES, codes=set(), post={"sources": [{"url": "x"}]}, samples=[])
+    owner = score(STANCE, rules=RULES, codes=set(), post={"opinions_used": ["op-owner"]}, samples=[])
+    assert proposed["stance_origin"] == "proposed" and owner["stance_origin"] == "owner"

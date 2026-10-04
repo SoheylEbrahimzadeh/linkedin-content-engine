@@ -35,7 +35,7 @@ const pipe = { meta: { mirror: { received_at: day(0) } },
     mix: { types: [{ content_type: "external_insight", target: 0.3, producible: true },
                    { content_type: "personal_pov", target: 0.2, producible: false, needs: "an owner-confirmed opinion or disagreement from the Golden Voice Set" }] } },
   posts: [{ post_id: "20261006-demo-a", state: "AWAITING_APPROVAL", text: TEXT, actual_hash: "d".repeat(64), plan_date: ymd(1), topic: "Agentic AI in ITSM", qa: { status: "passed" }, image: null, sources: [{ url: "https://example.com/report", title: "Example report" }], history: [{ at: day(-2), state: "AWAITING_APPROVAL" }],
-    humanity: { score: 7, of: 10, unknown: 1, content_type: "external_insight", criteria: [
+    humanity: { score: 7, of: 10, unknown: 1, content_type: "external_insight", stance_origin: "proposed", criteria: [
       { id: "pov", label: "Clear point of view", result: "pass", why: "2 stance markers" },
       { id: "voice", label: "Recognizably the owner's voice", result: "unknown", why: "0 owner-confirmed samples; at least 3 are needed" },
       { id: "thinking", label: "Shows how the owner thinks", result: "fail", why: "1 reasoning marker" }] } },
@@ -195,7 +195,7 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
   await page.waitForTimeout(300);
   const hum = await page.locator("section.card", { hasText: "Humanity test" }).innerText().catch(() => "");
-  for (const want of ["7", "of 10", "not judgeable yet", "External insight", "Recognizably the owner's voice", "unknown"]) {
+  for (const want of ["7", "of 10", "not judgeable yet", "External insight", "Recognizably the owner's voice", "unknown", "proposed by the writer"]) {
     if (!hum.includes(want)) errors.push(`${name}: humanity card lacks "${want}"`);
   }
   await page.goto(`http://127.0.0.1:${port}/#system`);
