@@ -567,49 +567,70 @@ function rangeControls(base) {
 function save() { /* range and filter live for this page view only (no browser storage) */ }
 
 // ── views ───────────────────────────────────────────────────────────
+const fmtLong = (ymd) => ymd ? new Date(`${ymd}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }) : "No date";
+const pageHead = (title, sub, side = null, extra = null) => h("div", { class: "page-head" },
+  h("div", { class: "page-title" }, extra, h("h1", {}, title), sub ? h("p", { class: "page-sub" }, sub) : null), side);
+
+// Executive briefing: what waits for the owner, then the next post, then the week; system state last.
 function viewOverview() {
   const s = st();
   const cp = plan(S.range);
   const next = cp.items.filter((i) => i.date && i.date >= cp.from && !["PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status))
     .sort((a, b) => (a.date + (a.time ?? "99")).localeCompare(b.date + (b.time ?? "99")))[0];
   const needs = attention({ cloud: S.snap, pipeline: S.pipe, decisions: S.snap.decisions });
-  const days = daysUntil(s.token_expires_at, S.snap.now);
   const inRange = cp.items.filter((i) => i.date >= cp.from && i.date <= cp.to);
   const textOnly = inRange.filter((i) => i.media.type.key === "text").length;
   const withImage = inRange.filter((i) => i.media.type.key === "image").length;
   const unsupported = inRange.filter((i) => !i.media.type.implemented).length;
   const nextPost = next?.post_id ? pipePost(next.post_id) ?? cloudPost(next.post_id) : null;
+  const week = cp.days.slice(0, 7).filter((d) => d.items.some((i) => i.kind !== "slot"));
   return [
-    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Overview"), h("p", { class: "muted" }, `Your plan for the next ${S.range} days`)), rangeControls("overview")),
+    pageHead("Overview", fmtLong(localDate(S.snap.now, tz())), rangeControls("overview")),
     boardView(),
-    h("div", { class: "hero" },
-      card(null, publishingAs()),
-      h("div", { class: "switches" },
-        h("div", { class: "switch " + (s.auto_publish ? "warn" : "ok") }, h("span", { class: "switch-label" }, "Auto-publish"), h("strong", {}, s.auto_publish ? "On" : "Off")),
-        h("div", { class: "switch " + (s.emergency_stop ? "err" : "ok") }, h("span", { class: "switch-label" }, "Emergency stop"), h("strong", {}, s.emergency_stop ? "On" : "Off")),
-        writerStartSwitch(),
-        h("div", { class: "switch " + (s.token_present && (days === null || days > 7) ? "ok" : "warn") }, h("span", { class: "switch-label" }, "LinkedIn access"),
-          h("strong", {}, !s.token_present ? "No token" : days === null ? "Connected" : days < 0 ? "Expired" : `${days} days left`)))),
-    h("div", { class: "grid2" },
-      card("Next post", next ? h("div", { class: "next" },
-        h("div", { class: "next-when" }, fmtDate(next.date), next.time ? `, ${next.time}` : "", next.time_source === "planned slot" ? h("span", { class: "muted" }, " (planned time)") : null),
-        h("a", { class: "next-title", href: next.post_id ? `#post/${next.post_id}` : "#upcoming" }, next.title),
-        nextPost?.text ? h("p", { class: "next-snippet" }, nextPost.text.split("\n").filter(Boolean).slice(1, 3).join(" ").slice(0, 220)) : null,
-        h("div", { class: "meta" }, statusPill(next.status), typeChip(next.media.type), next.objective ? h("span", { class: "small muted" }, objectiveLabel(next.objective)) : null),
-        h("p", { class: "small muted" }, next.status === "SCHEDULED" ? (s.auto_publish ? "Publishes at its time." : "Scheduled, but auto-publish is off: it will not publish.") : "Not scheduled yet."))
-        : empty(`Nothing planned in the next ${S.range} days.`)),
-      card("Needs your attention", needs.length ? h("ul", { class: "attn" }, needs.slice(0, 6).map((n) =>
-        h("li", {}, h("span", { class: "dot " + n.level }), n.post_id ? link(`#post/${n.post_id}`, hook(pipePost(n.post_id)?.text, 60) ?? n.post_id) : "", h("span", { class: "attn-why" }, n.text))))
-        : empty("Nothing needs you right now."))),
+    h("div", { class: "brief-grid" },
+      h("section", { class: "card next-hero", "aria-label": "Next post" },
+        h("h2", { class: "section-title" }, "Next post"),
+        next ? [
+          h("div", { class: "next-when" }, h("span", { class: "next-date" }, fmtLong(next.date)),
+            next.time ? h("span", { class: "next-time" }, next.time) : null,
+            next.time_source === "planned slot" ? h("span", { class: "muted" }, "planned time") : null),
+          h("a", { class: "next-title", href: next.post_id ? `#post/${next.post_id}` : "#upcoming" }, next.title),
+          nextPost?.text ? h("p", { class: "next-snippet" }, nextPost.text.split("\n").filter(Boolean).slice(1, 3).join(" ").slice(0, 240)) : null,
+          h("div", { class: "next-foot" },
+            h("div", { class: "meta" }, statusPill(next.status), typeChip(next.media.type), next.objective ? h("span", { class: "small muted" }, objectiveLabel(next.objective)) : null),
+            next.post_id ? link(`#post/${next.post_id}`, next.status === "AWAITING_APPROVAL" ? "Review post" : "Open post", "btn" + (next.status === "AWAITING_APPROVAL" ? " primary" : "")) : null),
+          h("p", { class: "small muted next-note" }, next.status === "SCHEDULED" ? (s.auto_publish ? "Publishes at its time." : "Scheduled, but auto-publish is off: it will not publish.") : "Not scheduled yet. Nothing publishes without your approval."),
+        ] : empty(`Nothing planned in the next ${S.range} days.`)),
+      h("section", { class: "card attention", "aria-label": "Needs your attention" },
+        h("h2", { class: "section-title" }, "Needs your attention", needs.length ? h("span", { class: "count" }, String(needs.length)) : null),
+        needs.length ? h("ul", { class: "attn" }, needs.slice(0, 6).map((n) =>
+          h("li", { class: "attn-" + n.level }, n.post_id ? link(`#post/${n.post_id}`, hook(pipePost(n.post_id)?.text, 64) ?? n.post_id, "attn-title") : null,
+            h("span", { class: "attn-why" }, n.text))))
+          : empty("Nothing needs you right now."))),
     cp.pastDue.length ? card("Earlier, not yet published", h("p", { class: "small muted" }, "Planned dates that have passed. Reschedule, schedule or skip them."),
       h("div", { class: "rows" }, cp.pastDue.map((i) => h("div", { class: "past" }, h("span", { class: "past-date" }, fmtDate(i.date)), planRow(i))))) : null,
-    card(`Next ${Math.min(S.range, 7)} days`, h("div", { class: "rows" }, cp.days.slice(0, 7).flatMap((d) => {
-      const items = d.items.filter((i) => i.kind !== "slot");
-      return items.length ? [h("div", { class: "day-label" }, fmtDate(d.date)), items.map(planRow)] : [];
-    })), cp.days.slice(0, 7).every((d) => !d.items.some((i) => i.kind !== "slot")) ? empty("No posts planned this week.") : null,
+    h("section", { class: "runsheet-wrap", "aria-label": "This week" },
+      h("div", { class: "section-head" }, h("h2", { class: "section-title" }, "This week"), link("#upcoming", "Full calendar", "quiet-link")),
+      week.length ? h("div", { class: "runsheet" }, week.map((d) => dayBlock(d, d.items.filter((i) => i.kind !== "slot"), d.date === cp.from)))
+        : card(null, empty("No posts planned this week.")),
       h("p", { class: "small muted" }, `Next ${S.range} days: ${textOnly} text-only, ${withImage} with an image`,
         unsupported ? `, ${unsupported} with a media type that is not implemented` : "")),
+    systemLine(),
   ];
+}
+
+// One quiet line of standing facts: who publishes, the safety switches, how a Refresh starts.
+function systemLine() {
+  const s = st();
+  const days = daysUntil(s.token_expires_at, S.snap.now);
+  return h("section", { class: "system-line", "aria-label": "System state" },
+    publishingAs(),
+    h("div", { class: "switches" },
+      h("div", { class: "switch " + (s.auto_publish ? "warn" : "ok") }, h("span", { class: "switch-label" }, "Auto-publish"), h("strong", {}, s.auto_publish ? "On" : "Off")),
+      h("div", { class: "switch " + (s.emergency_stop ? "err" : "ok") }, h("span", { class: "switch-label" }, "Emergency stop"), h("strong", {}, s.emergency_stop ? "On" : "Off")),
+      writerStartSwitch(),
+      h("div", { class: "switch " + (s.token_present && (days === null || days > 7) ? "ok" : "warn") }, h("span", { class: "switch-label" }, "LinkedIn access"),
+        h("strong", {}, !s.token_present ? "No token" : days === null ? "Connected" : days < 0 ? "Expired" : `${days} days left`))));
 }
 
 // LCE-050: how a Refresh reaches the writer: at once (routine API trigger) or at the hourly run
@@ -622,70 +643,98 @@ function writerStartSwitch() {
     h("strong", {}, w.instant ? "Instant" : `Hourly at :${String(w.hourly_at_minute).padStart(2, "0")}`));
 }
 
-// LCE-050: what needs the owner, and what the system is doing right now (recorded facts only)
+// LCE-050: what needs the owner, and what the system is doing right now (recorded facts only).
+// The approval count leads; the work in motion sits under it, quieter.
 function boardView() {
   const b = nowBoard({ pipeline: S.pipe, cloud: S.snap, progress: S.progress, nowMs: Date.now() });
-  const title = (id) => (hook(pipePost(id)?.text, 48) ?? pipePost(id)?.topic ?? id).replace(/[.:;,]+$/, "");
-  const tile = (key, label, count, tone, href, detail) => h("a", { class: `tile tile-${key} ${count ? tone : "quiet"}`, href },
-    h("span", { class: "tile-label" }, label), h("span", { class: "tile-count" }, String(count)), h("span", { class: "tile-detail" }, detail));
+  const title = (id) => (hook(pipePost(id)?.text, 64) ?? pipePost(id)?.topic ?? id).replace(/[.:;,]+$/, "");
   const first = (list, f) => (list.length ? f(list[0]) + (list.length > 1 ? ` and ${list.length - 1} more` : "") : null);
+  const n = b.approval.length;
+  const tile = (key, label, count, tone, href, detail) => h("a", { class: `tile tile-${key} ${count ? tone : "quiet"}`, href },
+    h("span", { class: "tile-count" }, String(count)), h("span", { class: "tile-label" }, label), h("span", { class: "tile-detail" }, detail));
   return h("section", { class: "board", "aria-label": "Right now" },
-    tile("approval", "Needs your approval", b.approval.length, "info", b.approval[0] ? `#post/${b.approval[0].post_id}` : "#upcoming",
-      first(b.approval, (p) => title(p.post_id)) ?? "Nothing waiting for you"),
-    tile("research", "Being researched", b.researching.length, "accent", "#upcoming",
-      first(b.researching, (u) => title(u.post_id)) ?? "No research running"),
-    tile("writing", "Being written", b.writing.length, "accent", b.writing[0]?.post_id ? `#post/${b.writing[0].post_id}` : "#upcoming",
-      first(b.writing, (u) => u.post_id ? title(u.post_id) : `Slot ${fmtDate(u.plan_date)}`) ?? "No writer active"),
-    tile("fresh", "Fresh in the radar", b.radarNewToday, "ok", "#radar",
-      b.radarConfigured ? (b.fresh[0]?.title?.slice(0, 60) ?? "Nothing new in the last 24 hours") : "Radar not set up yet"),
-    tile("scheduled", "Scheduled", b.scheduled.length, "ok", "#upcoming",
-      b.scheduled[0] ? `Next ${fmtWhen(b.scheduled[0].slot_utc)}` : "Nothing has a publishing time"),
-    tile("failed", "Failed", b.failed.length, "err", b.failed[0]?.post_id ? `#post/${b.failed[0].post_id}` : "#system",
-      first(b.failed, (f) => f.why) ?? "Nothing failed"),
-    tile("next", "Next slot", b.next ? 1 : 0, "info", b.next?.draft_ref ? `#post/${b.next.draft_ref}` : "#upcoming",
-      b.next ? `${fmtDate(b.next.date)}: ${b.next.status === "open" ? "open slot" : b.next.topic}` : "Nothing planned"));
+    h("a", { class: "tile tile-approval brief-lead" + (n ? " has" : " quiet"), href: b.approval[0] ? `#post/${b.approval[0].post_id}` : "#upcoming" },
+      h("span", { class: "brief-count" }, String(n)),
+      h("span", { class: "brief-body" },
+        h("span", { class: "brief-line" }, n === 1 ? "post waits for your approval" : n ? "posts wait for your approval" : "Nothing waits for your approval"),
+        h("span", { class: "brief-detail" }, first(b.approval, (p) => title(p.post_id)) ?? "New drafts appear here when a writer finishes them."),
+        n ? h("span", { class: "brief-cta" }, "Review") : null)),
+    h("div", { class: "brief-motion" },
+      tile("research", "Being researched", b.researching.length, "accent", "#upcoming",
+        first(b.researching, (u) => title(u.post_id)) ?? "No research running"),
+      tile("writing", "Being written", b.writing.length, "accent", b.writing[0]?.post_id ? `#post/${b.writing[0].post_id}` : "#upcoming",
+        first(b.writing, (u) => u.post_id ? title(u.post_id) : `Slot ${fmtDate(u.plan_date)}`) ?? "No writer active"),
+      tile("scheduled", "Scheduled", b.scheduled.length, "ok", "#upcoming",
+        b.scheduled[0] ? `Next ${fmtWhen(b.scheduled[0].slot_utc)}` : "Nothing has a publishing time"),
+      tile("fresh", "Fresh in the radar", b.radarNewToday, "ok", "#radar",
+        b.radarConfigured ? (b.fresh[0]?.title?.slice(0, 60) ?? "Nothing new in the last 24 hours") : "Radar not set up yet"),
+      tile("failed", "Failed", b.failed.length, "err", b.failed[0]?.post_id ? `#post/${b.failed[0].post_id}` : "#system",
+        first(b.failed, (f) => f.why) ?? "Nothing failed"),
+      tile("next", "Next slot", b.next ? 1 : 0, "info", b.next?.draft_ref ? `#post/${b.next.draft_ref}` : "#upcoming",
+        b.next ? `${fmtDate(b.next.date)}: ${b.next.status === "open" ? "open slot" : b.next.topic}` : "Nothing planned")));
+}
+
+// Run-sheet day: the date as a typeset block, then the day's rows.
+function dayBlock(d, items, isToday, emptyText = "Nothing planned.") {
+  const dt = new Date(`${d.date}T12:00:00Z`);
+  const part = (o) => dt.toLocaleDateString("en-GB", { ...o, timeZone: "UTC" });
+  return h("section", { class: "day" + (isToday ? " today" : "") + (items.length ? "" : " quiet") },
+    h("div", { class: "day-date", "aria-label": fmtLong(d.date) },
+      h("span", { class: "day-wd" }, isToday ? "Today" : part({ weekday: "short" })),
+      h("span", { class: "day-num" }, part({ day: "numeric" })),
+      h("span", { class: "day-mon" }, part({ month: "short" }))),
+    items.length ? h("div", { class: "rows" }, items.map(planRow)) : h("p", { class: "empty small" }, emptyText));
 }
 
 // LCE-050: Content Radar: what the feeds brought in, with provenance; "Use" only plans
 function viewRadar() {
   const r = S.pipe?.radar;
-  if (!r || r.configured === false) return [h("div", { class: "page-head" }, h("h1", {}, "Content Radar")),
+  if (!r || r.configured === false) return [pageHead("Content Radar"),
     card(null, empty("The radar has no sources yet (config/radar.yaml in the private repository)."))];
-  if (r.error) return [h("div", { class: "page-head" }, h("h1", {}, "Content Radar")), card(null, h("p", { class: "err" }, r.error))];
+  if (r.error) return [pageHead("Content Radar"), card(null, h("p", { class: "err" }, r.error))];
   const pillars = Object.entries(r.by_pillar ?? {}).sort((a, b) => b[1] - a[1]);
   const all = radarRows(r, { pillar: S.radarPillar, unusedOnly: S.radarUnused, order: S.radarOrder });
   const rows = all.slice(0, S.radarShown);
   const ok = (r.sources ?? []).filter((s) => s.status === "ok").length;
-  const chip = (id, label) => h("button", { type: "button", class: "chip-btn" + (S.radarPillar === id ? " on" : ""), onclick: () => { S.radarPillar = id; render(); } }, label);
+  const chip = (id, label) => h("button", { type: "button", class: "chip-btn" + (S.radarPillar === id ? " on" : ""), "aria-pressed": S.radarPillar === id ? "true" : "false",
+    onclick: () => { S.radarPillar = id; render(); } }, label);
   return [
-    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Content Radar"),
-      h("p", { class: "muted" }, `${r.new_today} new today, ${r.relevant} relevant items, ${ok} of ${(r.sources ?? []).length} sources readable`))),
+    pageHead("Content Radar", `${r.new_today} new today, ${r.relevant} relevant items, ${ok} of ${(r.sources ?? []).length} sources readable`),
     h("div", { class: "toolbar" }, h("div", { class: "chips" }, chip("all", "All pillars"), pillars.map(([p, n]) => chip(p, `${p} (${n})`))),
       h("div", { class: "seg" }, [["rank", "Most relevant"], ["newest", "Newest"]].map(([k, l]) =>
         h("button", { type: "button", class: S.radarOrder === k ? "on" : "", onclick: () => { S.radarOrder = k; render(); } }, l))),
       h("label", { class: "check" }, h("input", { type: "checkbox", checked: S.radarUnused || null, onchange: (e) => { S.radarUnused = e.target.checked; render(); } }), " Unused only")),
-    rows.length ? h("div", { class: "radar-list" }, rows.map((i) => h("article", { class: "radar-item" + (i.used_by ? " used" : "") },
-      h("div", { class: "radar-main" },
-        h("a", { class: "radar-title", href: i.url, target: "_blank", rel: "noopener noreferrer" }, i.title),
-        h("div", { class: "radar-meta" }, h("span", {}, i.source), h("span", {}, fmtAge(i.age_hours)), i.quality ? h("span", {}, i.quality) : null,
-          i.pillar ? h("span", { class: "pill info" }, i.pillar) : null,
-          h("span", { class: `relevance rel-${Math.max(1, Math.round((i.relevance ?? 0) * 4))}`, title: `relevance ${i.relevance}`, "aria-label": `relevance ${i.relevance}` }, h("span", {}))),
-        i.excerpt ? h("p", { class: "radar-excerpt" }, i.excerpt) : null,
-        i.matched_terms?.length ? h("p", { class: "small muted" }, "Matches: " + i.matched_terms.slice(0, 6).join(", ")) : null),
-      h("div", { class: "radar-side" },
-        i.used_by ? h("span", { class: "pill ok" }, "Used") : i.recommended_for ? h("span", { class: "pill accent" }, `Planned for ${fmtDate(i.recommended_for)}`)
-          : h("button", { type: "button", class: "small", onclick: () => A.radarUse(i) }, "Use for next post"),
-        i.related_post ? link(`#post/${i.related_post}`, "Related post", "small") : null))))
-      : card(null, empty("No items match this filter.")),
+    rows.length ? h("div", { class: "radar-list" }, rows.map(radarItem)) : card(null, empty("No items match this filter.")),
     all.length > rows.length ? h("button", { type: "button", class: "more", onclick: () => { S.radarShown += 20; render(); } },
       `Show ${Math.min(20, all.length - rows.length)} more of ${all.length - rows.length}`) : null,
     card("Sources", h("div", { class: "table-wrap" }, h("table", {},
       h("thead", {}, h("tr", {}, ["Source", "State", "Entries", "New", "Last read"].map((x) => h("th", {}, x)))),
       h("tbody", {}, (r.sources ?? []).map((s) => h("tr", {}, h("td", {}, s.name ?? s.id),
         h("td", {}, h("span", { class: "pill " + (s.status === "ok" ? "ok" : "warn") }, s.status === "ok" ? "readable" : `${s.status}${s.http ? " " + s.http : ""}`)),
-        h("td", {}, String(s.entries ?? 0)), h("td", {}, String(s.new ?? 0)), h("td", {}, fmtWhen(s.checked_at))))))),
+        h("td", { class: "num" }, String(s.entries ?? 0)), h("td", { class: "num" }, String(s.new ?? 0)), h("td", {}, fmtWhen(s.checked_at))))))),
       h("p", { class: "small muted" }, "Public feeds only, read by the private repository's scheduled job. Feed text is evidence for a writer, never post copy.")),
   ];
+}
+
+// Relevance in words (the score is the radar's own pillar match, 0 to 1).
+const relWord = (x) => (x >= 0.75 ? "Strong match" : x >= 0.5 ? "Good match" : x >= 0.25 ? "Partial match" : "Weak match");
+
+function radarItem(i) {
+  const rel = i.relevance ?? 0;
+  const terms = (i.matched_terms ?? []).slice(0, 5);
+  return h("article", { class: "radar-item" + (i.used_by ? " used" : "") },
+    h("div", { class: "radar-main" },
+      h("div", { class: "radar-kicker" }, h("span", { class: "radar-source" }, i.source), h("span", {}, fmtAge(i.age_hours)), i.quality ? h("span", {}, i.quality) : null),
+      h("a", { class: "radar-title", href: i.url, target: "_blank", rel: "noopener noreferrer" }, i.title),
+      i.excerpt ? h("p", { class: "radar-excerpt" }, i.excerpt) : null,
+      i.pillar || terms.length ? h("p", { class: "radar-why" }, h("span", { class: "radar-why-label" }, "Why it matters "),
+        i.pillar ? `It fits your ${i.pillar} pillar` : "It matches your topics", terms.length ? `: ${terms.join(", ")}.` : ".") : null),
+    h("div", { class: "radar-side" },
+      h("div", { class: "radar-rel" }, h("span", { class: `relevance rel-${Math.max(1, Math.round(rel * 4))}`, "aria-hidden": "true" }, h("span", {})),
+        h("span", { class: "small", title: `relevance ${rel}` }, relWord(rel))),
+      i.used_by ? h("span", { class: "radar-state used" }, "Used in a post") : i.recommended_for ? h("span", { class: "radar-state planned" }, `Planned for ${fmtDate(i.recommended_for)}`)
+        : h("button", { type: "button", class: "small", onclick: () => A.radarUse(i) }, "Use for next post"),
+      i.related_post ? link(`#post/${i.related_post}`, "Related post", "quiet-link small") : null));
 }
 
 // LCE-050: freshness window, research packet, last research, new developments, next check
@@ -708,19 +757,18 @@ function viewUpcoming() {
   const cp = plan(S.range);
   const filtered = (list) => list.filter((i) => applyFilter(i, S.filter));
   return [
-    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Upcoming"), h("p", { class: "muted" }, `${fmtDate(cp.from)} – ${fmtDate(cp.to)}, from your content plan`)), null),
+    pageHead("Upcoming", `${fmtDate(cp.from)} to ${fmtDate(cp.to)}, from your content plan`),
     rangeControls("upcoming"),
     cp.pastDue.length && filtered(cp.pastDue).length ? card("Earlier, not yet published", h("div", { class: "rows" }, filtered(cp.pastDue).map((i) =>
       h("div", { class: "past" }, h("span", { class: "past-date" }, fmtDate(i.date)), planRow(i))))) : null,
-    h("div", { class: "days" }, cp.days.map((d) => {
+    h("div", { class: "runsheet days" }, cp.days.map((d) => {
       const items = filtered(d.items);
       if (!items.length && S.filter !== "all") return null;
-      return h("section", { class: "day" + (d.date === cp.from ? " today" : "") + (items.length ? "" : " quiet") },
-        h("h3", { class: "day-head" }, fmtDate(d.date), d.date === cp.from ? h("span", { class: "pill accent" }, "Today") : null),
-        items.length ? h("div", { class: "rows" }, items.map(planRow)) : h("p", { class: "empty small" }, "Nothing planned."));
+      return dayBlock(d, items, d.date === cp.from);
     })),
     cp.undated.length ? card("Without a date", h("div", { class: "rows" }, filtered(cp.undated).map(planRow))) : null,
-    h("p", { class: "small muted legend" }, statusPill("PLANNED"), " planned in your content plan; ", statusPill("SCHEDULED"), " has a publishing time; open times are shown only where nothing is planned. Nothing here publishes."),
+    h("p", { class: "small muted legend" }, "Every row says its state in words. ", statusPill("PLANNED"), " is in your content plan; ", statusPill("SCHEDULED"),
+      " has a publishing time; open times are shown only where nothing is planned. Nothing here publishes."),
   ];
 }
 
@@ -728,7 +776,7 @@ function viewPosts() {
   const cp = plan(30);
   const all = cp.items.filter((i) => i.post_id).sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
   return [
-    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Posts"), h("p", { class: "muted" }, `${all.length} posts`))),
+    pageHead("Posts", `${all.length} posts in the last and next 30 days`),
     all.length ? h("div", { class: "cards" }, all.map((i) => {
       const d = pendingFor(i.post_id);
       return h("div", { class: "post-card" },
@@ -762,32 +810,41 @@ function viewPost(id) {
   const locked = closedBy(d);   // LCE-043: a recorded Skip/Reject/Refresh ends this version now; only Cancel undoes it
   const editable = p && !queued && !locked && !["PUBLISHED", "REJECTED", "PUBLISHING", "NEEDS_RECONCILE"].includes(state);
   const voice = S.pipe?.voice;
-  const controls = [
+  // three tiers: the decision, the common changes, then the rarer ones as quiet text actions
+  const lead = [
     state === "AWAITING_APPROVAL" && !queued && !locked ? B("Approve", () => A.approve(p), "primary") : null,
     p && canRefresh(p, queued) && !locked ? B("Refresh", () => A.refresh(p)) : null,
     editable && p.text ? B("Edit", () => A.edit(p)) : null,
     editable ? B("Reschedule", () => A.reschedule(p)) : null,
-    editable ? B("Skip", () => A.skip(p)) : null,
-    editable ? B("Reject", () => A.reject(p), "danger") : null,
-    p?.text ? B("Duplicate", () => A.duplicate(p)) : null,
     queued && c.state === "READY_TO_PUBLISH" && !consent ? link(`#test/${id}`, "Controlled test publish", "btn") : null,
     queued && consent ? B("Unschedule", () => A.revoke(consent)) : null,
     queued && ["READY_TO_PUBLISH", "PUBLISH_FAILED"].includes(c.state) ? B("Withdraw", () => A.postAction(id, "withdraw", `Withdraw ${id}; it will not be published.`), "danger") : null,
     queued && c.state === "PUBLISH_FAILED" ? B("Rearm", () => A.postAction(id, "rearm", `Make ${id} publishable again after a failed attempt.`)) : null,
     queued && ["NEEDS_RECONCILE", "PUBLISHING"].includes(c.state) ? B("Reconcile", () => A.reconcile(id)) : null,
-    link(`#history/${id}`, "Execution log", "btn"),
+  ].filter(Boolean);
+  const rare = [
+    editable ? B("Skip", () => A.skip(p), "tier3") : null,
+    editable ? B("Reject", () => A.reject(p), "danger tier3") : null,
+    p?.text ? B("Duplicate", () => A.duplicate(p), "tier3") : null,
+    link(`#history/${id}`, "Execution log", "tier3"),
     pb?.url ? ext(pb.url, "View on LinkedIn") : null,
-  ];
+  ].filter(Boolean);
+  const controls = [...lead, lead.length ? h("span", { class: "controls-rule", "aria-hidden": "true" }) : null, ...rare];
+
   const kv = (rows) => h("dl", { class: "kv" }, rows.filter(Boolean).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v ?? UNKNOWN)]));
   return [
-    h("div", { class: "page-head" }, h("div", {}, link("#upcoming", "← Upcoming", "back"), h("h1", { class: "post-h1" }, hook(p?.text ?? c?.text, 90) ?? p?.topic ?? id))),
+    h("div", { class: "page-head post-head" }, h("div", { class: "page-title" }, link("#upcoming", "Upcoming", "back"),
+      h("h1", { class: "post-h1" }, hook(p?.text ?? c?.text, 90) ?? p?.topic ?? id),
+      h("div", { class: "post-sub" }, statusPill(code), item?.date ? h("span", {}, fmtLong(item.plan_date ?? item.date)) : null,
+        p?.objective ? h("span", {}, objectiveLabel(p.objective)) : null))),
     d ? h("div", { class: "notice info" }, locked ? CLOSED_NOTE[locked](d) : `Your ${d.action} decision is recorded (${fmtWhen(d.created_at)}). It is applied to the repository at the next private run, within about an hour. `,
       B(locked ? `Undo ${locked}` : "Cancel", () => A.cancel(d), "small")) : null,
     outcomeLine(id, true),
     progressPanel(p, d) ?? refreshBanner(p, d),
     stepper(code),
     h("div", { class: "detail" },
-      h("div", { class: "detail-main" }, publishingAs(true), feedPreview(p, c), h("p", { class: "small muted" }, "Preview only. Opening or reviewing a post never publishes it."),
+      h("div", { class: "detail-main" }, h("div", { class: "stage" }, feedPreview(p, c),
+        h("p", { class: "stage-note" }, "Preview only. Opening or reviewing a post never publishes it.")),
         p?.versions?.length ? versionsCard(p) : null),
       h("div", { class: "side" },
         card("Controls", h("div", { class: "controls" }, controls)),

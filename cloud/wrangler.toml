@@ -50,3 +50,9 @@ LCE_ACCESS_AUD = "2e41a088ef87997e12e9533d2c4860e95dfa8d5b329f6ac864657bef928ffe
 type = "Text"
 globs = ["**/*.html", "**/*.css", "**/*.txt", "**/*.sql"]
 fallthrough = true
+
+# The dashboard's two self-hosted typefaces (SIL OFL 1.1, see src/ui/fonts/), bundled as bytes.
+[[rules]]
+type = "Data"
+globs = ["**/*.woff2"]
+fallthrough = true

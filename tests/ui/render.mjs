@@ -105,7 +105,8 @@ snap.preview_media.push({ post_id: "20261014-demo-e", sha256: "5".repeat(64), by
 snap.version_media = [{ post_id: "20261006-demo-a", version: 1, sha256: "1".repeat(64), bytes: 100, mime: "image/png" }];
 const identity = { ok: true, status: "verified", person_urn: "urn:li:person:TestPerson1", configured_person_urn: "urn:li:person:TestPerson1", person_urn_matches: true, api_version: "202609", api_version_valid: true };
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
-const files = { "/": ["index.html", "text/html"], "/app.js": ["app.txt", "text/javascript"], "/lib.js": ["lib.txt", "text/javascript"], "/app.css": ["app.css", "text/css"] };
+const files = { "/": ["index.html", "text/html"], "/app.js": ["app.txt", "text/javascript"], "/lib.js": ["lib.txt", "text/javascript"], "/app.css": ["app.css", "text/css"],
+  "/fonts/inter.woff2": ["fonts/inter.woff2", "font/woff2"], "/fonts/newsreader.woff2": ["fonts/newsreader.woff2", "font/woff2"] };
 // LCE-048: what /api/refresh-status reports for the old approved post (driven by the test, step by step)
 const REQ = { decision_id: "d-00000000-0000-0000-0000-00000000a001", status: "applied", created_at: new Date(Date.now() - 125000).toISOString(),
   resolved_at: new Date(Date.now() - 60000).toISOString(), result: null };
@@ -126,7 +127,7 @@ const srv = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   const j = (o, s = 200) => { res.writeHead(s, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
   if (u.pathname === "/" && u.searchParams.get("reauth") === "1") reauthed = true;     // the sign-in window
-  if (files[u.pathname]) { const [f, t] = files[u.pathname]; res.writeHead(200, { "content-type": t, "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" }); return res.end(readFileSync(UI + f)); }
+  if (files[u.pathname]) { const [f, t] = files[u.pathname]; res.writeHead(200, { "content-type": t, "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" }); return res.end(readFileSync(UI + f)); }
   // LCE-041: an expired Access session — the edge redirects API calls to its login page (another origin)
   if (req.method === "POST" && u.pathname === "/api/decisions") {
     const b = JSON.parse((await readBody(req)) || "{}");
