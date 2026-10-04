@@ -592,3 +592,14 @@ The cloud path is verified up to publishing. Remaining gates:
   - producible types: external_insight and how_to only.
 - **Owner hold**: personal POV, lesson and observation content, and the voice comparison, need the owner's material (see the LCE-051 report).
 - Not verified yet: the first real freshness window (6 Oct post, opens 4 Oct 18:30 UTC).
+
+## Update 17:00 UTC 4 Oct (owner decision: writer cadence)
+
+- Owner voice interview completed (lce-data):
+  - 10 Golden Voice Set samples;
+  - 5 confirmed opinions and 1 confirmed disagreement;
+  - voice.yaml v4 (no em dash, no guillemets, both registers);
+  - work history kept as PRIVATE background only, by the owner's decision: never posted;
+  - engine #105 adds the punctuation rules.
+- Writer cadence stays hourly (:27). A 5-minute cadence was declined: the writer's persistent session already has a large context and the account is near its weekly usage warning, so frequent idle runs would burn usage for nothing.
+- Fast path instead: when the owner wants a Refresh written now, they ask in this session and the writer Routine is fired once on demand.
