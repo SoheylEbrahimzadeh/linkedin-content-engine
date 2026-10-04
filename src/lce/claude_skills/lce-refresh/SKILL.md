@@ -109,6 +109,15 @@ owner's note and the rejected version). For each one:
    tied to the same subject. A topically similar image from elsewhere is not a
    source visual; never present it as one. Nothing fits → text-only
    `no_suitable_licensed_image` with the source_check.
+   **Owner policy `visuals.source_image_policy: owner_accepts_copyright_risk`**
+   (config/settings.yaml): the owner decided to post the cited source's OWN image
+   even without a licence. Then use the source's relevant image (its Open Graph /
+   hero image or a figure on that page) first: `media: {reviewed: {source:
+   source_page, page_url, image_url, publisher, …review fields…, association:
+   source_visual}}`, `source_check.status: source_visual_used` with the evidence
+   (what the page shows, its rights notice, and "owner policy"). The engine checks
+   the image is published on that page and always adds the credit line
+   `Image: <publisher>` to the post. Never an image from any other site this way.
    **Preferred (LCE-044): choose by looking.** Commit `media/requests/<id>.yaml`
    (`subject`, `queries`, `sources: [commons, openverse]`); the `media-search`
    workflow saves previews and `candidates.yaml` under `media/candidates/<id>/`.

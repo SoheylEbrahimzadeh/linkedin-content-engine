@@ -158,3 +158,68 @@ def test_a_reviewed_selection_is_refused_without_rights_or_a_real_review(store, 
             by="session",
         )
     assert images.load(store, pid)["sha256"] == before
+
+
+# ── owner policy: the cited source's own image, credited (owner accepts the copyright risk) ──
+PAGE = "https://news.example.com/2026/agents"
+IMG = "https://news.example.com/img/agents-hero.png"
+PAGE_HTML = (f'<html><head><meta property="og:image" content="{IMG}"></head>'
+             '<body><p>(c) 2026 Example News. All rights reserved.</p></body></html>').encode()
+SOURCE_SEL = {
+    **REVIEW, "source": "source_page", "page_url": PAGE, "image_url": IMG, "publisher": "Example News",
+    "association": "source_visual",
+    "why_belongs_to_source": "the hero image of the very article the post cites, chosen by its publisher",
+    "why_legal": "no licence; the owner decided to post source images with a credit line (owner policy)",
+}
+SOURCE_CHECK = {
+    "status": "source_visual_used", "source_url": PAGE,
+    "evidence": "the article's own Open Graph hero image; page states all rights reserved; owner policy",
+}
+
+
+def page_transport(url):
+    if url == PAGE:
+        return PAGE_HTML
+    if url == IMG:
+        return png_shade(90)
+    return (404, b"")
+
+
+def _policy(store, value):
+    s = store.settings()
+    s.setdefault("visuals", {})["source_image_policy"] = value
+    store.write_doc(store.settings_path, "settings", s)
+
+
+def test_source_page_image_needs_the_owner_policy(store):
+    from conftest import awaiting_post
+
+    pid = awaiting_post(store)
+    with pytest.raises(StoreError, match="owner_accepts_copyright_risk"):
+        media_search.attach_reviewed(store, pid, SOURCE_SEL, transport=page_transport,
+                                     source_check=SOURCE_CHECK)
+
+
+def test_source_page_image_is_attached_with_credit_when_the_owner_accepts_the_risk(store):
+    from conftest import awaiting_post
+
+    pid = awaiting_post(store)
+    _policy(store, "owner_accepts_copyright_risk")
+    doc = media_search.attach_reviewed(store, pid, SOURCE_SEL, transport=page_transport,
+                                       source_check=SOURCE_CHECK)
+    prov = doc["provenance"]
+    assert prov["origin"] == "source_publication" and prov["usage"] == "owner_accepted_risk"
+    assert prov["attribution_required"] is True and prov["attribution"] == "Image: Example News"
+    assert prov["source_url"] == PAGE and prov["retrieved_url"] == IMG
+    errors, _ = images.check(store, pid)
+    assert not [e for e in errors if "license" in e or "usage" in e]
+
+
+def test_source_page_image_must_be_published_on_the_cited_page(store):
+    from conftest import awaiting_post
+
+    pid = awaiting_post(store)
+    _policy(store, "owner_accepts_copyright_risk")
+    other = {**SOURCE_SEL, "image_url": "https://news.example.com/img/unrelated.png"}
+    with pytest.raises(StoreError, match="not published on the cited source page"):
+        media_search.attach_reviewed(store, pid, other, transport=page_transport, source_check=SOURCE_CHECK)

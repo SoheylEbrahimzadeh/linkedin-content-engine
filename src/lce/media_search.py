@@ -251,7 +251,60 @@ def fetch(selected: dict, transport=None) -> tuple[bytes, str, dict]:
         if it.get("license_url"):
             prov["license_url"] = it["license_url"]
         return data, ext, prov
-    raise StoreError("selected.source must be commons or openverse")
+    if src == "source_page":
+        return _source_page_image(selected, transport)
+    raise StoreError("selected.source must be commons, openverse or source_page")
+
+
+def _source_page_image(selected: dict, transport=None) -> tuple[bytes, str, dict]:
+    """The cited source's own image (owner policy owner_accepts_copyright_risk): it must be
+    published on that page (Open Graph / Twitter image or an <img>), and it is always credited."""
+    from urllib.parse import urljoin, urlparse
+
+    from lce import source_visuals
+
+    page_url, image_url = selected.get("page_url") or "", selected.get("image_url") or ""
+    if not page_url.startswith("https://") or not image_url.startswith("https://"):
+        raise StoreError("source_page needs https page_url and image_url")
+    st, html = source_visuals._fetch(page_url, transport)
+    if st != 200 or not html:
+        raise StoreError(f"the source page could not be read (HTTP {st})")
+    page = source_visuals._Page()
+    page.feed(html.decode("utf-8", "replace"))
+    image_keys = ("og:image", "og:image:url", "twitter:image")
+    on_page = {urljoin(page_url, v) for k, v in page.meta if k in image_keys and v}
+    on_page |= {urljoin(page_url, im["src"]) for im in page.imgs}
+    if image_url not in on_page:
+        raise StoreError("the image is not published on the cited source page")
+    st, data = source_visuals._fetch(image_url, transport)
+    if st != 200 or not data:
+        raise StoreError(f"the image could not be retrieved (HTTP {st})")
+    if len(data) > commons.MAX_BYTES:
+        raise StoreError("the image is too large")
+    if data.startswith(images.MAGIC[".png"]):
+        ext = ".png"
+    elif data.startswith(images.MAGIC[".jpg"]):
+        ext = ".jpg"
+    else:
+        raise StoreError("the image is not a PNG or JPEG")
+    publisher = (selected.get("publisher") or urlparse(page_url).netloc.removeprefix("www.")).strip()[:120]
+    prov = {
+        "origin": "source_publication",
+        "usage": "owner_accepted_risk",
+        "license": f"copyright of {publisher}; used without a licence by the owner's decision",
+        "source_url": page_url,
+        "credit": publisher,
+        "title": (selected.get("title") or image_url.rsplit("/", 1)[-1])[:300],
+        "creator": publisher,
+        "attribution_required": True,
+        "attribution": f"Image: {publisher}",
+        "retrieved_at": now_iso(),
+        "retrieved": "original",
+        "retrieved_url": image_url,
+        "source_id": f"source:{image_url}",
+        "source_name": publisher,
+    }
+    return data, ext, prov
 
 
 REVIEW_MIN = {"depicts": 40, "why_relevant": 60, "alt_text": 40, "relation": 20, "concept": 15}
@@ -269,6 +322,11 @@ def attach_reviewed(
     from lce import source_visuals
 
     source_visuals.validate_association(sel, source_check)
+    if sel.get("source") == "source_page":
+        policy = (store.settings().get("visuals") or {}).get("source_image_policy", "licensed_only")
+        if policy != "owner_accepts_copyright_risk":
+            raise StoreError("the source's own image is used without a licence only when the owner set "
+                             "visuals.source_image_policy: owner_accepts_copyright_risk")
     data, ext, prov = fetch(sel, transport)
     if prov["source_id"] in set(exclude_ids) or prov.get("title") in set(exclude_ids):
         raise StoreError("an earlier version of this post used this file")

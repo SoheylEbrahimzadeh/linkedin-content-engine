@@ -41,6 +41,15 @@ is not the same thing.
 4. Otherwise text-only `no_suitable_licensed_image`. Never a generated diagram,
    and never a visual copied from a page whose rights do not allow it.
 
+### Owner policy: the source's own image without a licence
+
+`config/settings.yaml` `visuals.source_image_policy: owner_accepts_copyright_risk` is the owner's
+decision to post the cited source's own image (Open Graph / hero image or a figure on that page)
+without an explicit licence. The engine then accepts `reviewed: {source: source_page, page_url,
+image_url, publisher}` only when the image is published on that page; provenance is
+`source_publication` / `owner_accepted_risk`, and the credit line `Image: <publisher>` is always
+added to the post. Default `licensed_only` keeps the licence requirement.
+
 ## LCE-044: real images are chosen by looking at them
 
 Matching words in metadata is not relevance: in production it picked a 1997
