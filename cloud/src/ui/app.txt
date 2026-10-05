@@ -1072,7 +1072,7 @@ function personaCard() {
   const ps = S.pipe?.persona;
   if (!ps || ps.error) return ps?.error ? card("Voice & content readiness", h("p", { class: "err small" }, ps.error)) : null;
   const set = ps.voice_traits_total - (ps.voice_gaps ?? []).length;
-  const kinds = { samples: "Real posts and messages", opinions: "Opinions", disagreements: "Disagreements", approaches: "How you approach problems", observations: "Observations" };
+  const kinds = { samples: "Real posts and messages", opinions: "Opinions", disagreements: "Disagreements", approaches: "How you approach problems", observations: "Observations", principles: "Practical rules and decision principles" };
   return card("Voice & content readiness",
     h("dl", { class: "kv" },
       h("dt", {}, "Voice traits"), h("dd", {}, `${set} of ${ps.voice_traits_total} set`, ps.voice_review ? h("span", { class: "muted" }, ` (review: ${ps.voice_review.replaceAll("_", " ")})`) : null),

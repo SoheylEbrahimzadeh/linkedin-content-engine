@@ -141,3 +141,16 @@ owner, never a reason to invent first-person language. Verdicts: `FAIL`, `SOURCE
 A manual review (`voice_gate_review` on the post, or in a refresh package) is bound to the text's
 content hash: a new text drops it, a stale one is ignored, and a review never overrides a
 mechanical failure. Approval stays the owner's and is hash-bound as before.
+
+## No stronger position than the owner's material (permanent rule, 5 Oct)
+
+When owner material supports a general principle but does not contain the specific statement, the
+writer must not paraphrase it into a stronger or more specific first-person position. Confirmed
+"AI needs human oversight" allows "AI doesn't always get it right, and a person needs to stay in
+control"; it does not allow "I wouldn't cut that checking", "I would always keep a human in the
+loop" or "I'd never automate this without …". QA: `pov.stronger_than_owner` (error) on any
+first-person stance or belief sentence whose content words are not mostly found in the referenced
+owner item (text, why, instead); it fails "no manufactured opinion" and the Voice Gate's
+owner-grounded opinion. The Golden Voice Set has a sixth kind, `principles` (practical rules and
+decision principles, target 5).
+

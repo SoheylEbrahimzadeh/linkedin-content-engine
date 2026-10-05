@@ -28,16 +28,22 @@ golden:
     applies_to:
     - itsm-it-operations
     - ai-business-automation
+    why: I wouldn't buy a triage model for a queue nobody has written rules for.
   - id: op-ownership
     text: Automation without a named owner for each decision becomes shelfware within a quarter.
     applies_to:
     - ai-business-automation
     - digital-transformation
+    why: I wouldn't build anything until someone can tell me who'll change the rule in six months. I don't
+      think handovers fail because people are careless; nobody owns the gap between two teams.
   - id: op-pilots
     text: A pilot that only measures speed hides the cost of exceptions; measure the reopened tickets
       too.
     applies_to:
     - practical-ai-implementation
+    why: 'When I review a pilot I want two numbers, not one: how much faster the happy path got and how
+      many cases fell out. If a pilot can''t show the second number, I wouldn''t scale it yet. I think
+      time saved is the wrong first question for finance.'
   observations:
   - id: ob-reopen
     text: Teams that track reopened tickets find automation candidates faster than teams that run idea
@@ -588,5 +594,24 @@ scenarios:
     verdict: FAIL
     errors:
     - pov.unbacked_belief
+    fail:
+    - no_manufactured_opinion
+- id: owner-extrapolated
+  area: stronger than the owner material
+  kind: bad
+  content_type: personal_pov
+  opinions_used:
+  - op-ownership
+  text: 'Every automation needs a named owner for each decision it makes.
+
+
+    I''d never automate a process without a full audit trail and a weekly review board. I would always
+    keep a human approving every change, because that''s the only safe way.
+
+    '
+  expect:
+    verdict: FAIL
+    errors:
+    - pov.stronger_than_owner
     fail:
     - no_manufactured_opinion
