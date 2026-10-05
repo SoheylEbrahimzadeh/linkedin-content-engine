@@ -284,6 +284,8 @@ belief_markers:               # first-person belief: needs an owner-confirmed op
   - "\\bmy first (?:question|step|check|move)\\b"
   - "\\bthe (?:one|question|thing) i(?:'d| would) (?:put|ask|raise|bring)\\b"
   - "\\bi(?:'d| would) (?:keep|leave|insist|recommend|rather|never|always)\\b"
+  - "\\b(?:for me|personally|my approach|my take|the way i see it|from where i sit|if you ask me)\\b"
+  - "\\bi(?:'d| would) say\\b"
 # ── Humanity v2 (owner rules 2026-10-05): sound real, not impressive ─────────
 stiff_phrases:                # written-report wording a person would not say aloud (style.stiff_phrase)
   [in order to, utilize, utilise, utilization, additionally, furthermore, moreover, thus, hence,

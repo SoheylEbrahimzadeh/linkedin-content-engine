@@ -585,7 +585,12 @@ def score_post(store, post_id: str) -> dict:
     out = score(text, rules=rules, codes={f.code for f in found}, post=post, samples=samples,
                 voice=store.voice(), errors=errors)
     out["post_id"] = post_id
-    out["errors"] = sorted({f.code for f in found if f.severity == "error"})
+    out["errors"] = sorted(errors)
+    # The owner's Voice Gate is a separate judgement: 10/10 here is never a voice pass.
+    from lce.voice_gate import assess
+
+    out["voice_gate"] = assess(text, post=post, golden_items=golden_items, stories=store.stories(),
+                               samples=samples, humanity=out, codes={f.code for f in found})
     return out
 
 

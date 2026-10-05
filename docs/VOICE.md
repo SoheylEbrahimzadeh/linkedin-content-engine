@@ -117,3 +117,27 @@ scenario for this regression, and `voice.yaml` `counter_examples` holds owner-fl
   "the one I would put in front of …", "I'd keep/insist/recommend" without an owner-confirmed item.
 - `pattern.written-inversion` ("Age, he says, …") and `pattern.setup-line` ("He asks a simple
   question.") fail "could be spoken"; "puts it clearly", "worth a read" are editorial phrases.
+
+## Owner Voice Gate (permanent rule, 5 Oct)
+
+**A post can pass the mechanical humanity checks and still fail the owner's Voice Gate.** A 10/10
+humanity score is never treated as proof that a post sounds like the owner. The gate
+(`lce.voice_gate`, shown under `lce humanity score` and on the post page) judges three things apart:
+
+1. **Natural English**: mechanical failures (real person, spoken, variation, stiffness, symmetry,
+   over-explaining) fail it; with none, the result is `review` (read it aloud), never an automatic pass.
+2. **Owner-grounded opinion**: every first-person sentence must come from referenced owner material;
+   personal language outside it ("For me", "my approach", "I would", "I want") fails it. With no owner
+   opinion at all the result is `insufficient`, not a failure.
+3. **Owner-recognizable phrasing / reasoning**: the owner's sentences are shown with the word pairs
+   they share with the owner's samples and confirmed items; only a person decides (`review`).
+
+Each prose sentence is classed `source`, `owner`, `writer` or `unbacked_personal`. Under 25% owner
+sentences, the post is classified **Source-heavy — insufficient owner voice**
+(`source_heavy_insufficient_owner_voice`, verdict `SOURCE_HEAVY`): an honest label to show the
+owner, never a reason to invent first-person language. Verdicts: `FAIL`, `SOURCE_HEAVY`,
+`REVIEW_NEEDED`, `PASS` (only with a manual review saying pass on all three).
+
+A manual review (`voice_gate_review` on the post, or in a refresh package) is bound to the text's
+content hash: a new text drops it, a stale one is ignored, and a review never overrides a
+mechanical failure. Approval stays the owner's and is hash-bound as before.

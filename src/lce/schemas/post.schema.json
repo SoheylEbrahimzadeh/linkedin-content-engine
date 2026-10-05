@@ -484,6 +484,60 @@
         "proposed"
       ],
       "description": "owner: the angle comes from an owner-confirmed opinion; proposed: the writer's angle, never written as the owner's belief."
+    },
+    "voice_gate_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Manual owner Voice Gate review, bound to the text's content hash (a review of another text is stale).",
+      "required": [
+        "content_hash",
+        "reviewer",
+        "at",
+        "natural_english",
+        "owner_grounded_opinion",
+        "owner_phrasing"
+      ],
+      "properties": {
+        "content_hash": {
+          "type": "string"
+        },
+        "reviewer": {
+          "enum": [
+            "owner",
+            "writer"
+          ]
+        },
+        "at": {
+          "type": "string"
+        },
+        "natural_english": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "insufficient"
+          ]
+        },
+        "owner_grounded_opinion": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "insufficient"
+          ]
+        },
+        "owner_phrasing": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "insufficient"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
     }
   }
 }

@@ -538,3 +538,80 @@ def test_credit_lines_are_not_the_closing():
     fs = run_checks(text, rules=RULES, voice={}, profile={}, post={"sources": SRC, "claims": [],
                     "stories_used": []}, stories={}, denylist=[], golden_items={}, recent=recent)
     assert "repetition.closing_recent" not in {f.code for f in fs}
+
+
+# ── the owner's Voice Gate: separate from the humanity score ──────────
+OP_TEXT = {"op-oversight": {"id": "op-oversight", "kind": "opinions", "status": "owner_confirmed",
+                            "source": "owner-2026-10-04",
+                            "text": "AI does not always get it right. It needs human judgment and control "
+                                    "over it."}}
+GATE_CLAIMS = [{"text": "Copilot asks for approval before controlling an app.", "source_url": SRC[0]["url"]},
+               {"text": "A change in timing or window state can cause Copilot to repeat an action or stall.",
+                "source_url": SRC[0]["url"]}]
+
+
+def gate(text, **post):
+    from lce.voice_gate import assess
+
+    base = {"sources": SRC, "claims": GATE_CLAIMS, "stories_used": [], "content_type": "external_insight"}
+    post = {**base, **post}
+    fs = run_checks(text, rules=RULES, voice=STRICT, profile={}, post=post, stories={}, denylist=[],
+                    golden_items=OP_TEXT)
+    codes_ = {f.code for f in fs}
+    hum = score(text, rules=RULES, codes=codes_, post=post, samples=SAMPLES,
+                errors={f.code for f in fs if f.severity == "error"})
+    return hum, assess(text, post=post, golden_items=OP_TEXT, stories={}, samples=SAMPLES, humanity=hum,
+                       codes=codes_)
+
+
+SOURCE_ONLY = (
+    "GitHub has added computer use to Copilot. It's in preview on macOS and Windows.\n\n"
+    "They say a change in timing or window state can make Copilot repeat an action or stall. "
+    "Copilot asks for approval before it controls an app.\n\n"
+    "So who checks what it clicked?"
+)
+
+
+def test_humanity_ten_is_never_a_voice_pass():
+    hum, g = gate(SOURCE_ONLY)
+    assert g["verdict"] != "PASS"
+    assert g["classification"] == "source_heavy_insufficient_owner_voice"
+    assert g["classification_label"] == "Source-heavy — insufficient owner voice"
+    assert g["dimensions"]["owner_phrasing"]["result"] == "insufficient"
+    assert "still fail" in g["rule"]
+
+
+def test_source_heavy_post_must_not_be_personalised():
+    hum, g = gate(SOURCE_ONLY + "\n\nFor me, my approach would be to check the logs.")
+    assert g["verdict"] == "FAIL" and g["dimensions"]["owner_grounded_opinion"]["result"] == "fail"
+
+
+def test_owner_sentences_are_counted_only_from_referenced_material():
+    text = SOURCE_ONLY.replace("So who checks what it clicked?",
+                               "I'd keep that approval on. AI doesn't always get it right, and a person "
+                               "needs to keep control over it.")
+    _, g = gate(text, opinions_used=["op-oversight"])
+    assert g["counts"]["owner"] == 2 and g["dimensions"]["owner_grounded_opinion"]["result"] == "pass"
+    _, g = gate(text)
+    assert g["verdict"] == "FAIL"  # without the owner's item the same words are invented
+
+
+def test_review_is_bound_to_the_text_and_never_overrides_a_failure():
+    from lce.voice_gate import assess, make_review
+
+    text = ("I'd keep that approval on. AI doesn't always get it right, and a person needs to keep "
+            "control over it.\n\nCopilot asks for approval before it controls an app.")
+    post = {"sources": SRC, "claims": GATE_CLAIMS, "stories_used": [], "content_type": "external_insight",
+            "opinions_used": ["op-oversight"]}
+    rev = make_review(text, reviewer="owner", values={"natural_english": "pass",
+                      "owner_grounded_opinion": "pass", "owner_phrasing": "pass"})
+    hum = {"criteria": [], "score": 10, "of": 10}
+    g = assess(text, post={**post, "voice_gate_review": rev}, golden_items=OP_TEXT, stories={},
+               samples=SAMPLES, humanity=hum, codes=set())
+    assert g["verdict"] == "PASS" and not g["review"]["stale"]
+    g = assess(text + " Changed.", post={**post, "voice_gate_review": rev}, golden_items=OP_TEXT,
+               stories={}, samples=SAMPLES, humanity=hum, codes=set())
+    assert g["review"]["stale"] and g["verdict"] != "PASS"
+    g = assess(text, post={**post, "voice_gate_review": rev}, golden_items=OP_TEXT, stories={},
+               samples=SAMPLES, humanity=hum, codes={"pov.unbacked_belief"})
+    assert g["verdict"] == "FAIL"
