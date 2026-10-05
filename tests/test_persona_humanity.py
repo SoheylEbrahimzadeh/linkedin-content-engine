@@ -639,3 +639,17 @@ def test_general_owner_principle_does_not_license_a_specific_first_person_positi
                  "I'd never automate this without a review.",
                  "I'd keep that approval on."):
         assert "pov.stronger_than_owner" in errs("Copilot asks before it acts. " + line), line
+
+
+def test_a_sentence_that_is_the_sources_stays_the_sources():
+    from lce.voice_gate import classify_sentences
+
+    gold = {"op-root": {"id": "op-root", "kind": "opinions", "status": "owner_confirmed", "source": "owner-x",
+                        "text": "Before replacing a system, find the underlying problem first and decide with the "
+                                "team; a migration has a cost."}}
+    post = {"opinions_used": ["op-root"], "claims": [
+        {"text": "The same infrastructure teams migrating workloads are responsible for patching systems "
+                 "and handling incidents.", "source_url": "https://example.org"}]}
+    rows = classify_sentences("The team running the migration is the same one patching systems and handling "
+                              "incidents.", post, gold, {})
+    assert rows[0]["kind"] == "source"
