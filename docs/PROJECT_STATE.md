@@ -641,3 +641,17 @@ lists ("12, 24 or 36") from three-part lists. lce-data: voice v6, WRITER.md and 
 10/10 PASS. Rescore: 29 Sep FAIL 4/10, 6 Oct FAIL 6/10, 8 Oct PARTIAL 7/10, 10 Oct FAIL 6/10
 (QA error pov.unbacked_belief). 6, 8 and 10 Oct are READY_TO_PUBLISH and keep their approvals until
 their text changes. Nothing was rewritten, approved or published.
+
+## Update 5 Oct (owner Voice Gate)
+
+Permanent owner rule: a post can pass the mechanical humanity checks and still fail the owner's
+Voice Gate (natural English, owner-grounded opinion, owner-recognizable phrasing). Engine #114
+(credit-line closings, borrowed beliefs, spoken patterns), #115 (`lce.voice_gate`, hash-bound
+`voice_gate_review`, dashboard block), #116 (sentence split after quotes). lce-data: WRITER.md,
+skills and voice.yaml carry the rule; pin 52ba9b2.
+
+Controlled candidates (scratch copy only): 6, 8 and 10 Oct each humanity 10/10 PASS and Voice Gate
+SOURCE_HEAVY (owner share 15 to 23%, every first-person sentence from a confirmed opinion). The
+production versions are Voice Gate FAIL (invented first-person views). Production texts, approvals
+(approved hash = content hash) and schedules are unchanged; a Refresh with owner re-approval is
+the owner's call.
