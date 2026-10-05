@@ -331,7 +331,8 @@ def cmd_humanity_score(args):
         return 0
     for r in rows:
         unk = f", {r['unknown']} unknown" if r["unknown"] else ""
-        print(f"{r['post_id']}: {r['score']}/{r['of']}{unk} ({r['content_type'] or 'no content type'})")
+        ct = r["content_type"] or "no content type"
+        print(f"{r['post_id']}: {r['verdict']} {r['score']}/{r['of']}{unk} ({ct})")
         for c in r["criteria"]:
             mark = {"pass": "✓", "fail": "✗", "unknown": "?"}[c["result"]]
             print(f"  {mark} {c['label']}: {c['why']}")
@@ -354,7 +355,8 @@ def cmd_humanity_eval(args):
         print(json.dumps(rows, indent=2, ensure_ascii=False))
     else:
         for r in rows:
-            print(f"{'✓' if r['ok'] else '✗'} {r['id']:<30} {r['kind']:<5} {r['score']}/{r['of']}"
+            mark = "✓" if r["ok"] else "✗"
+            print(f"{mark} {r['id']:<30} {r['kind']:<5} {r['score']}/{r['of']} {r['verdict']:<7}"
                   + (f"  {'; '.join(r['problems'])}" if r["problems"] else ""))
         print(f"{sum(r['ok'] for r in rows)}/{len(rows)} scenarios as expected")
     return 0 if all(r["ok"] for r in rows) else 1

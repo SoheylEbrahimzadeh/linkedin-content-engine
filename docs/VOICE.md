@@ -38,15 +38,33 @@ I help companies, looking for projects, book a call).
 Warnings: `voice.consultant_language`, `pattern.generic-opening`, `pattern.empty-leadership`,
 `style.jargon`, `network.fake_authority`, `repetition.structure`, `content_type.missing`.
 
-## Humanity test
+## Humanity test (owner standard, 2026-10-05)
 
-`lce humanity score <post>` scores ten criteria deterministically: point of view, real evidence,
-the owner's voice (compared with ≥3 real samples; `unknown` without them, never a pass), not
-consultant language, not interchangeable, shows how the owner thinks, networking/team signal,
-natural first person, natural ending, said aloud. `lce humanity eval` runs the bundled evaluation
-set (fictional persona, 10 areas, good and bad versions); the test suite requires every
-expectation to hold and every good text to outscore every bad one. The dashboard shows the score
-on each post and the voice and content readiness on System.
+`lce humanity score <post>` scores the owner's ten criteria deterministically. Optimized for
+sounding real, not impressive:
+
+| id | criterion | fails on |
+|---|---|---|
+| real_person | Sounds like a real person | AI tells, generic/LinkedIn hooks, filler, hype, `style.impress`, claimed authority, transactional networking, bait |
+| owner_voice | Sounds like the owner | longer sentences than the owner's samples, more first person than they use, more formal (uncontracted) than they write, `avoided_vocabulary`, near-copies of `counter_examples`, consultant/editorial codes; `unknown` with fewer than 3 samples |
+| spoken | Could be spoken naturally | average sentence > 16 words, a sentence > 28, `style.uncontracted`, `style.stiff_phrase`, editorial phrases/labels |
+| variation | Natural sentence variation | no short (≤8) or no medium (≥12) sentence, spread < 3 words, every paragraph the same size |
+| no_stiffness | No corporate stiffness | consultant language, jargon, `style.stiff_phrase` (in order to, utilize, furthermore …), `style.polished_transition` |
+| no_symmetry | No AI-style symmetry | more than one three-part list, parallel sentence openers, `style.contrast_frame` ("It's not X. It's Y."), staccato stacks |
+| no_manufactured_opinion | No manufactured opinion | `pov.unbacked_belief` (incl. "I'd look at / I'd ask" without a confirmed approach), `pov.unbacked_emotion`, invented experience, missing owner material |
+| substance | Real reasoning or a concrete observation | no basis, `insight.summary_only`, unsupported numbers, no reasoning/concrete sentence/question |
+| no_over_explaining | Doesn't over-explain | `style.over_explaining` (in other words, put simply, sentences repeating each other), `style.over_long` (> 230 words) |
+| genuine_ending | A genuine thought, not a takeaway | `ending.takeaway` (the lesson, at the end of the day, decides whether …), generic closes, CTAs, bait, repeated closings |
+
+Verdict: PASS only at 10/10. FAIL with any QA error, when "real person" or "no manufactured
+opinion" fails, or below 7. Otherwise PARTIAL. An unknown criterion can never reach PASS. The new
+style codes are QA warnings (they do not block the pipeline); the writer must clear them.
+Credit lines (Source:, Image:) and hashtags are not scored as prose.
+
+`lce humanity eval` runs the bundled evaluation set (fictional persona): every good text must
+reach 10/10 PASS and every bad one (generic, stiff, symmetric, invented, editorial,
+over-explained, forced takeaway, manufactured emotion, unbacked "I'd ask") must FAIL or miss its
+named criteria. The dashboard shows the score and verdict on each post.
 
 ## Content mix
 

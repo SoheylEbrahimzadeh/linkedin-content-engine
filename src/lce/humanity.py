@@ -12,7 +12,7 @@ without real samples in the Golden Voice Set) is reported as `unknown`, never as
 from __future__ import annotations
 
 import re
-from statistics import mean, pstdev
+from statistics import mean, median, pstdev
 
 from lce.textutil import HASHTAG_RE, paragraphs, sentences, words
 
@@ -34,8 +34,24 @@ def _phrase_hits(phrases, text: str) -> list[str]:
     return [p for p in phrases or [] if re.search(rf"(?<!\w){re.escape(p)}(?!\w)", text, re.I)]
 
 
+CREDIT_LINE_RE = re.compile(
+    r"^\s*(?:sources?|image|photo|credit|via)\s*:.*$|^\s*https?://\S+\s*$", re.I | re.M
+)
+
+
 def _body(text: str) -> str:
-    return HASHTAG_RE.sub("", text).strip()
+    """The prose a reader hears: no hashtags, no source/image credit lines."""
+    return CREDIT_LINE_RE.sub("", HASHTAG_RE.sub("", text)).strip()
+
+
+def _redundant(sents: list[str]) -> int:
+    """Consecutive sentences that mostly repeat each other (saying it twice)."""
+    out = 0
+    for a, b in zip(sents, sents[1:], strict=False):
+        wa, wb = _content_words(a), _content_words(b)
+        if len(wa) >= 4 and len(wb) >= 4 and len(wa & wb) / len(wa | wb) >= 0.5:
+            out += 1
+    return out
 
 
 def _parallel_openers(sents: list[str]) -> int:
@@ -56,6 +72,9 @@ def signals(text: str, rules: dict) -> dict:
         if FIRST_PERSON_RE.search(s) or DIGIT_RE.search(s) or PROPER_RE.search(s) or '"' in s or "“" in s
     ]
     buzz = _phrase_hits(rules.get("buzzwords"), body)
+    paras = paragraphs(body)
+    from lce.qa import TRIAD_RE
+
     return {
         "sentences": len(sents),
         "words": len(toks),
@@ -82,7 +101,22 @@ def signals(text: str, rules: dict) -> dict:
         "parallel_openers": _parallel_openers(sents),
         "rhythm_stdev": round(pstdev(lens), 1) if len(lens) > 1 else 0.0,
         "fake_authority": _hits(rules.get("fake_authority"), body),
-        "paragraphs": len(paragraphs(body)),
+        "paragraphs": len(paras),
+        # humanity v2: sounds real, not impressive
+        "stiff": _phrase_hits(rules.get("stiff_phrases"), body),
+        "polished_transitions": sum(1 for p in paras[1:] if _hits(rules.get("polished_transitions"), p)),
+        "contrast_frames": _count(rules.get("contrast_frames"), body),
+        "over_explaining": _phrase_hits(rules.get("over_explaining"), body),
+        "takeaway_ending": _hits(rules.get("takeaway_endings"), paras[-1]) if paras else 0,
+        "impress": _phrase_hits(rules.get("impress_words"), body),
+        "emotions": _count(rules.get("emotion_markers"), body),
+        "uncontracted": _count(rules.get("uncontracted"), body),
+        "contractions": _count(rules.get("contractions"), body),
+        "short_sentences": sum(1 for n in lens if 0 < n <= 8),
+        "medium_plus_sentences": sum(1 for n in lens if n >= 12),
+        "triads": len(TRIAD_RE.findall(body)),
+        "even_paragraphs": len(paras) >= 4 and len({len(sentences(p)) for p in paras}) == 1,
+        "redundant": _redundant(sents),
     }
 
 
@@ -167,6 +201,48 @@ def findings(
     ct = post.get("content_type")
     owner_view = any(golden_items.get(r, {}).get("kind") in ("opinions", "disagreements", "approaches")
                      for r in post.get("opinions_used") or [])
+    # ── humanity v2: sounds real, not impressive (owner rules 2026-10-05) ──
+    if sig["stiff"]:
+        out.append(("style.stiff_phrase", "warning",
+                    f"written-report wording ({', '.join(sig['stiff'][:4])}): say it the plain way"))
+    if sig["polished_transitions"]:
+        out.append(("style.polished_transition", "warning",
+                    f"{sig['polished_transitions']} paragraph(s) open with a polished transition "
+                    "(Moreover, That said, Ultimately …); people just start the next thought"))
+    if sig["contrast_frames"]:
+        out.append(("style.contrast_frame", "warning",
+                    "set-piece contrast ('It's not X. It's Y.', 'less X, more Y')"))
+    if sig["over_explaining"]:
+        out.append(("style.over_explaining", "warning",
+                    f"explains what it just said ({', '.join(sig['over_explaining'][:3])})"))
+    if sig["redundant"]:
+        out.append(("style.over_explaining", "warning",
+                    f"{sig['redundant']} sentence(s) repeat the one before"))
+    if sig["words"] > rules.get("metrics", {}).get("max_body_words", 230):
+        out.append(("style.over_long", "warning", f"{sig['words']} words; say less"))
+    if sig["takeaway_ending"]:
+        out.append(("ending.takeaway", "warning",
+                    "the last paragraph hands the reader a lesson or takeaway; stop on the thought itself"))
+    if sig["impress"]:
+        out.append(("style.impress", "warning",
+                    f"trying to impress ({', '.join(sig['impress'][:3])}); say what it does"))
+    if sig["uncontracted"] >= 2 and (
+        sig["contractions"] == 0 or sig["uncontracted"] > 2 * sig["contractions"] + 1
+    ):
+        out.append(("style.uncontracted", "warning",
+                    f"{sig['uncontracted']} uncontracted forms (do not, it is …) and "
+                    f"{sig['contractions']} contraction(s): reads written, not spoken"))
+    if sig["max_sentence_words"] > 28:
+        out.append(("style.long_sentence", "warning",
+                    f"a {sig['max_sentence_words']}-word sentence; nobody says that in one breath"))
+    if sig["sentences"] >= 5 and (sig["rhythm_stdev"] < 3 or not sig["short_sentences"]):
+        out.append(("style.flat_rhythm", "warning",
+                    f"sentences are all about the same length (spread {sig['rhythm_stdev']} words); "
+                    "mix short and medium ones"))
+    backed = owner_view or public or observed
+    if sig["emotions"] and not backed:
+        out.append(("pov.unbacked_emotion", "error",
+                    "a felt reaction (I was surprised, I love …) the owner never recorded"))
     if post.get("angle_origin") == "owner" and not owner_view:
         out.append(("pov.unbacked_belief", "error",
                     "angle_origin: owner, but no owner-confirmed opinion is referenced"))
@@ -223,29 +299,49 @@ def findings(
     return out
 
 
+# The owner's standard (2026-10-05): 10/10 only when every one of these holds. Optimized for
+# sounding real, not impressive.
 CRITERIA = [
-    ("pov", "Clear point of view"),
-    ("evidence", "Real evidence"),
-    ("voice", "Recognizably the owner's voice"),
-    ("not_consultant", "Not generic consultant language"),
-    ("not_interchangeable", "Not interchangeable with a vendor or analyst page"),
-    ("thinking", "Shows how the owner thinks"),
-    ("network", "Useful networking / team signal"),
-    ("first_person", "Natural first person"),
-    ("ending", "Natural ending"),
-    ("aloud", "Something the owner could say aloud"),
+    ("real_person", "Sounds like a real person"),
+    ("owner_voice", "Sounds like the owner, not a generic consultant"),
+    ("spoken", "Could be spoken naturally"),
+    ("variation", "Natural sentence variation"),
+    ("no_stiffness", "No corporate stiffness"),
+    ("no_symmetry", "No AI-style symmetry"),
+    ("no_manufactured_opinion", "No manufactured opinion"),
+    ("substance", "Real reasoning or a concrete observation"),
+    ("no_over_explaining", "Doesn't over-explain"),
+    ("genuine_ending", "Leaves a genuine thought, not a manufactured takeaway"),
 ]
 EVIDENCE_CODES = (
     "claim.unsupported_number",
-    "claim.personal_without_story",
-    "claim.experience_unsupported",
-    "brand.personal_evidence_missing",
     "source.missing",
+    "evidence.none",
+)
+MANUFACTURED_CODES = (
+    "pov.unbacked_belief",
+    "pov.unbacked_emotion",
     "pov.no_owner_opinion",
+    "golden.unconfirmed_ref",
+    "claim.experience_unsupported",
+    "claim.personal_without_story",
+    "brand.personal_evidence_missing",
     "lesson.no_story",
     "observation.no_evidence",
-    "evidence.none",
-    "golden.unconfirmed_ref",
+)
+REAL_PERSON_CODES = (
+    "phrase.ai_tell",
+    "pattern.generic-opening",
+    "pattern.empty-leadership",
+    "pattern.rhetorical-opener",
+    "pattern.reveal-question",
+    "pattern.reveal-bridge",
+    "pattern.performed-sincerity",
+    "network.fake_authority",
+    "network.transactional",
+    "bait.engagement",
+    "claim.hype",
+    "style.impress",
 )
 CONSULTANT_CODES = (
     "voice.consultant_language",
@@ -264,34 +360,105 @@ EDITORIAL_CODES = (
     "style.symmetry",
     "pov.unbacked_belief",
 )
+STIFF_CODES = (
+    "voice.consultant_language",
+    "voice.corporate_voice",
+    "style.jargon",
+    "style.stiff_phrase",
+    "style.polished_transition",
+    "voice.editorial_phrase",
+    "pattern.editorial-label",
+)
+SYMMETRY_CODES = (
+    "style.symmetry",
+    "style.triads",
+    "style.contrast_frame",
+    "pattern.not-x-but-y",
+    "pattern.staccato-stack",
+    "pattern.stacked-questions",
+)
+SPOKEN_CODES = (
+    "voice.editorial_phrase",
+    "pattern.editorial-label",
+    "style.uncontracted",
+    "style.long_sentence",
+    "style.stiff_phrase",
+)
+OVER_CODES = ("style.over_explaining", "style.over_long")
 ENDING_CODES = (
     "structure.generic_close",
     "cta.not_allowed",
     "bait.engagement",
     "network.transactional",
     "repetition.closing_recent",
+    "ending.takeaway",
 )
 
 
-def voice_match(text: str, samples: list[str], rules: dict) -> tuple[str, str]:
-    """Compare simple style statistics with the owner's real samples (≥3 needed)."""
+def _contraction_share(sig: dict) -> float:
+    n = sig["contractions"] + sig["uncontracted"]
+    return sig["contractions"] / n if n else 0.5
+
+
+def voice_match(text: str, samples: list[str], rules: dict, voice: dict | None = None) -> tuple[str, str]:
+    """Compare simple style statistics with the owner's real samples (≥3 needed).
+
+    The samples are e-mails and chats, so a post may be shorter-sentenced than they are (the
+    owner asked for shorter sentences) but not longer, not more first-person (no personal-brand
+    performance), and not more formal (contractions where the owner uses them). Owner-flagged
+    counter examples and avoided vocabulary fail it outright.
+    """
     if len(samples) < 3:
         return "unknown", f"{len(samples)} owner-confirmed sample(s); at least 3 are needed to compare"
     s = signals(text, rules)
     ref = [signals(x, rules) for x in samples]
-    ml = mean(r["mean_sentence_words"] for r in ref)
-    fp = mean(r["first_person_share"] for r in ref)
-    ok_len = abs(s["mean_sentence_words"] - ml) <= 0.35 * max(ml, 1)
-    ok_fp = abs(s["first_person_share"] - fp) <= 0.25
-    why = (
-        f"sentence length {s['mean_sentence_words']} vs {ml:.1f} in your samples; "
-        f"first person {s['first_person_share']:.0%} vs {fp:.0%}"
-    )
-    return ("pass" if ok_len and ok_fp else "fail"), why
+    ml = median(r["mean_sentence_words"] for r in ref)
+    fp = max(r["first_person_share"] for r in ref)
+    cs = mean(_contraction_share(r) for r in ref)
+    problems = []
+    if s["mean_sentence_words"] > 1.15 * ml:
+        problems.append(f"sentences longer than yours ({s['mean_sentence_words']} vs {ml:.1f} words)")
+    if s["first_person_share"] > fp + 0.1:
+        problems.append(f"more first person than you use ({s['first_person_share']:.0%})")
+    if cs >= 0.5 and s["uncontracted"] >= 2 and _contraction_share(s) < 0.34:
+        problems.append("more formal than you write (you use contractions)")
+    body = _body(text).lower()
+    v = voice or {}
+    avoided = v.get("avoided_vocabulary") if isinstance(v.get("avoided_vocabulary"), list) else []
+    hits = [a for a in avoided if a.lower() in body]
+    counter = v.get("counter_examples") if isinstance(v.get("counter_examples"), list) else []
+    near = [c for c in counter if _content_words(c) and
+            len(_content_words(c) & _content_words(body)) / len(_content_words(c)) >= 0.7]
+    if hits:
+        problems.append(f"words you avoid: {', '.join(hits)}")
+    if near:
+        problems.append(f"{len(near)} sentence(s) close to ones you marked as not your voice")
+    if problems:
+        return "fail", "; ".join(problems)
+    return "pass", (f"sentence length {s['mean_sentence_words']} (yours {ml:.1f}), first person "
+                    f"{s['first_person_share']:.0%}, contractions like yours")
 
 
-def score(text: str, *, rules: dict, codes: set[str], post: dict, samples: list[str]) -> dict:
-    """The ten humanity criteria for one text (codes = every QA finding code for it)."""
+def verdict(score_: int, res: dict, errors: set[str] | None = None) -> str:
+    """PASS only at 10/10. FAIL: a QA error, a generic/generated feel, a manufactured opinion,
+    or fewer than 7 criteria. Anything else is PARTIAL."""
+    gate = ("real_person", "no_manufactured_opinion")
+    if errors or any(res[k]["result"] == "fail" for k in gate) or score_ < 7:
+        return "FAIL"
+    return "PASS" if score_ == len(CRITERIA) else "PARTIAL"
+
+
+def score(
+    text: str,
+    *,
+    rules: dict,
+    codes: set[str],
+    post: dict,
+    samples: list[str],
+    voice: dict | None = None,
+    errors: set[str] | None = None,
+) -> dict:
+    """The owner's ten humanity criteria for one text (codes = every QA finding code for it)."""
     s = signals(text, rules)
     ct = post.get("content_type")
     res = {}
@@ -299,104 +466,92 @@ def score(text: str, *, rules: dict, codes: set[str], post: dict, samples: list[
     def put(key, ok, why, unknown=False):
         res[key] = {"result": "unknown" if unknown else ("pass" if ok else "fail"), "why": why}
 
-    editorial = sorted(codes & set(EDITORIAL_CODES))
-    # A point of view counts only when it is the owner's (a referenced owner opinion with a
-    # stance) or, for sourced posts, a reasoned consequence that borrows no belief.
-    blocked = {
-        "pov.no_owner_opinion",
-        "pov.no_stance",
-        "insight.summary_only",
-        "pov.unbacked_belief",
-        "observation.no_evidence",
-        "lesson.no_story",
-        "claim.experience_unsupported",
-    }
-    owned = bool(post.get("opinions_used")) and s["stance"] >= 1
-    reasoned = ct != "personal_pov" and s["reasoning"] >= 1
-    pov_ok = (owned or reasoned) and not (blocked & codes) and not editorial
+    def hit(group):
+        return sorted(codes & set(group))
+
+    h = hit(REAL_PERSON_CODES)
+    put("real_person", not h, ", ".join(h) or "no generated-post tells, hype or claimed authority")
+
+    r, why = voice_match(text, samples, rules, voice)
+    h = hit(CONSULTANT_CODES + EDITORIAL_CODES)
+    if h:
+        r, why = "fail", f"consultant/editorial voice ({', '.join(h)}); {why}"
+    put("owner_voice", r == "pass", why, unknown=r == "unknown")
+
+    h = hit(SPOKEN_CODES)
+    spoken = not h and s["mean_sentence_words"] <= 16 and s["max_sentence_words"] <= 28
     put(
-        "pov",
-        pov_ok,
-        f"{s['stance']} stance marker(s), {s['reasoning']} reasoning marker(s)"
-        + ("; owner opinion referenced" if post.get("opinions_used") else "")
-        + (f"; {', '.join(editorial)}" if editorial else ""),
+        "spoken",
+        spoken,
+        f"average sentence {s['mean_sentence_words']} words (≤16), longest {s['max_sentence_words']} (≤28)"
+        + (f"; {', '.join(h)}" if h else ""),
     )
-    hit = sorted(codes & set(EVIDENCE_CODES))
+
+    varied = (
+        s["short_sentences"] >= 1
+        and s["medium_plus_sentences"] >= 1
+        and (s["sentences"] < 5 or s["rhythm_stdev"] >= 3)
+        and not s["even_paragraphs"]
+        and "style.flat_rhythm" not in codes
+    )
+    put(
+        "variation",
+        varied,
+        f"{s['short_sentences']} short (≤8 words), {s['medium_plus_sentences']} medium/long (≥12), "
+        f"spread {s['rhythm_stdev']} words"
+        + ("; every paragraph the same size" if s["even_paragraphs"] else ""),
+    )
+
+    h = hit(STIFF_CODES)
+    put("no_stiffness", not h, ", ".join(h) or "plain wording")
+
+    h = hit(SYMMETRY_CODES)
+    sym_ok = not h and s["parallel_openers"] == 0 and s["triads"] <= 1
+    put(
+        "no_symmetry",
+        sym_ok,
+        ", ".join(h) or f"{s['triads']} three-part list(s), {s['parallel_openers']} parallel opener(s)",
+    )
+
+    h = hit(MANUFACTURED_CODES)
+    origin = "owner" if post.get("opinions_used") else ("proposed" if s["stance"] else "none")
+    put(
+        "no_manufactured_opinion",
+        not h,
+        ", ".join(h) or ("owner-confirmed view" if origin == "owner" else "no first-person view claimed"),
+    )
+
     has_basis = bool(
-        post.get("sources")
-        or post.get("stories_used")
-        or post.get("opinions_used")
+        post.get("sources") or post.get("stories_used") or post.get("opinions_used")
         or post.get("observations_used")
     )
+    concrete = sum(1 for x in sentences(_body(text)) if DIGIT_RE.search(x) or PROPER_RE.search(x))
+    h = hit(EVIDENCE_CODES + ("insight.summary_only",))
+    substance = has_basis and not h and (s["reasoning"] >= 1 or concrete >= 1 or "?" in _body(text))
     put(
-        "evidence",
-        has_basis and not hit,
-        ", ".join(hit) if hit else ("backed" if has_basis else "nothing recorded"),
+        "substance",
+        substance,
+        ", ".join(h) if h else (
+            f"{s['reasoning']} reasoning marker(s), {concrete} concrete sentence(s)"
+            if has_basis else "nothing recorded behind it"
+        ),
     )
-    r, why = voice_match(text, samples, rules)
-    if editorial:
-        r, why = "fail", f"polished editorial voice ({', '.join(editorial)}); {why}"
-    put("voice", r == "pass", why, unknown=r == "unknown")
-    hit = sorted(codes & set(CONSULTANT_CODES))
-    put("not_consultant", not hit, ", ".join(hit) or "no consultant or AI wording found")
-    put(
-        "not_interchangeable",
-        s["specific_share"] >= 0.3 and s["stance"] >= 1,
-        f"{s['specific_share']:.0%} of sentences are specific (first person, names, numbers)",
-    )
-    put(
-        "thinking",
-        s["reasoning"] >= 2,
-        f"{s['reasoning']} reasoning marker(s) (because, trade-off, instead, I start with …)",
-    )
-    put(
-        "network",
-        s["team"] >= 1
-        and s["reasoning"] >= 1
-        and s["stance"] >= 1
-        and not s["transactional"]
-        and not s["fake_authority"],
-        f"{s['team']} team/decision signal(s); transactional {s['transactional']}, "
-        f"claimed authority {s['fake_authority']}",
-    )
-    fp_ok = (
-        s["first_person_share"] > 0
-        and s["i_opener_share"] <= 0.35
-        and not codes & {"claim.experience_unsupported", "claim.personal_without_story"}
-    )
-    put(
-        "first_person",
-        fp_ok,
-        f"first person in {s['first_person_share']:.0%} of sentences; "
-        f"{s['i_opener_share']:.0%} start with 'I'",
-    )
-    hit = sorted(codes & set(ENDING_CODES))
-    put("ending", not hit, ", ".join(hit) or "ends on a point, not a prompt")
-    aloud = (
-        s["mean_sentence_words"] <= 22
-        and s["max_sentence_words"] <= 38
-        and not s["generic_opening"]
-        and s["buzz_per_100"] <= 2.0
-        and "phrase.ai_tell" not in codes
-        and not editorial
-    )
-    put(
-        "aloud",
-        aloud,
-        f"average sentence {s['mean_sentence_words']} words, longest {s['max_sentence_words']}"
-        + (f"; reads like a report ({', '.join(editorial)})" if editorial else ""),
-    )
+
+    h = hit(OVER_CODES)
+    put("no_over_explaining", not h, ", ".join(h) or f"{s['words']} words, nothing said twice")
+
+    h = hit(ENDING_CODES)
+    put("genuine_ending", not h, ", ".join(h) or "stops on a thought, no lesson or prompt")
+
     passed = sum(1 for v in res.values() if v["result"] == "pass")
     unknown = sum(1 for v in res.values() if v["result"] == "unknown")
-    # Whose view is it? Only a referenced owner-confirmed item makes it the owner's; any other
-    # stance was proposed by the writer and must be confirmed by the owner at approval.
-    origin = "owner" if post.get("opinions_used") else ("proposed" if s["stance"] else "none")
     return {
         "content_type": ct,
         "stance_origin": origin,
         "score": passed,
         "of": len(CRITERIA),
         "unknown": unknown,
+        "verdict": verdict(passed, res, errors),
         "criteria": [{"id": k, "label": label, **res[k]} for k, label in CRITERIA],
     }
 
@@ -426,7 +581,9 @@ def score_post(store, post_id: str) -> dict:
         golden_items=golden_items,
     )
     samples = [i["text"] for i in golden_items.values() if i["kind"] == "samples"]
-    out = score(text, rules=rules, codes={f.code for f in found}, post=post, samples=samples)
+    errors = {f.code for f in found if f.severity == "error"}
+    out = score(text, rules=rules, codes={f.code for f in found}, post=post, samples=samples,
+                voice=store.voice(), errors=errors)
     out["post_id"] = post_id
     out["errors"] = sorted({f.code for f in found if f.severity == "error"})
     return out
@@ -468,7 +625,9 @@ def evaluate(doc: dict, language: str = "en") -> list[dict]:
             golden_items=golden_items,
         )
         codes = {f.code for f in found}
-        res = score(sc["text"], rules=rules, codes=codes, post=post, samples=samples)
+        errors = {f.code for f in found if f.severity == "error"}
+        res = score(sc["text"], rules=rules, codes=codes, post=post, samples=samples,
+                    voice=sc.get("voice", voice), errors=errors)
         exp = sc.get("expect") or {}
         by = {c["id"]: c["result"] for c in res["criteria"]}
         problems = []
@@ -476,6 +635,8 @@ def evaluate(doc: dict, language: str = "en") -> list[dict]:
             problems.append(f"score {res['score']} < {exp['min_score']}")
         if "max_score" in exp and res["score"] > exp["max_score"]:
             problems.append(f"score {res['score']} > {exp['max_score']}")
+        if "verdict" in exp and res["verdict"] != exp["verdict"]:
+            problems.append(f"verdict {res['verdict']} ≠ {exp['verdict']}")
         problems += [f"missing error {e}" for e in exp.get("errors", []) if e not in codes]
         problems += [f"{c} should fail" for c in exp.get("fail", []) if by.get(c) != "fail"]
         out.append(
@@ -485,6 +646,7 @@ def evaluate(doc: dict, language: str = "en") -> list[dict]:
                 "kind": sc.get("kind"),
                 "score": res["score"],
                 "of": res["of"],
+                "verdict": res["verdict"],
                 "errors": sorted(f.code for f in found if f.severity == "error"),
                 "failed": [c["id"] for c in res["criteria"] if c["result"] == "fail"],
                 "ok": not problems,

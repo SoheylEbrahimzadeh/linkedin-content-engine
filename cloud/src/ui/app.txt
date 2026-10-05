@@ -1093,7 +1093,8 @@ function humanityCard(p) {
   if (!hm || hm.error) return null;
   const mark = { pass: "ok", fail: "warn", unknown: "muted" };
   return card("Humanity test",
-    h("p", { class: "humanity-score" }, h("span", { class: "humanity-num" }, String(hm.score)), ` of ${hm.of}`,
+    h("p", { class: "humanity-score" }, h("span", { class: "humanity-num" }, String(hm.score)), ` of ${hm.of} `,
+      hm.verdict ? h("span", { class: "pill " + ({ PASS: "ok", PARTIAL: "muted", FAIL: "warn" }[hm.verdict] ?? "muted") }, hm.verdict) : null,
       hm.unknown ? h("span", { class: "muted" }, `, ${hm.unknown} not judgeable yet`) : null,
       h("span", { class: "muted" }, `, ${CT_LABEL[hm.content_type] ?? "no content type recorded"}`)),
     hm.stance_origin === "proposed" ? h("p", { class: "notice warn small" }, "The view in this post was proposed by the writer, not taken from your recorded opinions. Approve it only if it is what you think.")
@@ -1101,7 +1102,7 @@ function humanityCard(p) {
     h("ul", { class: "hz" }, hm.criteria.map((c) => h("li", {}, h("span", { class: "hz-label" }, c.label),
       h("span", { class: "pill " + mark[c.result] }, c.result === "pass" ? "yes" : c.result === "fail" ? "no" : "unknown"),
       c.result === "pass" ? null : h("div", { class: "small muted" }, c.why)))),
-    h("p", { class: "small muted" }, "Deterministic checks of the current text; your judgement at approval still decides."));
+    h("p", { class: "small muted" }, "10 of 10 (PASS) only when every check holds. Deterministic checks of the current text; your judgement at approval still decides."));
 }
 
 function voiceSummary(v) {
