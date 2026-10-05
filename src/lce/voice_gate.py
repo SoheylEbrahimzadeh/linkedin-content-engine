@@ -54,7 +54,7 @@ PERSONALISING_RE = re.compile(
     r"i think|i believe|i agree|i(?:'m| am) (?:convinced|wary|skeptical))\b",
     re.I,
 )
-VIEW_KINDS = ("opinions", "disagreements", "approaches", "observations")
+VIEW_KINDS = ("opinions", "disagreements", "approaches", "observations", "principles")
 NATURAL_CRITERIA = (
     "real_person", "spoken", "variation", "no_stiffness", "no_symmetry", "no_over_explaining",
 )

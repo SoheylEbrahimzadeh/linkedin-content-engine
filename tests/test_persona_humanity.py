@@ -188,7 +188,7 @@ def test_voice_is_unknown_without_real_samples_never_a_pass():
 # ── private voice system ───────────────────────────────────────────────
 def test_golden_init_creates_empty_templates_only_and_keeps_existing(store):
     made = persona.init_templates(store)
-    assert len(made) == 5
+    assert len(made) == len(persona.KINDS)
     for kind in persona.KINDS:
         doc = yaml.safe_load((store.root / "profile/golden" / f"{kind}.yaml").read_text())
         assert doc["items"] == [] and doc["kind"] == kind
@@ -588,8 +588,8 @@ def test_source_heavy_post_must_not_be_personalised():
 
 def test_owner_sentences_are_counted_only_from_referenced_material():
     text = SOURCE_ONLY.replace("So who checks what it clicked?",
-                               "I'd keep that approval on. AI doesn't always get it right, and a person "
-                               "needs to keep control over it.")
+                               "I think AI doesn't always get it right. It needs human judgment and "
+                               "control over it.")
     _, g = gate(text, opinions_used=["op-oversight"])
     assert g["counts"]["owner"] == 2 and g["dimensions"]["owner_grounded_opinion"]["result"] == "pass"
     _, g = gate(text)
@@ -621,3 +621,21 @@ def test_sentences_split_after_a_closing_quote():
     from lce.textutil import sentences
 
     assert len(sentences('As he puts it, "The pilot looks great." He also says more. “Done.” Next.')) == 4
+
+
+# ── owner rule: no stronger or more specific first-person position than the material ──
+def test_general_owner_principle_does_not_license_a_specific_first_person_position():
+    def errs(text):
+        post = {"sources": SRC, "claims": [], "stories_used": [], "content_type": "external_insight",
+                "opinions_used": ["op-oversight"]}
+        fs = run_checks(text, rules=RULES, voice=STRICT, profile={}, post=post, stories={}, denylist=[],
+                        golden_items=OP_TEXT)
+        return {f.code for f in fs if f.severity == "error"}
+
+    assert "pov.stronger_than_owner" not in errs(
+        "AI doesn't always get it right, and a person needs to stay in control.")
+    for line in ("I wouldn't cut that checking, though.",
+                 "I would always keep a human in the loop.",
+                 "I'd never automate this without a review.",
+                 "I'd keep that approval on."):
+        assert "pov.stronger_than_owner" in errs("Copilot asks before it acts. " + line), line

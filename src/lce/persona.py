@@ -18,13 +18,14 @@ from __future__ import annotations
 
 from lce.store import DataStore
 
-KINDS = ("samples", "opinions", "disagreements", "approaches", "observations")
+KINDS = ("samples", "opinions", "disagreements", "approaches", "observations", "principles")
 TARGETS = {
     "samples": (10, 20),
     "opinions": (5, 10),
     "disagreements": (5, 5),
     "approaches": (5, 5),
     "observations": (5, 5),
+    "principles": (5, 5),
 }
 GOLDEN_DIR = "profile/golden"
 
@@ -57,7 +58,7 @@ CONTENT_TYPES = {
     },
 }
 POV_KINDS = ("opinions", "disagreements")
-VIEW_KINDS = ("opinions", "disagreements", "approaches")
+VIEW_KINDS = ("opinions", "disagreements", "approaches", "principles")
 
 # The voice dimensions the owner asked for (voice.yaml); each is a trait, or an explicit
 # owner-input request. `derived` fields came from documented answers and still await review.
@@ -251,6 +252,8 @@ INSTRUCTIONS = {
     "(instead), with why.",
     "approaches": "5 explanations of how you approach a kind of problem (text): what you look at first, "
     "what you ask, what you refuse to skip.",
+    "principles": "5 practical rules or decision principles you actually use (text), in your own words, "
+    "with why: what you always or never do, and when you would break the rule.",
     "observations": "5 professional observations or short stories from your own work (text), "
     "non-confidential "
     "(context without client/employer names). First-person observations in posts need one of these "

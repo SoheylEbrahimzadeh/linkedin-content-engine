@@ -197,8 +197,10 @@ def findings(
                         f"{n} symmetric construction(s) (three-part lists, parallel sentence openers); "
                         "say what matters, unevenly, like a person thinking"))
     ct = post.get("content_type")
-    owner_view = any(golden_items.get(r, {}).get("kind") in ("opinions", "disagreements", "approaches")
-                     for r in post.get("opinions_used") or [])
+    view_kinds = ("opinions", "disagreements", "approaches", "principles")
+    owner_view = any(
+        golden_items.get(r, {}).get("kind") in view_kinds for r in post.get("opinions_used") or []
+    )
     # ── humanity v2: sounds real, not impressive (owner rules 2026-10-05) ──
     if sig["stiff"]:
         out.append(("style.stiff_phrase", "warning",
@@ -241,6 +243,23 @@ def findings(
     if sig["emotions"] and not backed:
         out.append(("pov.unbacked_emotion", "error",
                     "a felt reaction (I was surprised, I love …) the owner never recorded"))
+    # Owner rule 2026-10-05: material that supports a general principle does not license a
+    # stronger or more specific first-person position ("AI needs oversight" does not make
+    # "I wouldn't cut that checking"). A first-person stance must stay close to the item's words.
+    if owner_view:
+        from lce.voice_gate import _overlap
+
+        texts = [" ".join(str(golden_items[r].get(k) or "") for k in ("text", "why", "instead"))
+                 for r in post.get("opinions_used") or [] if r in golden_items]
+        for sent in sentences(_body(text)):
+            if not FIRST_PERSON_RE.search(sent):
+                continue
+            if not (_hits(rules.get("stance_markers"), sent) or _count(rules.get("belief_markers"), sent)):
+                continue
+            if max((_overlap(sent, t) for t in texts), default=0.0) < 0.5:
+                out.append(("pov.stronger_than_owner", "error",
+                            f"{sent[:90]!r} is a more specific first-person position than the owner's "
+                            "recorded material; keep to what the owner said, or attribute it to the source"))
     if post.get("angle_origin") == "owner" and not owner_view:
         out.append(("pov.unbacked_belief", "error",
                     "angle_origin: owner, but no owner-confirmed opinion is referenced"))
@@ -318,6 +337,7 @@ EVIDENCE_CODES = (
 )
 MANUFACTURED_CODES = (
     "pov.unbacked_belief",
+    "pov.stronger_than_owner",
     "pov.unbacked_emotion",
     "pov.no_owner_opinion",
     "golden.unconfirmed_ref",
