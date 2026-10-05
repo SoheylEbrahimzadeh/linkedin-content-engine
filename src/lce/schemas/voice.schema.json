@@ -152,6 +152,14 @@
         "guillemets_allowed": {
           "type": "boolean",
           "description": "false: guillemets (« ») block QA (owner rule)."
+        },
+        "editorial_phrases_allowed": {
+          "type": "boolean",
+          "description": "false: analyst/editorial phrases and label-colon constructions block QA (owner rule)."
+        },
+        "symmetry_allowed": {
+          "type": "boolean",
+          "description": "false: three-part lists and parallel sentence openers block QA (owner rule)."
         }
       }
     },
@@ -350,6 +358,10 @@
     "registers": {
       "$ref": "#/$defs/trait",
       "description": "Which registers posts use and in what balance (owner decision)."
+    },
+    "counter_examples": {
+      "$ref": "#/$defs/trait",
+      "description": "Sentences the owner marked as NOT their voice (never imitate)."
     }
   },
   "$defs": {

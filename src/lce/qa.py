@@ -284,7 +284,7 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
     from lce.humanity import findings as realism
 
     for code, sev, msg in realism(body, rules=rules, post=post, stories=stories,
-                                  golden_items=golden_items or {}, recent=recent):
+                                  golden_items=golden_items or {}, recent=recent, voice=voice):
         add(code, ERROR if sev == "error" else WARNING, msg)
 
     known = {s["url"].rstrip("/") for s in sources}

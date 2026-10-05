@@ -335,3 +335,71 @@ def test_stance_and_reasoning_cover_plain_owner_phrasing():
         RULES,
     )
     assert s["stance"] >= 2 and s["reasoning"] >= 2
+
+
+# ── polished consultant/editorial voice (grammatically natural, not the owner) ──
+STRICT = {"formatting": {"editorial_phrases_allowed": False, "symmetry_allowed": False}}
+EDITORIAL = (
+    "A 2026 survey by Example Org listed three barriers to service desk bots.\n\n"
+    "The three barriers do not name the tool itself. My reading: they are content, control and "
+    "capacity questions. A bot needs current articles, clear limits and a team that corrects it.\n\n"
+    "That preparation is less visible than a demo. In my view, it decides whether the rollout works."
+)
+SRC = [{"url": "https://example.org/r"}]
+
+
+def found(text, voice=None, **post):
+    base = {"sources": SRC, "claims": [], "stories_used": [], "content_type": "external_insight"}
+    return {
+        f.code: f.severity
+        for f in run_checks(
+            text,
+            rules=RULES,
+            voice=voice or {},
+            profile={},
+            post={**base, **post},
+            stories=STORIES,
+            denylist=[],
+            golden_items=GOLD,
+        )
+    }
+
+
+def test_editorial_phrases_and_labels_are_errors_when_the_owner_forbids_them():
+    loose, strict = found(EDITORIAL), found(EDITORIAL, STRICT)
+    assert loose["voice.editorial_phrase"] == "warning"
+    assert strict["voice.editorial_phrase"] == "error"
+    assert strict["pattern.editorial-label"] == "error"
+    phrases = ("This suggests that queues age.", "The key takeaway is ownership.", "Bottom line: test it.")
+    for phrase in phrases:
+        assert {"voice.editorial_phrase", "pattern.editorial-label"} & set(found(STANCE + phrase, STRICT))
+
+
+def test_symmetry_needs_a_pattern_not_one_list():
+    one = "We checked rules, owners and tickets because the queue grew."
+    assert "style.symmetry" not in found(one, STRICT)
+    two = one + " Then we fixed articles, limits and staffing."
+    assert found(two, STRICT)["style.symmetry"] == "error"
+    assert "style.symmetry" not in found(two)
+
+
+def test_a_belief_without_an_owner_opinion_is_not_a_point_of_view():
+    c = found("I think ownership matters because rules age.")
+    assert c["pov.unbacked_belief"] == "error"
+    assert "pov.unbacked_belief" not in found("I think ownership matters because rules age.",
+                                              opinions_used=["op-owner"])
+    assert "pov.unbacked_belief" not in found("Ownership matters here, because rules age.")
+
+
+def test_a_reasoned_consequence_is_not_a_summary():
+    text = "A report from Example Org found that routing rules age quickly. So who rewrites them?"
+    assert "insight.summary_only" not in found(text)
+
+
+def test_the_editorial_failure_mode_fails_pov_voice_and_aloud():
+    codes_ = set(found(EDITORIAL, STRICT))
+    samples = ["I ask which ticket they reopened twice. That list is real."] * 3
+    res = score(EDITORIAL, rules=RULES, codes=codes_, post={"sources": SRC}, samples=samples)
+    by = {c["id"]: c["result"] for c in res["criteria"]}
+    assert by["pov"] == by["voice"] == by["aloud"] == "fail"
+    assert res["stance_origin"] == "none"

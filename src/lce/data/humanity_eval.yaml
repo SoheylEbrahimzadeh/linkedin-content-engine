@@ -1,6 +1,9 @@
 # LCE-051 humanity evaluation set. FICTIONAL persona ("Alex Example") and fictional sources only.
 # Each scenario is scored by lce.humanity (10 criteria) with the full QA rules. "good" texts are
 # what the engine should produce; "bad" texts are the generic patterns it must catch.
+# The persona's own formatting rules, applied to every scenario (like voice.yaml formatting).
+voice:
+  formatting: {editorial_phrases_allowed: false, symmetry_allowed: false}
 golden:
   samples:
     - id: s-standup
@@ -114,7 +117,7 @@ scenarios:
     text: |
       A survey from Example Org argues that transformation programmes stall in the second year, when the first easy wins are gone.
 
-      I think the survey is right about the timing and wrong about the cause. The second year is when the owners of the old process notice the new one is staying, and the decisions that were postponed in year one land on their desks.
+      The timing sounds right to me. The cause, less so. The second year is when the owners of the old process notice the new one is staying, and the decisions that were postponed in year one land on their desks.
 
       That is why I would plan year two around those decisions, not around new features. Which reports get switched off? Who approves exceptions now? Those answers decide whether the programme continues.
     expect: {min_score: 7}
@@ -213,3 +216,22 @@ scenarios:
 
       Thoughts?
     expect: {max_score: 4, fail: [not_consultant, ending, aloud]}
+  - id: itsm-bad-editorial
+    area: polished consultant/editorial voice
+    kind: bad
+    content_type: external_insight
+    sources: [{url: "https://example.org/survey", title: Fictional survey, publisher: Example Org}]
+    # Grammatically natural, factually careful, and still not the persona: analyst labels,
+    # a borrowed belief with no owner opinion behind it, and a symmetric three-part reading.
+    text: |
+      The hard part of chatbots on the service desk is not the chatbot.
+
+      A 2026 survey by Example Org asked service desks what is holding chatbots back. The most cited barriers were stale knowledge articles, unclear escalation rules and missing analyst time.
+
+      The three barriers do not name the tool itself. My reading: they are content, control and capacity questions. If a bot is going to answer users by itself, it needs current articles, clear limits and a team that can correct it.
+
+      That preparation is less visible than a demo. In my view, it decides whether the rollout works.
+    expect:
+      max_score: 5
+      errors: [voice.editorial_phrase, pattern.editorial-label, pov.unbacked_belief, style.symmetry]
+      fail: [pov, voice, aloud]

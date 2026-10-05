@@ -12,7 +12,7 @@ without real samples in the Golden Voice Set) is reported as `unknown`, never as
 from __future__ import annotations
 
 import re
-from statistics import mean
+from statistics import mean, pstdev
 
 from lce.textutil import HASHTAG_RE, paragraphs, sentences, words
 
@@ -36,6 +36,12 @@ def _phrase_hits(phrases, text: str) -> list[str]:
 
 def _body(text: str) -> str:
     return HASHTAG_RE.sub("", text).strip()
+
+
+def _parallel_openers(sents: list[str]) -> int:
+    """Consecutive sentences that start with the same two words (a symmetric, list-like rhythm)."""
+    heads = [tuple(words(s)[:2]) for s in sents]
+    return sum(1 for a, b in zip(heads, heads[1:], strict=False) if len(a) == 2 and a == b)
 
 
 def signals(text: str, rules: dict) -> dict:
@@ -70,6 +76,11 @@ def signals(text: str, rules: dict) -> dict:
         "generic_opening": _hits(rules.get("generic_openings"), body.split("\n", 1)[0]),
         "empty_leadership": _hits(rules.get("empty_leadership"), body),
         "transactional": _hits(rules.get("network_transactional"), body),
+        "editorial": _phrase_hits(rules.get("editorial_phrases"), body),
+        "editorial_labels": _hits(rules.get("editorial_labels"), body),
+        "beliefs": _count(rules.get("belief_markers"), body),
+        "parallel_openers": _parallel_openers(sents),
+        "rhythm_stdev": round(pstdev(lens), 1) if len(lens) > 1 else 0.0,
         "fake_authority": _hits(rules.get("fake_authority"), body),
         "paragraphs": len(paragraphs(body)),
     }
@@ -93,7 +104,14 @@ def _content_words(text: str) -> set[str]:
 
 
 def findings(
-    text: str, *, rules: dict, post: dict, stories: dict, golden_items: dict, recent: list[str] | None = None
+    text: str,
+    *,
+    rules: dict,
+    post: dict,
+    stories: dict,
+    golden_items: dict,
+    recent: list[str] | None = None,
+    voice: dict | None = None,
 ) -> list[tuple]:
     """(code, severity, message) realism findings for QA."""
     from lce import persona
@@ -129,15 +147,39 @@ def findings(
                 "story or an owner-confirmed observation",
             )
         )
+    fmt = (voice or {}).get("formatting") or {}
+    editorial_sev = "error" if fmt.get("editorial_phrases_allowed") is False else "warning"
+    for p in sig["editorial"]:
+        out.append(("voice.editorial_phrase", editorial_sev,
+                    f"analyst/editorial phrasing {p!r}: say it the way you would to a colleague"))
+    if sig["editorial_labels"]:
+        out.append(("pattern.editorial-label", editorial_sev,
+                    "a label and a colon ('My reading: …') instead of a spoken sentence"))
+    if fmt.get("symmetry_allowed") is False:
+        from lce.qa import TRIAD_RE
+
+        # One list can be how a person talks; a pattern of them is how a report reads.
+        n = len(TRIAD_RE.findall(_body(text))) + sig["parallel_openers"]
+        if n >= 2:
+            out.append(("style.symmetry", "error",
+                        f"{n} symmetric construction(s) (three-part lists, parallel sentence openers); "
+                        "say what matters, unevenly, like a person thinking"))
     ct = post.get("content_type")
+    owner_view = any(golden_items.get(r, {}).get("kind") in ("opinions", "disagreements", "approaches")
+                     for r in post.get("opinions_used") or [])
+    if sig["beliefs"] and not owner_view:
+        out.append(("pov.unbacked_belief", "error",
+                    "states a first-person belief ('I think', 'in my view', 'my reading') without an "
+                    "owner-confirmed opinion; keep it to the source fact and a clearly proposed angle"))
     if ct == "personal_pov" and not sig["stance"]:
         out.append(("pov.no_stance", "error", "a point-of-view post that never takes a position"))
-    if ct in ("external_insight", "observation") and not sig["stance"]:
+    if ct in ("external_insight", "observation") and not sig["stance"] and not sig["reasoning"] \
+            and "?" not in text:
         out.append(
             (
                 "insight.summary_only",
                 "error",
-                "summarizes without the author's reading of it (no stance); add what you think and why",
+                "only repeats the source; add the practical consequence or the question it raises",
             )
         )
     views = [golden_items[r] for r in post.get("opinions_used") or [] if r in golden_items]
@@ -209,6 +251,15 @@ CONSULTANT_CODES = (
     "style.jargon",
     "voice.corporate_voice",
     "claim.hype",
+    "voice.editorial_phrase",
+    "pattern.editorial-label",
+)
+# Grammatically natural but not the owner: analyst labels, symmetric lists, borrowed beliefs.
+EDITORIAL_CODES = (
+    "voice.editorial_phrase",
+    "pattern.editorial-label",
+    "style.symmetry",
+    "pov.unbacked_belief",
 )
 ENDING_CODES = (
     "structure.generic_close",
@@ -245,14 +296,27 @@ def score(text: str, *, rules: dict, codes: set[str], post: dict, samples: list[
     def put(key, ok, why, unknown=False):
         res[key] = {"result": "unknown" if unknown else ("pass" if ok else "fail"), "why": why}
 
-    pov_ok = s["stance"] >= 1 and not (
-        {"pov.no_owner_opinion", "pov.no_stance", "insight.summary_only"} & codes
-    )
+    editorial = sorted(codes & set(EDITORIAL_CODES))
+    # A point of view counts only when it is the owner's (a referenced owner opinion with a
+    # stance) or, for sourced posts, a reasoned consequence that borrows no belief.
+    blocked = {
+        "pov.no_owner_opinion",
+        "pov.no_stance",
+        "insight.summary_only",
+        "pov.unbacked_belief",
+        "observation.no_evidence",
+        "lesson.no_story",
+        "claim.experience_unsupported",
+    }
+    owned = bool(post.get("opinions_used")) and s["stance"] >= 1
+    reasoned = ct != "personal_pov" and s["reasoning"] >= 1
+    pov_ok = (owned or reasoned) and not (blocked & codes) and not editorial
     put(
         "pov",
         pov_ok,
-        f"{s['stance']} stance marker(s)"
-        + ("; owner opinion referenced" if post.get("opinions_used") else ""),
+        f"{s['stance']} stance marker(s), {s['reasoning']} reasoning marker(s)"
+        + ("; owner opinion referenced" if post.get("opinions_used") else "")
+        + (f"; {', '.join(editorial)}" if editorial else ""),
     )
     hit = sorted(codes & set(EVIDENCE_CODES))
     has_basis = bool(
@@ -267,6 +331,8 @@ def score(text: str, *, rules: dict, codes: set[str], post: dict, samples: list[
         ", ".join(hit) if hit else ("backed" if has_basis else "nothing recorded"),
     )
     r, why = voice_match(text, samples, rules)
+    if editorial:
+        r, why = "fail", f"polished editorial voice ({', '.join(editorial)}); {why}"
     put("voice", r == "pass", why, unknown=r == "unknown")
     hit = sorted(codes & set(CONSULTANT_CODES))
     put("not_consultant", not hit, ", ".join(hit) or "no consultant or AI wording found")
@@ -309,11 +375,13 @@ def score(text: str, *, rules: dict, codes: set[str], post: dict, samples: list[
         and not s["generic_opening"]
         and s["buzz_per_100"] <= 2.0
         and "phrase.ai_tell" not in codes
+        and not editorial
     )
     put(
         "aloud",
         aloud,
-        f"average sentence {s['mean_sentence_words']} words, longest {s['max_sentence_words']}",
+        f"average sentence {s['mean_sentence_words']} words, longest {s['max_sentence_words']}"
+        + (f"; reads like a report ({', '.join(editorial)})" if editorial else ""),
     )
     passed = sum(1 for v in res.values() if v["result"] == "pass")
     unknown = sum(1 for v in res.values() if v["result"] == "unknown")
@@ -374,6 +442,7 @@ def evaluate(doc: dict, language: str = "en") -> list[dict]:
     }
     samples = [i["text"] for i in golden_items.values() if i["kind"] == "samples"]
     stories = doc.get("stories") or {}
+    voice = doc.get("voice") or {}
     out = []
     for sc in doc["scenarios"]:
         post = {
@@ -388,7 +457,7 @@ def evaluate(doc: dict, language: str = "en") -> list[dict]:
         found = run_checks(
             sc["text"],
             rules=rules,
-            voice={},
+            voice=sc.get("voice", voice),
             profile={},
             post=post,
             stories=stories,

@@ -477,6 +477,13 @@
         "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"
       },
       "description": "Golden-set observation ids backing first-person observations."
+    },
+    "angle_origin": {
+      "enum": [
+        "owner",
+        "proposed"
+      ],
+      "description": "owner: the angle comes from an owner-confirmed opinion; proposed: the writer's angle, never written as the owner's belief."
     }
   }
 }
