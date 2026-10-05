@@ -99,7 +99,8 @@ def classify_sentences(text: str, post: dict, golden_items: dict, stories: dict)
         first = bool(FIRST_PERSON_RE.search(s))
         own = max((_overlap(s, m) for m in material), default=0.0)
         src = max((_overlap(s, c) for c in claims), default=0.0)
-        if material and (first or own >= 0.34) and not ATTRIBUTION_RE.search(s):
+        source_first = src >= 0.3 and src >= own   # a sentence that is the source's stays the source's
+        if material and (first or own >= 0.34) and not ATTRIBUTION_RE.search(s) and not source_first:
             kind = "owner"
         elif ATTRIBUTION_RE.search(s) or src >= 0.3:
             kind = "source"

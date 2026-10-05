@@ -215,7 +215,7 @@ reasoning_markers:            # reveals how the author thinks (every occurrence 
   - "\\bi (?:start|would start|'d start|begin) (?:with|by)\\b"
   - "\\bfirst,? (?:i|check|ask|look)\\b"
   - "\\bthe (?:cost|risk|constraint|bottleneck) (?:is|was)\\b"
-  - "\\b(?:the reason|that is why|that's why|since that|if they can|if it cannot|if the)\\b"
+  - "\\b(?:the reason|that is why|that's why|since that|if they can|if it cannot|if the|if it|so even)\\b"
   - "\\bmy (?:rule|default|test)\\b"
   - "\\b(?:since|given that|therefore|only then|after all|as a result)\\b"
   - "\\bbefore (?:seeking|making|moving|buying|automating|replacing|changing|giving)\\b"
