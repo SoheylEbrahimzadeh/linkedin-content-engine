@@ -376,6 +376,8 @@ SYMMETRY_CODES = (
     "pattern.stacked-questions",
 )
 SPOKEN_CODES = (
+    "pattern.written-inversion",
+    "pattern.setup-line",
     "voice.editorial_phrase",
     "pattern.editorial-label",
     "style.uncontracted",

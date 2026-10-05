@@ -105,3 +105,15 @@ Any of these codes fails the humanity criteria point of view, voice and said alo
 now passes only for an owner opinion with a stance, or (outside `personal_pov`) a reasoned
 consequence that borrows no belief. The evaluation set has a fictional `itsm-bad-editorial`
 scenario for this regression, and `voice.yaml` `counter_examples` holds owner-flagged sentences.
+
+## Voice validation fixes (5 Oct, controlled rewrite of two approved posts)
+
+- Credit lines (`Image:`, `Source:`) are no longer read as the closing: `repetition.closing_recent`,
+  `structure.generic_close` and `cta.not_allowed` look at the last prose sentence. Earlier
+  "ends like a recent post" results on posts ending with the same credit line were false positives.
+- Contractions count as a stance ("I'd keep", "I'm wary").
+- A source's framework voiced as the owner's requirement is a borrowed belief (`pov.unbacked_belief`):
+  "I want three answers", "Before I would support …", "my first question would be …",
+  "the one I would put in front of …", "I'd keep/insist/recommend" without an owner-confirmed item.
+- `pattern.written-inversion` ("Age, he says, …") and `pattern.setup-line` ("He asks a simple
+  question.") fail "could be spoken"; "puts it clearly", "worth a read" are editorial phrases.

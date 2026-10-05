@@ -506,3 +506,35 @@ def test_a_list_of_numbers_is_not_ai_symmetry():
 
     assert count_triads("another 12, 24 or 36 months") == 0
     assert count_triads("data, control and people") == 1
+
+
+# ── voice validation on real-post failure modes (synthetic wording) ────
+def test_source_framework_voiced_as_a_personal_requirement_is_flagged():
+    for line in (
+        "Before I would support a full replacement, I want three answers written down.",
+        "His question is the one I would put in front of any rip-and-replace plan.",
+        "My first question would be whether the app has an export.",
+        "So before I sign off a business case, I want three numbers next to the rate.",
+    ):
+        assert found(STANCE.replace("I think", "Ownership") + line)["pov.unbacked_belief"] == "error", line
+    assert "pov.unbacked_belief" not in found("I'd keep that approval on, because rules age.",
+                                              opinions_used=["op-owner"])
+
+
+def test_contractions_count_as_taking_a_position():
+    from lce.humanity import signals
+
+    assert signals("I'd keep that approval on.", RULES)["stance"] >= 1
+
+
+def test_written_inversions_setup_lines_and_editorial_credit_phrases():
+    c = found("Age, he says, doesn't tell you much. He asks a simple question. The author puts it clearly.")
+    assert {"pattern.written-inversion", "pattern.setup-line", "voice.editorial_phrase"} <= set(c)
+
+
+def test_credit_lines_are_not_the_closing():
+    text = "A survey found rules age.\n\nSo who rewrites them?\n\nImage: Example Org"
+    recent = ["Other post.\n\nImage: Example Org"]
+    fs = run_checks(text, rules=RULES, voice={}, profile={}, post={"sources": SRC, "claims": [],
+                    "stories_used": []}, stories={}, denylist=[], golden_items={}, recent=recent)
+    assert "repetition.closing_recent" not in {f.code for f in fs}
