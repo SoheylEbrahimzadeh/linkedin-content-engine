@@ -44,6 +44,15 @@ TRIAD_RE = re.compile(r"\b[\w'-]+(?: [\w'-]+)?, [\w'-]+(?: [\w'-]+)?,? (?:and|or
 FLAGS = re.I | re.M
 
 
+def count_triads(text: str) -> int:
+    """Three-part word lists ('a, b and c'); a list of numbers ('12, 24 or 36') is how people talk."""
+    def numeric(m: str) -> bool:
+        parts = re.split(r",\s*(?:and |or )?|\s+(?:and|or)\s+", m, flags=re.I)
+        return all(re.fullmatch(r"[\d.,%]+", x.strip()) for x in parts[-2:])
+
+    return sum(1 for m in TRIAD_RE.findall(text) if not numeric(m))
+
+
 @dataclass(frozen=True)
 class Finding:
     code: str
@@ -233,7 +242,7 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
     per100 = body.count("—") / max(len(toks), 1) * 100
     if per100 > metrics["max_em_dashes_per_100_words"]:
         add("style.em_dash", WARNING, f"{body.count('—')} em dashes")
-    triads = len(TRIAD_RE.findall(body))
+    triads = count_triads(body)
     if triads > metrics["max_triads"]:
         add("style.triads", WARNING, f"{triads} three-part lists")
     if body.count("!") > metrics["max_exclamations"]:

@@ -499,3 +499,10 @@ def test_owner_counter_examples_and_avoided_words_fail_owner_voice():
 def test_credit_lines_and_hashtags_are_not_prose():
     res, _ = humanity(NATURAL + "\n\nSource: https://example.org/survey\nImage: Example Org\n\n#ITSM #AI")
     assert res["verdict"] == "PASS", res["criteria"]
+
+
+def test_a_list_of_numbers_is_not_ai_symmetry():
+    from lce.qa import count_triads
+
+    assert count_triads("another 12, 24 or 36 months") == 0
+    assert count_triads("data, control and people") == 1
