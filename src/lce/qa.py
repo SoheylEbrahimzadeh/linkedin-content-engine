@@ -86,7 +86,12 @@ def _opening(text: str) -> str:
     return text.strip().split("\n", 1)[0]
 
 
+CREDIT_RE = re.compile(r"^\s*(?:sources?|image|photo|credit|via)\s*:.*$|^\s*https?://\S+\s*$", re.I | re.M)
+
+
 def _closing(text: str) -> str:
+    """The last sentence of the prose (credit lines and hashtags are not the closing)."""
+    text = CREDIT_RE.sub("", text)
     paras = [c for c in (HASHTAG_RE.sub("", p).strip() for p in paragraphs(text)) if c]
     return (sentences(paras[-1]) or [""])[-1] if paras else ""
 
@@ -179,7 +184,8 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
             break
 
     # ── closing & CTA ─────────────────────────────────────────────────
-    closing = next((c for c in (HASHTAG_RE.sub("", p).strip() for p in reversed(paras)) if c), "")
+    prose = [CREDIT_RE.sub("", p).strip() for p in paras]
+    closing = next((c for c in (HASHTAG_RE.sub("", p).strip() for p in reversed(prose)) if c), "")
     last_sentence = (sentences(closing) or [""])[-1]
     if any(re.search(rx, last_sentence, re.I) for rx in rules.get("generic_close", [])):
         add("structure.generic_close", WARNING,
