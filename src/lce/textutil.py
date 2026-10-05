@@ -15,7 +15,7 @@ EMOJI_RE = re.compile(
     "[\U0001F1E6-\U0001F1FF\U0001F300-\U0001F5FF\U0001F600-\U0001F64F\U0001F680-\U0001F6FF"
     "\U0001F700-\U0001F77F\U0001F900-\U0001F9FF\U0001FA70-\U0001FAFF☀-⛿✀-➿]"
 )
-SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+")
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|(?<=[.!?][\"”’)])\s+|\n+")
 # A number that could carry a factual claim: currency, percentages, multipliers,
 # decimals, thousands separators. Group 1 is the numeric core.
 NUMBER_RE = re.compile(

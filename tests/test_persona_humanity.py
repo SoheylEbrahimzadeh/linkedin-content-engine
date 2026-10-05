@@ -615,3 +615,9 @@ def test_review_is_bound_to_the_text_and_never_overrides_a_failure():
     g = assess(text, post={**post, "voice_gate_review": rev}, golden_items=OP_TEXT, stories={},
                samples=SAMPLES, humanity=hum, codes={"pov.unbacked_belief"})
     assert g["verdict"] == "FAIL"
+
+
+def test_sentences_split_after_a_closing_quote():
+    from lce.textutil import sentences
+
+    assert len(sentences('As he puts it, "The pilot looks great." He also says more. “Done.” Next.')) == 4
