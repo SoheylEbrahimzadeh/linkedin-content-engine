@@ -104,6 +104,7 @@ def signals(text: str, rules: dict) -> dict:
         "paragraphs": len(paras),
         # humanity v2: sounds real, not impressive
         "stiff": _phrase_hits(rules.get("stiff_phrases"), body),
+        "bookish": _phrase_hits(rules.get("bookish_words"), body),
         "polished_transitions": sum(1 for p in paras[1:] if _hits(rules.get("polished_transitions"), p)),
         "contrast_frames": _count(rules.get("contrast_frames"), body),
         "over_explaining": _phrase_hits(rules.get("over_explaining"), body),
@@ -205,6 +206,10 @@ def findings(
     if sig["stiff"]:
         out.append(("style.stiff_phrase", "warning",
                     f"written-report wording ({', '.join(sig['stiff'][:4])}): say it the plain way"))
+    if sig["bookish"]:
+        out.append(("style.bookish", "warning",
+                    f"bookish words ({', '.join(sorted(set(sig['bookish']))[:5])}): use the word you'd say "
+                    "out loud (but, about, many, people, buy, help, enough, ...)"))
     if sig["polished_transitions"]:
         out.append(("style.polished_transition", "warning",
                     f"{sig['polished_transitions']} paragraph(s) open with a polished transition "
@@ -411,6 +416,7 @@ EDITORIAL_CODES = (
     "pov.unbacked_belief",
 )
 STIFF_CODES = (
+    "style.bookish",
     "voice.consultant_language",
     "voice.corporate_voice",
     "style.jargon",
@@ -428,6 +434,7 @@ SYMMETRY_CODES = (
     "pattern.stacked-questions",
 )
 SPOKEN_CODES = (
+    "style.bookish",
     "pattern.written-inversion",
     "pattern.setup-line",
     "voice.editorial_phrase",

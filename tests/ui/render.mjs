@@ -200,12 +200,14 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
   await page.waitForTimeout(300);
   const hum = await page.locator("section.card", { hasText: "Humanity (mechanical floor)" }).innerText().catch(() => "");
-  const gate = await page.locator("section.card", { hasText: "Soheyl Voice Gate" }).innerText().catch(() => "");
+  const gateEl = page.locator("details.voice-gate").first();
+  await gateEl.locator("summary").click().catch(() => {});
+  const gate = await gateEl.innerText().catch(() => "");
   for (const want of ["SOURCE HEAVY", "insufficient owner voice", "18% of sentences", "Owner-grounded meaning", "still fail the owner's Voice Gate", "answer the owner intake"]) {
     if (!gate.includes(want)) errors.push(`${name}: voice gate card lacks "${want}"`);
   }
   const strip = await page.locator(".quality-strip").innerText().catch(() => "");
-  for (const want of ["Humanity 7/10", "(mechanical)", "Voice Gate SOURCE HEAVY", "Source-heavy", "Owner-grounded", "Needs owner input", "No approval", "mechanical floor, not proof of your voice"]) {
+  for (const want of ["Humanity 7/10", "No approval", "read like a person talking"]) {
     if (!strip.includes(want)) errors.push(`${name}: quality strip lacks "${want}"`);
   }
   for (const want of ["7", "of 10", "not judgeable yet", "External insight", "Sounds like the owner", "unknown", "PARTIAL", "Humanity (mechanical floor)", "does not mean the post sounds like you"]) {

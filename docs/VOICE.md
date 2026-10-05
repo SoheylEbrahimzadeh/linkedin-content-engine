@@ -250,3 +250,11 @@ scheduler is gated too (QA alone passed such a text: its findings are warnings).
 refused text back to NEEDS_REVISION with the revisions. Exempt: the owner's own Control Center edit
 (`owner_edit`) and a media-only refresh of an unchanged, already approved text.
 
+## Spoken tone is the standard (owner, 5 Oct)
+
+The owner's measure is simple: the post must read like a person talking to a colleague, not a
+written article. `style.bookish` (ruleset `bookish_words`: however, approximately, regarding,
+demonstrate, numerous, ...) fails "could be spoken" and "no stiffness", so the writing gate refuses
+it. The Voice Gate stays as an informational owner-material check (collapsed on the post page);
+the no-invented-opinion rules still block.
+
