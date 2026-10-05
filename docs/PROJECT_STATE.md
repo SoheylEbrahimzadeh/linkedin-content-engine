@@ -655,3 +655,18 @@ SOURCE_HEAVY (owner share 15 to 23%, every first-person sentence from a confirme
 production versions are Voice Gate FAIL (invented first-person views). Production texts, approvals
 (approved hash = content hash) and schedules are unchanged; a Refresh with owner re-approval is
 the owner's call.
+
+## Update 5 Oct (writing gate: the dashboard only receives revised text)
+
+Root cause of 5/10 posts on the dashboard: humanity style findings were QA warnings, so a package
+could reach approval with a failing score; the dashboard only displayed it. Engine #121 (voice
+architecture: semantic owner scope, intake workflow, separate Humanity / Voice Gate / approval
+signals, end-to-end approval-hash tests) and #122 (writing gate: safe contractions, refusal with
+every revision, `lce humanity revise`). lce-data #117: mandatory revision loop in WRITER.md, owner
+intake (questions only), profile provenance, stale dashboard-check expectations fixed, crash
+annotations in the dashboard scripts, pin a550962.
+
+Scratch candidates (not in production): 6, 8 and 10 Oct each pass the writing gate at 10/10 and are
+Voice Gate SOURCE_HEAVY with no invented personal sentence. Production 6, 8 and 10 Oct are unchanged
+(READY_TO_PUBLISH, approved hash = text hash), unscheduled and unpublished; a Refresh plus owner
+re-approval is the owner's call.
