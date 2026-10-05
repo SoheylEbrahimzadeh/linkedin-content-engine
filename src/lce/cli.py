@@ -321,6 +321,45 @@ def cmd_opinion_for(args):
     return 1
 
 
+def cmd_intake(args):
+    """Owner-material intake (raw → normalized → owner confirmation → voice profile)."""
+    from lce import intake
+
+    store = _store(args)
+    if args.intake_cmd == "show":
+        print(intake.questionnaire(store), end="")
+    elif args.intake_cmd == "answer":
+        it = intake.answer(store, args.qid, args.raw)
+        n = len(it["answers"])
+        print(f"✓ {it['id']}: raw answer stored verbatim ({n} answer(s)); status {it['status']}")
+    elif args.intake_cmd == "propose":
+        prop = yaml.safe_load(Path(args.file).read_text(encoding="utf-8"))
+        it = intake.propose(store, args.qid, prop)
+        print(f"✓ {it['id']}: {it['status']} (hash {it['proposal_hash']}); "
+              "the owner confirms this exact wording")
+    elif args.intake_cmd == "review":
+        rows = intake.review(store)
+        if args.json:
+            print(json.dumps(rows, indent=2, ensure_ascii=False))
+        for r in rows if not args.json else []:
+            print(f"{r['id']} [{r['kind']}] {r['status']} hash {r['hash']}")
+            for raw in r["raw"]:
+                print(f"  raw: {raw}")
+            print(f"  proposed: {r['proposal']['text']}")
+            for a in (r["proposal"].get("ambiguities") or []):
+                print(f"  unresolved: {a}")
+    elif args.intake_cmd == "confirm":
+        it = intake.confirm(store, args.qid, args.hash)
+        print(f"✓ {it['id']} confirmed by the owner and stored in the private voice profile")
+    elif args.intake_cmd == "reject":
+        intake.reject(store, args.qid, args.note or "")
+        print(f"✓ {args.qid} rejected; nothing stored")
+    elif args.intake_cmd == "unresolved":
+        intake.mark_unresolved(store, args.qid, args.note)
+        print(f"✓ {args.qid} marked unresolved: {args.note}")
+    return 0
+
+
 def cmd_humanity_score(args):
     from lce.humanity import score_post
 
@@ -346,10 +385,11 @@ def cmd_humanity_score(args):
                 print(f"    {k}: {d['result']} ({d['why']})")
             c = g["counts"]
             print(f"    sentences: {c['source']} source, {c['owner']} owner, {c['writer']} writer, "
-                  f"{c['unbacked_personal']} unbacked personal")
+                  f"{c['invented_personal']} invented personal")
             if getattr(args, "sentences", False):
                 for row in g["sentences"]:
-                    print(f"      [{row['kind']}] {row['sentence']}")
+                    note = f"  ({row['note']})" if row.get("note") else ""
+                    print(f"      [{row['kind']}] {row['sentence']}{note}")
     return 0
 
 
@@ -1572,6 +1612,30 @@ def build_parser() -> argparse.ArgumentParser:
     p = gcmd(g3, "for", cmd_opinion_for, "what does the owner actually believe about this post?")
     p.add_argument("post")
     p.add_argument("--json", action="store_true")
+    gi = group("intake", "owner-material intake: raw answer → proposal → owner confirmation")
+    for name, helptext in (("show", "print the consolidated questionnaire"),
+                           ("review", "proposals waiting for the owner, with the hash to confirm")):
+        p = gcmd(gi, name, cmd_intake, helptext)
+        p.set_defaults(intake_cmd=name)
+        if name == "review":
+            p.add_argument("--json", action="store_true")
+    p = gcmd(gi, "answer", cmd_intake, "store the owner's raw answer verbatim")
+    p.set_defaults(intake_cmd="answer")
+    p.add_argument("qid")
+    p.add_argument("--raw", required=True)
+    p = gcmd(gi, "propose", cmd_intake, "attach the normalized interpretation (YAML file) for confirmation")
+    p.set_defaults(intake_cmd="propose")
+    p.add_argument("qid")
+    p.add_argument("--file", required=True)
+    p = gcmd(gi, "confirm", cmd_intake, "the owner confirmed exactly this proposal (hash from review)")
+    p.set_defaults(intake_cmd="confirm")
+    p.add_argument("qid")
+    p.add_argument("--hash", required=True)
+    for name in ("reject", "unresolved"):
+        p = gcmd(gi, name, cmd_intake, f"mark a question {name}")
+        p.set_defaults(intake_cmd=name)
+        p.add_argument("qid")
+        p.add_argument("--note", required=(name == "unresolved"))
     g4 = group("humanity", "humanity test (10 criteria, deterministic)")
     p = gcmd(g4, "score", cmd_humanity_score, "score a post's current text (read-only)")
     p.add_argument("post", nargs="+")

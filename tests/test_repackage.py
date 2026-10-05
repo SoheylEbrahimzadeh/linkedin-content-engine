@@ -407,7 +407,7 @@ def test_a_rejected_post_is_not_reopened(store):
 def test_voice_gate_review_is_bound_to_the_new_text_and_never_carried_over(store):
     pid = legacy_post(store)
     refresh_click(store, pid)
-    rev = {"natural_english": "pass", "owner_grounded_opinion": "insufficient",
+    rev = {"natural_english": "pass", "owner_grounded_meaning": "insufficient",
            "owner_phrasing": "insufficient", "notes": "source-heavy"}
     repackage.package(store, pid, {**PKG, "voice_gate_review": rev})
     post = store.load_post(pid)

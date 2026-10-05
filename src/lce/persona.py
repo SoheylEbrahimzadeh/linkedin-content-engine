@@ -18,7 +18,10 @@ from __future__ import annotations
 
 from lce.store import DataStore
 
-KINDS = ("samples", "opinions", "disagreements", "approaches", "observations", "principles")
+KINDS = (
+    "samples", "opinions", "disagreements", "approaches", "observations", "principles",
+    "noticings", "explanations", "never_say", "priorities",
+)
 TARGETS = {
     "samples": (10, 20),
     "opinions": (5, 10),
@@ -26,6 +29,10 @@ TARGETS = {
     "approaches": (5, 5),
     "observations": (5, 5),
     "principles": (5, 5),
+    "noticings": (5, 5),
+    "explanations": (5, 5),
+    "never_say": (5, 5),
+    "priorities": (5, 5),
 }
 GOLDEN_DIR = "profile/golden"
 
@@ -58,7 +65,8 @@ CONTENT_TYPES = {
     },
 }
 POV_KINDS = ("opinions", "disagreements")
-VIEW_KINDS = ("opinions", "disagreements", "approaches", "principles")
+VIEW_KINDS = ("opinions", "disagreements", "approaches", "principles", "priorities")
+OBSERVATION_KINDS = ("observations", "noticings")
 
 # The voice dimensions the owner asked for (voice.yaml); each is a trait, or an explicit
 # owner-input request. `derived` fields came from documented answers and still await review.
@@ -83,6 +91,10 @@ VOICE_TRAITS = [
     ("challenge_style", "How common assumptions are challenged"),
     ("signature_patterns", "Recognizable writing patterns"),
     ("anti_generic", "Anti-corporate / anti-generic rules"),
+    ("natural_phrases", "Phrases the owner naturally uses"),
+    ("communication_habits", "Communication habits"),
+    ("reasoning_patterns", "Reasoning patterns"),
+    ("professional_priorities", "Professional priorities"),
 ]
 
 
@@ -116,7 +128,7 @@ def evidence_for(store: DataStore, content_type: str, pillar: str | None = None)
     stories = public_stories_for(store, pillar=pillar) if pillar else public_stories_for(store)
     pov = [i for i in confirmed(store, POV_KINDS).values() if _matches(i, pillar)]
     approaches = [i for i in confirmed(store, ("approaches",)).values() if _matches(i, pillar)]
-    observations = [i for i in confirmed(store, ("observations",)).values() if _matches(i, pillar)]
+    observations = [i for i in confirmed(store, OBSERVATION_KINDS).values() if _matches(i, pillar)]
     needs = CONTENT_TYPES[content_type]["needs"]
     ok = {
         "sources": True,
@@ -180,7 +192,7 @@ def requirement_findings(
     if ct == "personal_lesson" and not public:
         out.append(("lesson.no_story", "error", "a personal lesson needs a PUBLIC story"))
     obs = [golden_items[r] for r in post.get("observations_used") or [] if r in golden_items]
-    if ct == "observation" and not (public or any(o["kind"] == "observations" for o in obs)):
+    if ct == "observation" and not (public or any(o["kind"] in OBSERVATION_KINDS for o in obs)):
         out.append(
             (
                 "observation.no_evidence",
@@ -254,6 +266,12 @@ INSTRUCTIONS = {
     "what you ask, what you refuse to skip.",
     "principles": "5 practical rules or decision principles you actually use (text), in your own words, "
     "with why: what you always or never do, and when you would break the rule.",
+    "noticings": "5 things you keep noticing in your field (text): small, recurring, concrete.",
+    "explanations": "5 examples of how you explain a technical or business problem to someone (text), "
+    "in your own words; they teach the writer your reasoning order.",
+    "never_say": "5 things you would never say on LinkedIn (text): phrases, claims or tones. Posts may "
+    "not contain them.",
+    "priorities": "5 things you genuinely care about in professional work (text), with why.",
     "observations": "5 professional observations or short stories from your own work (text), "
     "non-confidential "
     "(context without client/employer names). First-person observations in posts need one of these "

@@ -29,13 +29,23 @@ golden:
     - itsm-it-operations
     - ai-business-automation
     why: I wouldn't buy a triage model for a queue nobody has written rules for.
+    scope:
+      actions:
+      - buy
   - id: op-ownership
     text: Automation without a named owner for each decision becomes shelfware within a quarter.
     applies_to:
     - ai-business-automation
     - digital-transformation
     why: I wouldn't build anything until someone can tell me who'll change the rule in six months. I don't
-      think handovers fail because people are careless; nobody owns the gap between two teams.
+      think handovers fail because people are careless; nobody owns the gap between two teams. Every automation
+      I'd sign off on has a name next to each decision it makes. What I ask for is one named person from
+      the project side for the first month after go-live.
+    scope:
+      actions:
+      - sign
+      - ask
+      - build
   - id: op-pilots
     text: A pilot that only measures speed hides the cost of exceptions; measure the reopened tickets
       too.
@@ -43,11 +53,24 @@ golden:
     - practical-ai-implementation
     why: 'When I review a pilot I want two numbers, not one: how much faster the happy path got and how
       many cases fell out. If a pilot can''t show the second number, I wouldn''t scale it yet. I think
-      time saved is the wrong first question for finance.'
+      time saved is the wrong first question for finance. So in a business case I put one decision at
+      the top, with its owner, and the time figure underneath.'
+    scope:
+      actions:
+      - put
+      - scale
+      - want
   observations:
   - id: ob-reopen
     text: Teams that track reopened tickets find automation candidates faster than teams that run idea
       workshops.
+    why: These days I pull last month's reopened tickets and group them by the step where they broke.
+      Then I start with the group the service desk complains about least.
+    scope:
+      actions:
+      - pull
+      - start
+      - group
 stories:
   st-migration:
     story_id: st-migration

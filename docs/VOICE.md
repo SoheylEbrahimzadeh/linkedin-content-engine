@@ -1,5 +1,10 @@
 # Voice system (LCE-051)
 
+> **Humanity score is a mechanical floor, not proof of owner voice.**
+> **No stronger position than confirmed owner material.**
+> Source-heavy posts stay source-heavy; any text change invalidates the approval.
+> The final architecture is summarised in "Voice architecture (final, 5 Oct)" at the end.
+
 The engine keeps three kinds of content apart and never lets one stand in for another:
 
 | Content type | What it is | What it needs (never invented) |
@@ -153,4 +158,67 @@ first-person stance or belief sentence whose content words are not mostly found 
 owner item (text, why, instead); it fails "no manufactured opinion" and the Voice Gate's
 owner-grounded opinion. The Golden Voice Set has a sixth kind, `principles` (practical rules and
 decision principles, target 5).
+
+## Voice architecture (final, 5 Oct)
+
+Two separate systems, shown separately everywhere (CLI, post page, quality strip):
+
+| System | What it checks | What it never means |
+|---|---|---|
+| Humanity (`lce.humanity`, 10 criteria) | spoken English, rhythm, contractions, long sentences, stiffness, over-explaining, AI symmetry, corporate wording, artificial endings, repeated structures | that the post sounds like the owner |
+| Soheyl Voice Gate (`lce.voice_gate`) | 1. natural English, 2. owner-grounded meaning, 3. owner-recognizable phrasing and reasoning | a pass without a manual review on the current text hash |
+
+**Sentence attribution.** Every prose sentence is `source` (attributed, or matching a recorded claim at
+least as well as owner material), `owner` (a faithful paraphrase of a referenced confirmed item),
+`writer` (connective framing that adds no personal meaning) or `invented_personal` (a personal
+position, or a writer judgement such as "should", "the right way", "is a mistake", that neither the
+owner material nor the source states). Any invented personal sentence fails the gate.
+
+**No stronger position than confirmed owner material** (`lce.owner_scope`). A faithful paraphrase
+is allowed. Not allowed, unless the owner confirmed exactly that: a stronger position (absolutes
+such as always, never, every, must that the item lacks), a narrower operational position (a
+first-person commitment to an action the item does not contain: "I'd keep approval on", "I'd
+require approval for every action", "I wouldn't cut that checking"), a broader one ("everything",
+"in general"), a different one (flipped polarity, an antonym, "I agree with him" without a
+recorded agreement). The verdict is semantic: synonym groups, polarity, absolutes, commitments and
+scope, with word overlap as one signal only. An item's owner-confirmed `scope`,
+`allowed_paraphrases` and `forbidden_interpretations` come first. QA codes:
+`pov.stronger_than_owner`, `pov.narrower_than_owner`, `pov.broader_than_owner`,
+`pov.different_from_owner`, `pov.unsupported_by_owner` (errors); `voice.never_say` for anything
+close to an owner never-say item.
+
+**Source-heavy.** Under 25% owner sentences: `source_heavy_insufficient_owner_voice`, verdict
+SOURCE_HEAVY, flagged "needs owner input". Acceptable when the source is strong, attribution is
+clear, the writing is natural and no owner position is invented. Never fixed by adding first-person
+language.
+
+**Owner material** (`profile/golden/<kind>.yaml`): samples, opinions, disagreements, approaches,
+observations, principles, noticings, explanations, never_say, priorities. Each item keeps the
+owner's raw words (`original`, never overwritten), the confirmed normalized wording (`text`),
+type (the file's kind), `confidence`, `provenance` (channel, question, proposal hash, dates),
+`public_use` (true, false, or null = not asked), semantic `scope` (meaning, strength, actions,
+topics, agrees_with, excludes), `allowed_paraphrases` and `forbidden_interpretations`. The voice
+profile also has `natural_phrases`, `communication_habits`, `reasoning_patterns` and
+`professional_priorities`.
+
+**Voice-learning workflow** (`lce intake`, file `interview/intake.yaml`):
+
+```
+raw owner answer            lce intake answer <id> --raw "..."      (verbatim, appended)
+→ normalized proposal       lce intake propose <id> --file p.yaml   (text, scope, paraphrases,
+                                                                     forbidden, ambiguities)
+→ owner review              lce intake review                       (shows the proposal hash)
+→ owner confirmation        lce intake confirm <id> --hash <hash>   (only that exact proposal)
+→ private voice profile     profile/golden/<kind>.yaml or a voice trait
+```
+
+A proposal with ambiguities is `unresolved` and cannot be confirmed; no answer (or owner draft)
+means nothing can be proposed; confirmed material is never overwritten; `lce intake show` prints
+the consolidated questionnaire with already-confirmed material listed and not asked again.
+
+**Approval safety.** Approval is bound to the text hash. Any change (edit, same-day refresh,
+Refresh replacement) invalidates it: local publish and cloud delegation refuse a stale approval,
+the decisions path refuses a decision bound to an old hash, `mark_ready` discards a changed
+approval, and a Voice Gate review of an older text is stale. Tested end to end in
+`tests/test_approval_hash_safety.py`. The dashboard shows "Approval invalid (text changed)".
 

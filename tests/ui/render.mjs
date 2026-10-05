@@ -39,11 +39,12 @@ const pipe = { meta: { mirror: { received_at: day(0) } },
       { id: "real_person", label: "Sounds like a real person", result: "pass", why: "no generated-post tells" },
       { id: "owner_voice", label: "Sounds like the owner, not a generic consultant", result: "unknown", why: "0 owner-confirmed samples; at least 3 are needed" },
       { id: "spoken", label: "Could be spoken naturally", result: "fail", why: "style.uncontracted" }],
-      voice_gate: { verdict: "SOURCE_HEAVY", classification_label: "Source-heavy — insufficient owner voice", owner_share: 0.18,
-        counts: { owner: 2, source: 7, writer: 2 }, rule: "A post can pass the mechanical humanity checks and still fail the owner's Voice Gate.",
-        dimensions: { natural_english: { result: "review", why: "read it aloud" }, owner_grounded_opinion: { result: "pass", why: "2 owner sentences" },
+      voice_gate: { verdict: "SOURCE_HEAVY", classification: "source_heavy_insufficient_owner_voice", classification_label: "Source-heavy — insufficient owner voice", owner_share: 0.18,
+        needs_owner_input: true, owner_input_reason: "not enough confirmed owner material on this topic; answer the owner intake",
+        counts: { owner: 2, source: 7, writer: 2, invented_personal: 0 }, rule: "A post can pass the mechanical humanity checks and still fail the owner's Voice Gate.",
+        sentences: [], dimensions: { natural_english: { result: "review", why: "read it aloud" }, owner_grounded_meaning: { result: "pass", why: "2 owner sentences" },
           owner_phrasing: { result: "review", why: "only a person can say" } } } } },
-          { post_id: "20261008-demo-b", state: "READY_TO_PUBLISH", text: TEXT, actual_hash: "a".repeat(64), plan_date: ymd(3), topic: "B", image: { kind: "diagram", file: "diagram.png", alt_text: "A diagram", sha256: "e" } },
+          { post_id: "20261008-demo-b", state: "READY_TO_PUBLISH", text: TEXT, actual_hash: "a".repeat(64), approval: { state: "approved", approved_hash: "b".repeat(64) }, plan_date: ymd(3), topic: "B", image: { kind: "diagram", file: "diagram.png", alt_text: "A diagram", sha256: "e" } },
           { post_id: "20261010-demo-d", state: "NEEDS_REVISION", text: "Needs work.", actual_hash: "f".repeat(64), plan_date: ymd(4), format: "video", topic: "D" }],
   calendar: [{ date: ymd(1), topic: "Agentic AI in ITSM", status: "awaiting_approval", draft_ref: "20261006-demo-a" },
              { date: ymd(3), topic: "B", status: "ready_to_publish", draft_ref: "20261008-demo-b" },
@@ -198,10 +199,22 @@ for (const [name, vp] of [["desktop", { width: 1280, height: 900 }], ["mobile", 
   // LCE-051: humanity test on the post page; voice and content readiness on System
   await page.goto(`http://127.0.0.1:${port}/#post/20261006-demo-a`);
   await page.waitForTimeout(300);
-  const hum = await page.locator("section.card", { hasText: "Humanity test" }).innerText().catch(() => "");
-  for (const want of ["7", "of 10", "not judgeable yet", "External insight", "Sounds like the owner", "unknown", "PARTIAL", "proposed by the writer", "Voice Gate", "SOURCE HEAVY", "insufficient owner voice", "18% of sentences", "still fail the owner's Voice Gate"]) {
+  const hum = await page.locator("section.card", { hasText: "Humanity (mechanical floor)" }).innerText().catch(() => "");
+  const gate = await page.locator("section.card", { hasText: "Soheyl Voice Gate" }).innerText().catch(() => "");
+  for (const want of ["SOURCE HEAVY", "insufficient owner voice", "18% of sentences", "Owner-grounded meaning", "still fail the owner's Voice Gate", "answer the owner intake"]) {
+    if (!gate.includes(want)) errors.push(`${name}: voice gate card lacks "${want}"`);
+  }
+  const strip = await page.locator(".quality-strip").innerText().catch(() => "");
+  for (const want of ["Humanity 7/10", "(mechanical)", "Voice Gate SOURCE HEAVY", "Source-heavy", "Owner-grounded", "Needs owner input", "No approval", "mechanical floor, not proof of your voice"]) {
+    if (!strip.includes(want)) errors.push(`${name}: quality strip lacks "${want}"`);
+  }
+  for (const want of ["7", "of 10", "not judgeable yet", "External insight", "Sounds like the owner", "unknown", "PARTIAL", "Humanity (mechanical floor)", "does not mean the post sounds like you"]) {
     if (!hum.includes(want)) errors.push(`${name}: humanity card lacks "${want}"`);
   }
+  await page.goto(`http://127.0.0.1:${port}/#post/20261008-demo-b`);
+  await page.waitForTimeout(300);
+  const strip2 = await page.locator(".quality-strip").innerText().catch(() => "");
+  if (!strip2.includes("Approval invalid (text changed)")) errors.push(`${name}: a changed text does not show approval invalid`);
   await page.goto(`http://127.0.0.1:${port}/#system`);
   await page.waitForTimeout(300);
   const per = await page.locator("section.card", { hasText: "Voice & content readiness" }).innerText().catch(() => "");

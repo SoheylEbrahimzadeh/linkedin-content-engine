@@ -841,6 +841,7 @@ function viewPost(id) {
       B(locked ? `Undo ${locked}` : "Cancel", () => A.cancel(d), "small")) : null,
     outcomeLine(id, true),
     progressPanel(p, d) ?? refreshBanner(p, d),
+    qualityStrip(p),
     stepper(code),
     h("div", { class: "detail" },
       h("div", { class: "detail-main" }, h("div", { class: "stage" }, feedPreview(p, c),
@@ -859,6 +860,7 @@ function viewPost(id) {
         ])),
         p && !locked ? freshCard(p, c, consent) : null,
         p && !locked ? researchCard(p) : null,
+        voiceGateCard(p),
         humanityCard(p),
         mediaCard(p, c),
         card("Humanization", h("ul", { class: "hz" }, humanizationRows(p, voice).map((r) =>
@@ -1088,37 +1090,73 @@ function personaCard() {
     h("p", { class: "small muted" }, "Counts only. Your material stays in the private repository (profile/golden, story bank); nothing is invented to fill a gap."));
 }
 
-function humanityCard(p) {
+function humanityOf(p) {
   const hm = p ? (S.pipe?.posts ?? []).find((x) => x.post_id === p.post_id)?.humanity : null;
-  if (!hm || hm.error) return null;
+  return !hm || hm.error ? null : hm;
+}
+
+// Approval is valid only while the approved hash equals the current text hash.
+function approvalValidity(p) {
+  const a = p?.approval ?? {};
+  if (!a.state || a.state === "none") return { tone: "muted", text: "no approval" };
+  if (a.state !== "approved") return { tone: "muted", text: `approval ${a.state}` };
+  return a.approved_hash && p.actual_hash && a.approved_hash === p.actual_hash
+    ? { tone: "ok", text: "approval valid" }
+    : { tone: "warn", text: "approval invalid (text changed)" };
+}
+
+// One line that keeps the separate judgements visibly separate.
+function qualityStrip(p) {
+  const hm = humanityOf(p);
+  if (!hm && !p?.approval) return null;
+  const g = hm?.voice_gate;
+  const gateTone = { PASS: "ok", FAIL: "warn", SOURCE_HEAVY: "muted", REVIEW_NEEDED: "muted" };
+  const meaning = g?.dimensions?.owner_grounded_meaning?.result;
+  const appr = approvalValidity(p);
+  const chips = [
+    hm ? h("span", { class: "pill " + (hm.verdict === "PASS" ? "ok" : hm.verdict === "FAIL" ? "warn" : "muted") }, `Humanity ${hm.score}/${hm.of} ${hm.verdict} (mechanical)`) : null,
+    g ? h("span", { class: "pill " + (gateTone[g.verdict] ?? "muted") }, `Voice Gate ${g.verdict.replace("_", " ")}`) : null,
+    g && g.classification === "source_heavy_insufficient_owner_voice" ? h("span", { class: "pill muted" }, "Source-heavy") : null,
+    meaning ? h("span", { class: "pill " + (meaning === "pass" ? "ok" : meaning === "fail" ? "warn" : "muted") }, meaning === "pass" ? "Owner-grounded" : meaning === "fail" ? "Not owner-grounded" : "No owner material") : null,
+    g?.needs_owner_input ? h("span", { class: "pill muted" }, "Needs owner input") : null,
+    h("span", { class: "pill " + appr.tone }, appr.text[0].toUpperCase() + appr.text.slice(1)),
+  ].filter(Boolean);
+  return h("div", { class: "quality-strip" }, h("div", { class: "chips" }, chips),
+    h("p", { class: "small muted" }, "Humanity is a mechanical floor, not proof of your voice. Voice Gate and approval are separate."));
+}
+
+function humanityCard(p) {
+  const hm = humanityOf(p);
+  if (!hm) return null;
   const mark = { pass: "ok", fail: "warn", unknown: "muted" };
-  return card("Humanity test",
+  return card("Humanity (mechanical floor)",
     h("p", { class: "humanity-score" }, h("span", { class: "humanity-num" }, String(hm.score)), ` of ${hm.of} `,
       hm.verdict ? h("span", { class: "pill " + ({ PASS: "ok", PARTIAL: "muted", FAIL: "warn" }[hm.verdict] ?? "muted") }, hm.verdict) : null,
       hm.unknown ? h("span", { class: "muted" }, `, ${hm.unknown} not judgeable yet`) : null,
       h("span", { class: "muted" }, `, ${CT_LABEL[hm.content_type] ?? "no content type recorded"}`)),
-    hm.stance_origin === "proposed" ? h("p", { class: "notice warn small" }, "The view in this post was proposed by the writer, not taken from your recorded opinions. Approve it only if it is what you think.")
-      : hm.stance_origin === "owner" ? h("p", { class: "small ok-text" }, "The view comes from your recorded opinions.") : null,
     h("ul", { class: "hz" }, hm.criteria.map((c) => h("li", {}, h("span", { class: "hz-label" }, c.label),
       h("span", { class: "pill " + mark[c.result] }, c.result === "pass" ? "yes" : c.result === "fail" ? "no" : "unknown"),
       c.result === "pass" ? null : h("div", { class: "small muted" }, c.why)))),
-    h("p", { class: "small muted" }, "10 of 10 (PASS) only when every check holds. Deterministic checks of the current text; your judgement at approval still decides."),
-    voiceGate(hm.voice_gate));
+    h("p", { class: "small muted" }, "Catches known writing tells only. Even 10 of 10 does not mean the post sounds like you: see the Voice Gate."));
 }
 
 // Owner Voice Gate: a separate judgement; a 10/10 humanity score is never a voice pass.
-function voiceGate(g) {
+function voiceGateCard(p) {
+  const g = humanityOf(p)?.voice_gate;
   if (!g) return null;
   const tone = { PASS: "ok", FAIL: "warn", SOURCE_HEAVY: "muted", REVIEW_NEEDED: "muted" };
-  const label = { natural_english: "Natural English", owner_grounded_opinion: "Owner-grounded opinion", owner_phrasing: "Sounds like you (phrasing, reasoning)" };
+  const label = { natural_english: "Natural English", owner_grounded_meaning: "Owner-grounded meaning", owner_phrasing: "Sounds like you (phrasing, reasoning)" };
   const word = { pass: "yes", fail: "no", insufficient: "not enough of you", review: "needs your read" };
   const c = g.counts ?? {};
-  return h("div", { class: "voice-gate" },
-    h("h4", {}, "Voice Gate ", h("span", { class: "pill " + (tone[g.verdict] ?? "muted") }, g.verdict.replace("_", " "))),
-    h("p", { class: "small" }, g.classification_label, ` · ${Math.round((g.owner_share ?? 0) * 100)}% of sentences from your own material (${c.owner ?? 0} yours, ${c.source ?? 0} source, ${c.writer ?? 0} writer)`),
+  const invented = (g.sentences ?? []).filter((r) => r.kind === "invented_personal");
+  return card("Soheyl Voice Gate",
+    h("p", {}, h("span", { class: "pill " + (tone[g.verdict] ?? "muted") }, g.verdict.replace("_", " ")), " ", g.classification_label),
+    h("p", { class: "small" }, `${Math.round((g.owner_share ?? 0) * 100)}% of sentences from your confirmed material: ${c.owner ?? 0} yours, ${c.source ?? 0} source, ${c.writer ?? 0} writer framing, ${c.invented_personal ?? 0} invented personal`),
+    invented.length ? h("ul", { class: "list small" }, invented.map((r) => h("li", {}, h("span", { class: "warn-text" }, r.sentence), r.note ? h("span", { class: "muted" }, ` (${r.note})`) : null))) : null,
     h("ul", { class: "hz" }, Object.entries(g.dimensions ?? {}).map(([k, d]) => h("li", {}, h("span", { class: "hz-label" }, label[k] ?? k),
       h("span", { class: "pill " + (d.result === "pass" ? "ok" : d.result === "fail" ? "warn" : "muted") }, word[d.result] ?? d.result),
       h("div", { class: "small muted" }, d.why)))),
+    g.needs_owner_input ? h("p", { class: "notice info small" }, g.owner_input_reason) : null,
     h("p", { class: "small muted" }, g.rule));
 }
 

@@ -175,9 +175,10 @@ def _validate_package(pkg: dict) -> None:
         raise StoreError(f"unknown content_type {pkg['content_type']!r} ({', '.join(CONTENT_TYPES)})")
     rev = pkg.get("voice_gate_review")
     if rev is not None:
-        from lce.voice_gate import REVIEW_FIELDS, REVIEW_VALUES
+        from lce.voice_gate import LEGACY_REVIEW_FIELDS, REVIEW_FIELDS, REVIEW_VALUES
 
-        bad = [k for k in REVIEW_FIELDS if (rev or {}).get(k) not in REVIEW_VALUES]
+        rev = {LEGACY_REVIEW_FIELDS.get(k, k): v for k, v in (rev or {}).items()}
+        bad = [k for k in REVIEW_FIELDS if rev.get(k) not in REVIEW_VALUES]
         if bad:
             raise StoreError(f"voice_gate_review needs {', '.join(bad)} as one of {', '.join(REVIEW_VALUES)}")
     if pkg.get("angle_origin") not in (None, "owner", "proposed"):
