@@ -173,6 +173,8 @@ def _validate_package(pkg: dict) -> None:
 
     if pkg.get("content_type") and pkg["content_type"] not in CONTENT_TYPES:
         raise StoreError(f"unknown content_type {pkg['content_type']!r} ({', '.join(CONTENT_TYPES)})")
+    if pkg.get("angle_origin") not in (None, "owner", "proposed"):
+        raise StoreError("angle_origin must be owner (an owner-confirmed view) or proposed")
     media = pkg.get("media") or {}
     if "keep" in media:
         raise StoreError("Refresh replaces the media too: a new real image (commons) or text_only")
@@ -364,7 +366,8 @@ def package(
             ]
             post.pop("regeneration", None)
             # LCE-051: the package says what kind of post it is and which owner material it uses
-            for key in ("content_type", "opinions_used", "observations_used", "stories_used"):
+            keys = ("content_type", "opinions_used", "observations_used", "stories_used", "angle_origin")
+            for key in keys:
                 if pkg.get(key):
                     post[key] = pkg[key]
             store.save_post(post)
