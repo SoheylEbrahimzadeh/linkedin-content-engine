@@ -242,7 +242,17 @@ def execute_job(store: DataStore, job: dict, inv: str, cfg: dict) -> dict:
                 return transition(store, job, J.BLOCKED, "image: " + "; ".join(img_errors), inv,
                                   blocked_reason="needs_input")
             record_step(store, job, "approval_artifact", "started", inv)
-            prepare(store, pid)
+            try:
+                prepare(store, pid)
+            except StoreError as exc:
+                if not str(exc).startswith("writing gate"):
+                    raise
+                # a weak draft goes back to the writer with the revisions, never to the owner
+                from lce.posts import set_state
+
+                set_state(store, store.load_post(pid), P.NEEDS_REVISION, str(exc)[:500])
+                record_step(store, job, "approval_artifact", "done", inv, "writing gate: revise")
+                return _revision(store, job, "writing_gate", inv, cfg)
             record_step(store, job, "approval_artifact", "done", inv, "AWAITING_APPROVAL")
             state = P.AWAITING_APPROVAL
         if state in DONE_STATES:

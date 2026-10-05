@@ -115,10 +115,18 @@ def render_artifact(store: DataStore, post: dict, text: str, h: str) -> str:
     return "\n".join(lines)
 
 
-def prepare(store: DataStore, post_id: str) -> tuple[dict, str]:
+def prepare(store: DataStore, post_id: str, *, writing_gate: bool = True) -> tuple[dict, str]:
+    """DUPLICATE_CHECKED → AWAITING_APPROVAL. The single door to the owner's approval: every
+    writer text passes the writing gate here, whatever path produced it (refresh package, same-day
+    update, CLI draft + scheduler, version restore). Exempt: the owner's own edit, and a media-only
+    refresh that leaves an already approved text unchanged (`writing_gate=False`)."""
     post = store.load_post(post_id)
     if PostState(post["state"]) != S.DUPLICATE_CHECKED:
         raise StoreError(f"approval needs a DUPLICATE_CHECKED post; this one is {post['state']}")
+    if writing_gate and (post.get("humanization") or {}).get("source") != "owner_edit":
+        from lce.repackage import writing_gate as gate
+
+        gate(store, post_id)
     h = _require_consistent(store, post)
     errors, _ = images.check(store, post_id)
     if errors:

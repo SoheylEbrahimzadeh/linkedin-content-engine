@@ -10,10 +10,10 @@ from lce.store import DataStore
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "examples" / "demo-persona"
 GOOD_POST = (
-    "Most small service teams do not need a model to sort tickets.\n\n"
+    "Most small service teams don't need a model to sort tickets.\n\n"
     "In our pilot, manual triage dropped from about 40 minutes a day to about 10, "
     "using twelve keyword rules.\n\n"
-    "Start with the boring rules. They cover more than you expect, and they are easy to "
+    "Start with the boring rules. They cover more than you expect, and they're easy to "
     "explain to the team.\n\n"
     "What was the first rule you automated?\n"
 )
