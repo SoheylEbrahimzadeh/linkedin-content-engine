@@ -645,8 +645,8 @@ def test_a_sentence_that_is_the_sources_stays_the_sources():
     from lce.voice_gate import classify_sentences
 
     gold = {"op-root": {"id": "op-root", "kind": "opinions", "status": "owner_confirmed", "source": "owner-x",
-                        "text": "Before replacing a system, find the underlying problem first and decide with the "
-                                "team; a migration has a cost."}}
+                        "text": "Before replacing a system, find the underlying problem first and decide "
+                                "with the team; a migration has a cost."}}
     post = {"opinions_used": ["op-root"], "claims": [
         {"text": "The same infrastructure teams migrating workloads are responsible for patching systems "
                  "and handling incidents.", "source_url": "https://example.org"}]}
