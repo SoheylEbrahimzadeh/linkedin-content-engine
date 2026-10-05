@@ -630,3 +630,14 @@ avoided phrases and counter examples), WRITER.md and skills rules, pin c9fef44.
 Rescore with v5: 29 Sep 3/10, FAIL (four QA errors). The approved 6 Oct post now shows
 `style.symmetry` and the 10 Oct post (AWAITING_APPROVAL) shows `pov.unbacked_belief`; approved posts
 are not re-checked unless their text changes. Nothing was approved, rewritten or published.
+
+## Update 5 Oct (humanity v2: sound real, not impressive)
+
+Owner standard: 10/10 only when the text sounds like a real person and like the owner, could be
+spoken, varies its sentences, has no stiffness, symmetry, manufactured opinion, over-explaining or
+manufactured takeaway, and has real reasoning or a concrete observation. Engine #112 (criteria,
+ruleset, QA warnings, verdict PASS/PARTIAL/FAIL, eval set 23/23) and a follow-up excluding number
+lists ("12, 24 or 36") from three-part lists. lce-data: voice v6, WRITER.md and skills target
+10/10 PASS. Rescore: 29 Sep FAIL 4/10, 6 Oct FAIL 6/10, 8 Oct PARTIAL 7/10, 10 Oct FAIL 6/10
+(QA error pov.unbacked_belief). 6, 8 and 10 Oct are READY_TO_PUBLISH and keep their approvals until
+their text changes. Nothing was rewritten, approved or published.

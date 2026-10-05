@@ -73,7 +73,7 @@ def signals(text: str, rules: dict) -> dict:
     ]
     buzz = _phrase_hits(rules.get("buzzwords"), body)
     paras = paragraphs(body)
-    from lce.qa import TRIAD_RE
+    from lce.qa import count_triads
 
     return {
         "sentences": len(sents),
@@ -114,7 +114,7 @@ def signals(text: str, rules: dict) -> dict:
         "contractions": _count(rules.get("contractions"), body),
         "short_sentences": sum(1 for n in lens if 0 < n <= 8),
         "medium_plus_sentences": sum(1 for n in lens if n >= 12),
-        "triads": len(TRIAD_RE.findall(body)),
+        "triads": count_triads(body),
         "even_paragraphs": len(paras) >= 4 and len({len(sentences(p)) for p in paras}) == 1,
         "redundant": _redundant(sents),
     }
@@ -190,10 +190,8 @@ def findings(
         out.append(("pattern.editorial-label", editorial_sev,
                     "a label and a colon ('My reading: …') instead of a spoken sentence"))
     if fmt.get("symmetry_allowed") is False:
-        from lce.qa import TRIAD_RE
-
         # One list can be how a person talks; a pattern of them is how a report reads.
-        n = len(TRIAD_RE.findall(_body(text))) + sig["parallel_openers"]
+        n = sig["triads"] + sig["parallel_openers"]
         if n >= 2:
             out.append(("style.symmetry", "error",
                         f"{n} symmetric construction(s) (three-part lists, parallel sentence openers); "
