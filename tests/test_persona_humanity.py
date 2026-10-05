@@ -181,7 +181,7 @@ def test_bundled_evaluation_set_matches_every_expectation():
 
 def test_voice_is_unknown_without_real_samples_never_a_pass():
     res = score(STANCE, rules=RULES, codes=set(), post={"sources": [{"url": "x"}]}, samples=[])
-    voice = next(c for c in res["criteria"] if c["id"] == "voice")
+    voice = next(c for c in res["criteria"] if c["id"] == "owner_voice")
     assert voice["result"] == "unknown" and res["unknown"] == 1
 
 
@@ -396,12 +396,12 @@ def test_a_reasoned_consequence_is_not_a_summary():
     assert "insight.summary_only" not in found(text)
 
 
-def test_the_editorial_failure_mode_fails_pov_voice_and_aloud():
+def test_the_editorial_failure_mode_fails_voice_spoken_and_opinion():
     codes_ = set(found(EDITORIAL, STRICT))
     samples = ["I ask which ticket they reopened twice. That list is real."] * 3
     res = score(EDITORIAL, rules=RULES, codes=codes_, post={"sources": SRC}, samples=samples)
     by = {c["id"]: c["result"] for c in res["criteria"]}
-    assert by["pov"] == by["voice"] == by["aloud"] == "fail"
+    assert by["owner_voice"] == by["spoken"] == by["no_manufactured_opinion"] == "fail"
     assert res["stance_origin"] == "none"
 
 
@@ -410,3 +410,92 @@ def test_an_owner_angle_needs_an_owner_opinion():
     assert found(text, angle_origin="owner")["pov.unbacked_belief"] == "error"
     assert "pov.unbacked_belief" not in found(text, angle_origin="owner", opinions_used=["op-owner"])
     assert "pov.unbacked_belief" not in found(text, angle_origin="proposed")
+
+
+# ── humanity v2: the owner's ten-point standard (2026-10-05) ───────────
+NATURAL = (
+    "Example Org surveyed 300 service desks about their chatbots. 40% have paused one in the first year.\n\n"
+    "The reason they give most often is stale knowledge articles. Not the model.\n\n"
+    "That fits how these bots work. They answer from whatever's in the knowledge base, so an article "
+    "nobody's touched in two years turns into a wrong answer, delivered with total confidence.\n\n"
+    "So how many of those paused bots would've been fine with a month of article cleanup first?"
+)
+CLAIMS = [
+    {"text": "Example Org surveyed 300 service desks about their chatbots", "source_url": SRC[0]["url"]},
+    {"text": "40% have paused one in the first year", "source_url": SRC[0]["url"]},
+]
+SAMPLES = [
+    "I stopped asking teams for automation ideas in workshops. I ask which ticket they reopened twice "
+    "last week, because that list is shorter and it's real.",
+    "The vendor demo worked because the data was clean, and ours wasn't. I'd rather start with the mess "
+    "we have than the process we wish we had.",
+    "Most of my time on rollouts goes into the handover, not the build. If the service desk can't explain "
+    "the rule, it won't survive the first incident.",
+]
+
+
+def humanity(text, voice=None, **post):
+    base = {"sources": SRC, "claims": CLAIMS, "stories_used": [], "content_type": "external_insight"}
+    post = {**base, **post}
+    fs = run_checks(text, rules=RULES, voice=voice or STRICT, profile={}, post=post, stories=STORIES,
+                    denylist=[], golden_items=GOLD)
+    res = score(text, rules=RULES, codes={f.code for f in fs}, post=post, samples=SAMPLES,
+                voice=voice, errors={f.code for f in fs if f.severity == "error"})
+    return res, {c["id"]: c["result"] for c in res["criteria"]}
+
+
+def test_ten_out_of_ten_only_when_every_criterion_holds():
+    res, by = humanity(NATURAL)
+    assert res["score"] == 10 and res["verdict"] == "PASS", res["criteria"]
+    assert [c for c, _ in __import__("lce.humanity", fromlist=["CRITERIA"]).CRITERIA] == list(by)
+    res, by = humanity(NATURAL.replace("That fits", "Furthermore, that fits"))
+    assert by["no_stiffness"] == "fail" and res["verdict"] != "PASS"
+
+
+def test_unknown_voice_can_never_reach_pass():
+    res = score(NATURAL, rules=RULES, codes=set(), post={"sources": SRC}, samples=[])
+    assert res["unknown"] == 1 and res["verdict"] != "PASS"
+
+
+@pytest.mark.parametrize(
+    "edit, criterion",
+    [
+        (lambda t: t.replace("That fits how", "In order to utilize them, that fits how"), "no_stiffness"),
+        (lambda t: t.replace("Not the model.", "It is not the model.").replace("would've", "would have"),
+         "spoken"),
+        (lambda t: t + "\n\nIt's not about the bot. It's about the articles.", "no_symmetry"),
+        (lambda t: t.replace("So how many", "I was genuinely surprised. So how many"),
+         "no_manufactured_opinion"),
+        (lambda t: t.replace("So how many", "I think this matters. So how many"), "no_manufactured_opinion"),
+        (lambda t: t.replace("So how many", "I'd look at the articles first. So how many"),
+         "no_manufactured_opinion"),
+        (lambda t: t.replace("That fits how", "In other words, that fits how"), "no_over_explaining"),
+        (lambda t: t + "\n\nThe lesson is simple: clean up the articles first.", "genuine_ending"),
+        (lambda t: "Hot take: chatbots are a game-changer.\n\n" + t, "real_person"),
+        (lambda t: t.replace("So how many", "This is groundbreaking. So how many"), "real_person"),
+    ],
+)
+def test_each_rule_breaks_its_criterion(edit, criterion):
+    _, by = humanity(edit(NATURAL))
+    assert by[criterion] == "fail", by
+
+
+def test_flat_rhythm_and_even_paragraphs_fail_variation():
+    flat = "\n\n".join(
+        "Example Org asked service desks about chatbots today. Many said their knowledge articles were old."
+        for _ in range(4)
+    )
+    _, by = humanity(flat)
+    assert by["variation"] == "fail"
+
+
+def test_owner_counter_examples_and_avoided_words_fail_owner_voice():
+    v = {**STRICT, "avoided_vocabulary": ["total confidence"],
+         "counter_examples": ["The three most cited barriers do not name the model itself."]}
+    _, by = humanity(NATURAL, voice=v)
+    assert by["owner_voice"] == "fail"
+
+
+def test_credit_lines_and_hashtags_are_not_prose():
+    res, _ = humanity(NATURAL + "\n\nSource: https://example.org/survey\nImage: Example Org\n\n#ITSM #AI")
+    assert res["verdict"] == "PASS", res["criteria"]

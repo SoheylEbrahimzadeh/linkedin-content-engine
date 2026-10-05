@@ -150,6 +150,8 @@ generic_openings:             # first line that could open any AI-written post �
   - "^(?:ai|automation|technology|digital transformation) is (?:transforming|changing|reshaping|revolutionizing|disrupting)\\b"
   - "^the (?:world|landscape|future) of [^.\\n]{1,40} is (?:changing|evolving|here)\\b"
   - "^(?:let'?s talk about|let'?s dive into|today i want to talk about)\\b"
+  - "^(?:hot take|unpopular opinion|big news|stop doing|here'?s why|let me tell you|i'?m (?:excited|thrilled|happy) to (?:share|announce))\\b"
+  - "^(?:most people|everyone) (?:think|thinks|get|gets|believe|believes)\\b"
 empty_leadership:             # thought-leadership filler with no content → warning (pattern.empty-leadership)
   - "\\b(?:the key|success) (?:is|lies in) (?:to )?(?:embrac|adapt|mindset|culture|people)"
   - "\\bit'?s all about (?:the )?(?:people|mindset|culture|value|balance)\\b"
@@ -264,3 +266,50 @@ belief_markers:               # first-person belief: needs an owner-confirmed op
   - "\\bmy (?:view|opinion|take|reading|read) (?:is|was)\\b"
   - "\\bmy (?:reading|take)\\s*:"
   - "\\bi (?:agree|disagree)\\b"
+  - "\\bi(?:'d| would) (?:look at|ask|check|start|want|push|test|begin|measure|try|go with)\\b"
+# ── Humanity v2 (owner rules 2026-10-05): sound real, not impressive ─────────
+stiff_phrases:                # written-report wording a person would not say aloud (style.stiff_phrase)
+  [in order to, utilize, utilise, utilization, additionally, furthermore, moreover, thus, hence,
+   therefore, consequently, subsequently, in terms of, with regard to, with respect to, regarding the,
+   a wide range of, a variety of, plays a crucial role, plays a key role, plays a vital role,
+   is crucial, is essential, is paramount, it is important to, it is essential to, in the context of,
+   facilitate, endeavour, endeavor, commence, prior to, in light of, a number of, ensure that,
+   whereby, aforementioned, notwithstanding, overarching, holistic, robust, landscape, stakeholders,
+   key drivers, value proposition, actionable insights, best practices, going forward, moving forward]
+polished_transitions:         # paragraph openers that glue a report together (style.polished_transition)
+  - "^(?:moreover|furthermore|additionally|in addition|that said|with that in mind|against this backdrop|building on this|on the other hand|ultimately|consequently|as a result|importantly|interestingly|crucially|notably|to that end|in this context|by contrast|similarly|equally)\\b"
+contrast_frames:              # set-piece contrasts (style.contrast_frame)
+  - "\\bit'?s not (?:just |only |really )?(?:about )?[^.\\n]{1,50}\\.\\s+it'?s (?:about )?"
+  - "\\b(?:isn'?t|is not|aren'?t|are not) (?:just |only |really )?(?:about )?[^.,\\n]{1,40}\\. (?:it'?s|they'?re|it is|they are)\\b"
+  - "\\bless (?:about )?[^.,\\n]{1,30},? (?:and )?more (?:about )?\\w"
+  - "\\bnot because [^.\\n]{1,50}, but because\\b"
+over_explaining:              # spelling out what was just said (style.over_explaining)
+  [in other words, put simply, simply put, to put it simply, that is to say, to be clear,
+   this means that, what this means is, which means that, in essence, essentially,
+   to put it another way, let me explain, let me unpack, to break it down, the point is]
+takeaway_endings:             # manufactured lesson in the last paragraph (ending.takeaway)
+  - "^(?:so,?\\s+)?(?:the|my|one|a) (?:lesson|takeaway|moral|message|point|key)\\b"
+  - "\\b(?:at the end of the day|in the end|ultimately|the bottom line|in short|in summary|to sum up|to summari[sz]e|all in all|long story short)\\b"
+  - "\\b(?:remember|never forget|don'?t forget)[:,]?\\s"
+  - "\\bthat'?s (?:why|what) [^.\\n]{0,40}(?:matters|counts|makes the difference)\\b"
+  - "\\b(?:the real|the actual) (?:question|lesson|work|challenge) is\\b"
+  - "\\b(?:the|those) (?:teams|companies|organi[sz]ations|leaders) (?:that|who) [^.\\n]{1,60} will (?:win|lead|thrive|succeed)\\b"
+  - "\\b(?:decides|determines|will decide|will determine) (?:whether|if|who|which)\\b"
+  - "\\bwhat (?:really |actually )?(?:matters|counts) (?:is|most)\\b"
+  - "\\bis what (?:will )?(?:decides?|separates?|makes?) \\w"
+impress_words:                # trying to impress instead of saying the thing (style.impress)
+  [groundbreaking, revolutionary, mind-blowing, next-level, world-class, game-changing, unparalleled,
+   massive shift, seismic, incredible, insane, huge implications, the future of work, redefine,
+   reimagine, supercharge, powerhouse]
+emotion_markers:              # a felt reaction; needs owner material (pov.unbacked_emotion)
+  - "\\bi(?:'m| am| was) (?:so |genuinely |really |honestly )?(?:excited|thrilled|surprised|shocked|amazed|blown away|proud|frustrated|fascinated|struck|humbled|grateful)\\b"
+  - "\\bi (?:love|loved|hate|hated|can'?t stop thinking)\\b"
+  - "\\b(?:this|it) (?:really )?(?:struck|surprised|shocked|excited) me\\b"
+uncontracted:                 # forms a person usually contracts in speech (style.uncontracted)
+  - "\\b(?:do|does|did|is|are|was|were|could|would|should|will|has|have|had) not\\b"
+  - "\\bcannot\\b"
+  - "\\b(?:it|that|there|what|here) is\\b"
+  - "\\b(?:i am|i have|i would|i will|we are|we have|they are|you are|let us)\\b"
+  - "\\b(?:would|could|should|might|must) have\\b"
+contractions:
+  - "\\b(?:\\w+n['’]t|\\w+['’](?:re|ve|ll|d|m)|(?:it|that|there|what|here|let|who|where|how)['’]s)\\b"

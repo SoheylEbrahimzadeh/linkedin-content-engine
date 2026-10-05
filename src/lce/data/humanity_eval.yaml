@@ -1,237 +1,592 @@
-# LCE-051 humanity evaluation set. FICTIONAL persona ("Alex Example") and fictional sources only.
-# Each scenario is scored by lce.humanity (10 criteria) with the full QA rules. "good" texts are
-# what the engine should produce; "bad" texts are the generic patterns it must catch.
-# The persona's own formatting rules, applied to every scenario (like voice.yaml formatting).
+# Humanity evaluation set (owner standard 2026-10-05). FICTIONAL persona ("Alex Example") and
+# fictional sources only. Each scenario is scored by lce.humanity (10 criteria) with the full QA
+# rules. "good" texts must reach 10/10 (PASS): real, spoken, uneven, no manufactured opinion.
+# "bad" texts are the patterns the engine must catch (generic, stiff, symmetric, invented,
+# editorial, over-explained, manufactured takeaway or emotion).
 voice:
-  formatting: {editorial_phrases_allowed: false, symmetry_allowed: false}
+  formatting:
+    editorial_phrases_allowed: false
+    symmetry_allowed: false
 golden:
   samples:
-    - id: s-standup
-      text: "I stopped asking teams for automation ideas in workshops. I ask which ticket they reopened twice last week. That list is shorter, and it is real."
-    - id: s-vendor
-      text: "The vendor demo worked because the data was clean. Ours was not. I would rather start with the mess we have than the process we wish we had."
-    - id: s-handover
-      text: "Most of my time on rollouts goes into the handover, not the build. If the service desk cannot explain the rule, the rule will not survive the first incident."
-    - id: s-metric
-      text: "I don't trust a resolution-time chart until I know who closes tickets. The number moves when the habit changes, not when the tool does."
+  - id: s-standup
+    text: I stopped asking teams for automation ideas in workshops. I ask which ticket they reopened twice
+      last week. That list is shorter, and it is real.
+  - id: s-vendor
+    text: The vendor demo worked because the data was clean. Ours was not. I would rather start with the
+      mess we have than the process we wish we had.
+  - id: s-handover
+    text: Most of my time on rollouts goes into the handover, not the build. If the service desk cannot
+      explain the rule, the rule will not survive the first incident.
+  - id: s-metric
+    text: I don't trust a resolution-time chart until I know who closes tickets. The number moves when
+      the habit changes, not when the tool does.
   opinions:
-    - id: op-rules-first
-      text: "Write the routing rules people can read before you buy a model; a model only earns its cost when the rules stop covering the queue."
-      applies_to: [itsm-it-operations, ai-business-automation]
-    - id: op-ownership
-      text: "Automation without a named owner for each decision becomes shelfware within a quarter."
-      applies_to: [ai-business-automation, digital-transformation]
-    - id: op-pilots
-      text: "A pilot that only measures speed hides the cost of exceptions; measure the reopened tickets too."
-      applies_to: [practical-ai-implementation]
+  - id: op-rules-first
+    text: Write the routing rules people can read before you buy a model; a model only earns its cost
+      when the rules stop covering the queue.
+    applies_to:
+    - itsm-it-operations
+    - ai-business-automation
+  - id: op-ownership
+    text: Automation without a named owner for each decision becomes shelfware within a quarter.
+    applies_to:
+    - ai-business-automation
+    - digital-transformation
+  - id: op-pilots
+    text: A pilot that only measures speed hides the cost of exceptions; measure the reopened tickets
+      too.
+    applies_to:
+    - practical-ai-implementation
   observations:
-    - id: ob-reopen
-      text: "Teams that track reopened tickets find automation candidates faster than teams that run idea workshops."
+  - id: ob-reopen
+    text: Teams that track reopened tickets find automation candidates faster than teams that run idea
+      workshops.
 stories:
   st-migration:
     story_id: st-migration
     publication_status: PUBLIC
     allowed_claims: []
 scenarios:
-  - id: ai-good
-    area: AI
-    kind: good
-    content_type: personal_pov
-    opinions_used: [op-rules-first]
-    text: |
-      I would not buy a triage model for a queue that nobody has written rules for.
+- id: ai-good
+  area: AI
+  kind: good
+  content_type: personal_pov
+  opinions_used:
+  - op-rules-first
+  text: 'I wouldn''t buy a triage model for a queue nobody has written rules for.
 
-      Readable routing rules come first. The model earns its cost only when those rules stop covering the queue, because before that point it adds a decision nobody on the service desk can explain.
 
-      The test I use is simple. Can the team say why a ticket went where it went? If they can, the rules are doing the work. If they cannot, a model will not fix that; it will hide it.
+    Rules first. Readable ones. A model earns its cost when those rules stop covering the queue. Not before,
+    because until then it just adds a decision nobody on the desk can explain.
 
-      So my default is boring on purpose: rules, an owner for each rule, and a model only where the misroutes pile up.
-    expect: {min_score: 8, fail: []}
-  - id: ai-bad
-    area: AI
-    kind: bad
-    content_type: personal_pov
-    text: |
-      In today's fast-paced world, AI is transforming IT service management.
 
-      Organizations must embrace AI-driven, scalable and innovative solutions to unlock value and drive results across the ecosystem.
+    There''s a simple check. Can the team say why a ticket went where it went? If they can, the rules
+    are doing the job. When they can''t, a model won''t fix that. It''ll hide it.
 
-      The key is to adapt. Leaders who embrace change will win.
 
-      What do you think?
-    expect: {max_score: 3, errors: [pov.no_owner_opinion, pov.no_stance], fail: [pov, not_consultant, ending]}
-  - id: automation-good
-    area: automation
-    kind: good
-    content_type: personal_pov
-    opinions_used: [op-ownership]
-    text: |
-      Every automation I would sign off on has a name next to each decision it makes.
+    So yes, it''s a boring setup on purpose. Rules, someone who owns each one, and a model only where
+    the misroutes keep piling up.
 
-      Not a team name. A person who answers when the rule closes the wrong ticket. Without that owner the flow keeps running, nobody trusts it, and the team quietly goes back to the manual way.
+    '
+  expect:
+    verdict: PASS
+    min_score: 10
+- id: ai-bad
+  area: AI
+  kind: bad
+  content_type: personal_pov
+  text: 'In today''s fast-paced world, AI is transforming IT service management.
 
-      So before building anything I ask one question: who changes this rule in six months? If the room goes quiet, the automation is not ready, however good the demo looks.
 
-      I think ownership is the cheapest reliability work there is, and the one most often skipped.
-    expect: {min_score: 8}
-  - id: automation-bad-transactional
-    area: automation
-    kind: bad
-    content_type: external_insight
-    sources: [{url: "https://example.org/report", title: Fictional report}]
-    text: |
-      As an expert in automation, I help companies streamline and optimize their workflows.
+    Organizations must embrace AI-driven, scalable and innovative solutions to unlock value and drive
+    results across the ecosystem.
 
-      A recent report shows that automation saves time across operations teams.
 
-      Looking for new projects? DM me or book a call and let's connect.
-    expect: {max_score: 3, errors: [network.transactional], fail: [network, ending]}
-  - id: itsm-good
-    area: ITSM
-    kind: good
-    content_type: observation
-    observations_used: [ob-reopen]
-    text: |
-      I've seen teams find better automation candidates in their reopened tickets than in any idea workshop.
+    The key is to adapt. Leaders who embrace change will win.
 
-      The reason is plain. A reopened ticket shows where the process failed twice, which means someone already paid for the problem. A workshop list shows what people find annoying, which is not the same thing.
 
-      My rule now: pull last month's reopened tickets, group them by the step where they broke, and start with the group the service desk complains about least. That one is usually invisible, so nobody has tried to fix it yet.
-    expect: {min_score: 8}
-  - id: itsm-bad-invented
-    area: ITSM
-    kind: bad
-    content_type: observation
-    text: |
-      In my experience, ITSM transformations fail because of culture.
+    What do you think?
 
-      A client of mine had a robust framework, but the stakeholders alike resisted change.
+    '
+  expect:
+    verdict: FAIL
+    errors:
+    - pov.no_owner_opinion
+    - pov.no_stance
+    fail:
+    - real_person
+    - no_manufactured_opinion
+    - genuine_ending
+- id: automation-good
+  area: automation
+  kind: good
+  content_type: personal_pov
+  opinions_used:
+  - op-ownership
+  text: 'Every automation I''d sign off on has a name next to each decision it makes.
 
-      It's all about people. Mindset is everything.
-    expect: {max_score: 3, errors: [claim.experience_unsupported, observation.no_evidence], fail: [evidence, not_consultant]}
-  - id: transformation-good
-    area: digital transformation
-    kind: good
-    content_type: external_insight
-    sources: [{url: "https://example.org/survey", title: Fictional survey, publisher: Example Org}]
-    text: |
-      A survey from Example Org argues that transformation programmes stall in the second year, when the first easy wins are gone.
 
-      The timing sounds right to me. The cause, less so. The second year is when the owners of the old process notice the new one is staying, and the decisions that were postponed in year one land on their desks.
+    Not a team name. A person who picks up the phone when the rule closes the wrong ticket. Without that,
+    the flow keeps running and nobody trusts it, so people quietly go back to doing it by hand.
 
-      That is why I would plan year two around those decisions, not around new features. Which reports get switched off? Who approves exceptions now? Those answers decide whether the programme continues.
-    expect: {min_score: 7}
-  - id: transformation-bad-summary
-    area: digital transformation
-    kind: bad
-    content_type: external_insight
-    sources: [{url: "https://example.org/survey", title: Fictional survey, publisher: Example Org}]
-    text: |
-      According to a new survey from Example Org, digital transformation programmes often stall in their second year.
 
-      The survey looked at programmes across several industries and regions.
+    I wouldn''t build anything until someone can tell me who''ll change this rule in six months. If the
+    room goes quiet, it''s not ready. Doesn''t matter how good the demo looked.
 
-      It found that early wins become harder to find over time, and that sponsorship tends to decline.
 
-      The full report is available on the Example Org website.
-    expect: {max_score: 4, errors: [insight.summary_only], fail: [pov, thinking]}
-  - id: failure-good
-    area: implementation failures
-    kind: good
-    content_type: personal_lesson
-    stories_used: [st-migration]
-    text: |
-      The migration I learned the most from did not fail on the technology.
+    Ownership is cheap reliability work. It''s also the bit that gets skipped most.
 
-      It failed on the weekend. We had a cut-over plan, a rollback plan and a tested script, and nobody had agreed who could decide to roll back at 2 a.m. So we waited, and the wait cost more than the bug.
+    '
+  expect:
+    verdict: PASS
+    min_score: 10
+- id: automation-bad-transactional
+  area: automation
+  kind: bad
+  content_type: external_insight
+  sources:
+  - url: https://example.org/report
+    title: Fictional report
+  text: 'As an expert in automation, I help companies streamline and optimize their workflows.
 
-      Since then I write the decision owner into the runbook before I write the script. It feels like paperwork. It is the part I check first.
-    expect: {min_score: 7}
-  - id: technical-good
-    area: practical technical work
-    kind: good
-    content_type: how_to
-    opinions_used: [op-pilots]
-    text: |
-      When I review an automation pilot, I ask for two numbers, not one.
 
-      The first is how much faster the happy path got. Everyone reports that. The second is how many cases fell out of the flow and came back to a person, because that is where the cost hides.
+    A recent report shows that automation saves time across operations teams.
 
-      If the pilot cannot show the second number, I would not scale it yet. The team should log every fall-out with the step where it happened for two weeks; then the decision is easy to make and easy to explain.
-    expect: {min_score: 7}
-  - id: team-good
-    area: team/process problems
-    kind: good
-    content_type: personal_pov
-    opinions_used: [op-ownership]
-    text: |
-      I don't think handovers fail because people are careless. They fail because nobody owns the gap between two teams.
 
-      The ops team assumes the project team documented the edge cases. The project team assumes ops will ask. Both are reasonable, and the ticket that falls between them waits a week.
+    Looking for new projects? DM me or book a call and let''s connect.
 
-      What I ask for now is one named owner for the first month after go-live, from the project side, with time in their calendar for it. It costs a few hours a week and it decides whether the change sticks.
-    expect: {min_score: 8}
-  - id: team-bad-leadership
-    area: team/process problems
-    kind: bad
-    content_type: personal_pov
-    opinions_used: [op-ownership]
-    text: |
-      Collaboration is the foundation of every successful team.
+    '
+  expect:
+    verdict: FAIL
+    errors:
+    - network.transactional
+    fail:
+    - real_person
+    - genuine_ending
+- id: itsm-good
+  area: ITSM
+  kind: good
+  content_type: observation
+  observations_used:
+  - ob-reopen
+  text: 'I''ve seen teams find better automation candidates in their reopened tickets than in any idea
+    workshop.
 
-      Leaders must embrace transparency, empower teams and foster a culture of trust. Those who adapt will thrive in the ever-evolving landscape.
 
-      Teamwork makes the dream work. Agree?
-    expect: {max_score: 3, fail: [pov, thinking, not_consultant, ending]}
-  - id: lesson-bad-no-story
-    area: lessons learned
-    kind: bad
-    content_type: personal_lesson
-    text: |
-      I led a migration that reduced incidents and taught me that planning matters.
+    It makes sense when you think about it. A reopened ticket shows where the process broke twice. Someone
+    already paid for that problem. A workshop list mostly shows what annoys people, and that''s not the
+    same thing.
 
-      The lesson: always plan for rollback. Preparation is everything.
-    expect: {max_score: 4, errors: [lesson.no_story, claim.personal_without_story]}
-  - id: tension-good
-    area: business/technology tension
-    kind: good
-    content_type: personal_pov
-    opinions_used: [op-pilots]
-    text: |
-      Finance asks how much time the automation saves. I think that is the wrong first question.
 
-      Time saved is easy to promise and hard to bank, because the hours rarely leave the budget. The better question is which decision gets faster or safer, since that is where the business feels it.
+    These days I pull last month''s reopened tickets and group them by the step where they broke. Then
+    I start with the group the service desk complains about least. That one''s usually invisible, so nobody''s
+    tried to fix it.
 
-      So in a business case I put one decision at the top, with its owner, and the time figure underneath. The conversation with finance gets shorter, not longer.
-    expect: {min_score: 7}
-  - id: observation-bad-ai-opening
-    area: personal professional observations
-    kind: bad
-    content_type: observation
-    observations_used: [ob-reopen]
-    text: |
-      As technology continues to evolve, it's no secret that teams face new challenges.
+    '
+  expect:
+    verdict: PASS
+    min_score: 10
+- id: itsm-bad-invented
+  area: ITSM
+  kind: bad
+  content_type: observation
+  text: 'In my experience, ITSM transformations fail because of culture.
 
-      Reopened tickets are a game-changer for finding automation opportunities. Let that sink in.
 
-      Thoughts?
-    expect: {max_score: 4, fail: [not_consultant, ending, aloud]}
-  - id: itsm-bad-editorial
-    area: polished consultant/editorial voice
-    kind: bad
-    content_type: external_insight
-    sources: [{url: "https://example.org/survey", title: Fictional survey, publisher: Example Org}]
-    # Grammatically natural, factually careful, and still not the persona: analyst labels,
-    # a borrowed belief with no owner opinion behind it, and a symmetric three-part reading.
-    text: |
-      The hard part of chatbots on the service desk is not the chatbot.
+    A client of mine had a robust framework, but the stakeholders alike resisted change.
 
-      A 2026 survey by Example Org asked service desks what is holding chatbots back. The most cited barriers were stale knowledge articles, unclear escalation rules and missing analyst time.
 
-      The three barriers do not name the tool itself. My reading: they are content, control and capacity questions. If a bot is going to answer users by itself, it needs current articles, clear limits and a team that can correct it.
+    It''s all about people. Mindset is everything.
 
-      That preparation is less visible than a demo. In my view, it decides whether the rollout works.
-    expect:
-      max_score: 5
-      errors: [voice.editorial_phrase, pattern.editorial-label, pov.unbacked_belief, style.symmetry]
-      fail: [pov, voice, aloud]
+    '
+  expect:
+    verdict: FAIL
+    errors:
+    - claim.experience_unsupported
+    - observation.no_evidence
+    fail:
+    - real_person
+    - no_manufactured_opinion
+    - no_stiffness
+- id: transformation-good
+  area: digital transformation
+  kind: good
+  content_type: external_insight
+  sources:
+  - url: https://example.org/survey
+    title: Fictional survey
+    publisher: Example Org
+  text: 'A survey from Example Org says transformation programmes tend to stall in year two, once the
+    easy wins are gone.
+
+
+    The timing makes sense. There may be another reason, though. Year two is when the owners of the old
+    process realise the new one is staying. All the decisions that got pushed back in year one land on
+    their desks at once.
+
+
+    Which reports get switched off? Who approves exceptions now? Nobody planned for those questions, and
+    the programme waits on them.
+
+    '
+  expect:
+    verdict: PASS
+    min_score: 10
+- id: transformation-bad-summary
+  area: digital transformation
+  kind: bad
+  content_type: external_insight
+  sources:
+  - url: https://example.org/survey
+    title: Fictional survey
+    publisher: Example Org
+  text: 'According to a new survey from Example Org, digital transformation programmes often stall in
+    their second year.
+
+
+    The survey looked at programmes across several industries and regions.
+
+
+    It found that early wins become harder to find over time, and that sponsorship tends to decline.
+
+
+    The full report is available on the Example Org website.
+
+    '
+  expect:
+    verdict: FAIL
+    errors:
+    - insight.summary_only
+    fail:
+    - substance
+- id: failure-good
+  area: implementation failures
+  kind: good
+  content_type: personal_lesson
+  stories_used:
+  - st-migration
+  text: 'The migration I learned the most from didn''t fail on the technology.
+
+
+    It failed on a Saturday night. We had a cut-over plan, a rollback plan and a tested script. What we
+    didn''t have was an agreement on who could call the rollback at 2 a.m. So we waited, and the waiting
+    cost more than the bug did.
+
+
+    Now I write the decision owner into the runbook before I touch the script. Feels like paperwork. It''s
+    the first thing I check.
+
+    '
+  expect:
+    verdict: PASS
+    min_score: 10
+- id: technical-good
+  area: practical technical work
+  kind: good
+  content_type: how_to
+  opinions_used:
+  - op-pilots
+  text: 'When I review an automation pilot, I want two numbers, not one.
+
+
+    The first is how much faster the happy path got. Everyone reports that one. The second is how many
+    cases dropped out of the flow and landed back on someone''s desk. That one matters more, because that''s
+    where the cost hides.
+
+
+    If a pilot can''t show the second number, I wouldn''t scale it yet. Log every drop-out for two weeks,
+    with the step where it happened. After that the call is pretty easy to make, and easy to explain.
+
+    '
+  expect:
+    verdict: PASS
+    min_score: 10
+- id: team-good
+  area: team/process problems
+  kind: good
+  content_type: personal_pov
+  opinions_used:
+  - op-ownership
+  text: 'I don''t think handovers fail because people are careless. They fail because nobody owns the
+    gap between two teams.
+
+
+    Ops assumes the project team wrote down the edge cases. The project team assumes ops will ask. Both
+    are fair assumptions, and the ticket stuck in between waits a week.
+
+
+    What I ask for now is one named person from the project side for the first month after go-live. With
+    actual time in their calendar for it. A few hours a week, usually.
+
+    '
+  expect:
+    verdict: PASS
+    min_score: 10
+- id: team-bad-leadership
+  area: team/process problems
+  kind: bad
+  content_type: personal_pov
+  opinions_used:
+  - op-ownership
+  text: 'Collaboration is the foundation of every successful team.
+
+
+    Leaders must embrace transparency, empower teams and foster a culture of trust. Those who adapt will
+    thrive in the ever-evolving landscape.
+
+
+    Teamwork makes the dream work. Agree?
+
+    '
+  expect:
+    verdict: FAIL
+    fail:
+    - real_person
+    - no_stiffness
+    - genuine_ending
+- id: lesson-bad-no-story
+  area: lessons learned
+  kind: bad
+  content_type: personal_lesson
+  text: 'I led a migration that reduced incidents and taught me that planning matters.
+
+
+    The lesson: always plan for rollback. Preparation is everything.
+
+    '
+  expect:
+    verdict: FAIL
+    errors:
+    - lesson.no_story
+    - claim.personal_without_story
+    fail:
+    - no_manufactured_opinion
+    - genuine_ending
+- id: tension-good
+  area: business/technology tension
+  kind: good
+  content_type: personal_pov
+  opinions_used:
+  - op-pilots
+  text: 'Finance usually asks how much time the automation saves. I think that''s the wrong first question.
+
+
+    Time saved is easy to promise and hard to bank, because the hours rarely leave the budget. What the
+    business actually feels is a decision that gets faster or safer.
+
+
+    So in a business case I put one decision at the top, with its owner. The time figure goes underneath.
+    The conversation with finance tends to get shorter, not longer.
+
+    '
+  expect:
+    verdict: PASS
+    min_score: 10
+- id: observation-bad-ai-opening
+  area: personal professional observations
+  kind: bad
+  content_type: observation
+  observations_used:
+  - ob-reopen
+  text: 'As technology continues to evolve, it''s no secret that teams face new challenges.
+
+
+    Reopened tickets are a game-changer for finding automation opportunities. Let that sink in.
+
+
+    Thoughts?
+
+    '
+  expect:
+    verdict: FAIL
+    fail:
+    - real_person
+    - genuine_ending
+- id: itsm-bad-editorial
+  area: polished consultant/editorial voice
+  kind: bad
+  content_type: external_insight
+  sources:
+  - url: https://example.org/survey
+    title: Fictional survey
+    publisher: Example Org
+  text: 'The hard part of chatbots on the service desk is not the chatbot.
+
+
+    A 2026 survey by Example Org asked service desks what is holding chatbots back. The most cited barriers
+    were stale knowledge articles, unclear escalation rules and missing analyst time.
+
+
+    The three barriers do not name the tool itself. My reading: they are content, control and capacity
+    questions. If a bot is going to answer users by itself, it needs current articles, clear limits and
+    a team that can correct it.
+
+
+    That preparation is less visible than a demo. In my view, it decides whether the rollout works.
+
+    '
+  expect:
+    verdict: FAIL
+    errors:
+    - voice.editorial_phrase
+    - pattern.editorial-label
+    - pov.unbacked_belief
+    - style.symmetry
+    fail:
+    - owner_voice
+    - spoken
+    - no_symmetry
+    - no_manufactured_opinion
+- id: insight-no-opinion-good
+  area: external insight without an owner opinion
+  kind: good
+  content_type: external_insight
+  sources:
+  - url: https://example.org/survey
+    title: Fictional survey
+    publisher: Example Org
+  text: 'Example Org surveyed 300 service desks about their chatbots. 40% have paused one in the first
+    year.
+
+
+    The reason they give most often is stale knowledge articles. Not the model.
+
+
+    That fits how these bots work. They answer from whatever''s in the knowledge base, so an article nobody''s
+    touched in two years turns into a wrong answer, delivered with total confidence.
+
+
+    So how many of those paused bots would''ve been fine with a month of article cleanup first?
+
+    '
+  expect:
+    verdict: PASS
+    min_score: 10
+  claims:
+  - text: Example Org surveyed 300 service desks about their chatbots
+    source_url: https://example.org/survey
+  - text: 40% have paused one in the first year
+    source_url: https://example.org/survey
+- id: corporate-stiff
+  area: corporate stiffness
+  kind: bad
+  content_type: external_insight
+  sources:
+  - url: https://example.org/survey
+    title: Fictional survey
+    publisher: Example Org
+  text: 'A new report from Example Org highlights that a wide range of service desks utilize chatbots
+    in order to reduce ticket volumes.
+
+
+    Furthermore, the report indicates that knowledge quality plays a crucial role in the success of these
+    initiatives. It is therefore essential to ensure that articles are reviewed on a regular basis.
+
+
+    Additionally, organizations should consider the involvement of stakeholders prior to deployment.
+
+    '
+  expect:
+    verdict: FAIL
+    fail:
+    - no_stiffness
+    - spoken
+    - owner_voice
+- id: symmetric-flat
+  area: AI-style symmetry
+  kind: bad
+  content_type: external_insight
+  sources:
+  - url: https://example.org/survey
+    title: Fictional survey
+    publisher: Example Org
+  text: 'Example Org looked at chatbots on service desks. Some teams measure what the bot resolves. Some
+    teams measure what it gets wrong. Very few teams measure both.
+
+
+    It''s not about the bot. It''s about the knowledge behind it.
+
+
+    Clean articles. Clear limits. Real owners.
+
+    '
+  expect:
+    verdict: FAIL
+    fail:
+    - no_symmetry
+    - variation
+- id: forced-takeaway
+  area: manufactured takeaway
+  kind: bad
+  content_type: external_insight
+  sources:
+  - url: https://example.org/survey
+    title: Fictional survey
+    publisher: Example Org
+  text: 'A survey from Example Org found that 40% of chatbot projects get paused in the first year, mostly
+    over bad knowledge articles.
+
+
+    That''s a lot of paused bots. And it''s rarely the model''s fault, since the articles were stale before
+    anyone wrote a prompt.
+
+
+    The lesson here is simple: fix your content first. At the end of the day, that''s what makes the difference.
+
+    '
+  expect:
+    verdict: FAIL
+    fail:
+    - genuine_ending
+    - real_person
+- id: over-explaining
+  area: over-explaining
+  kind: bad
+  content_type: external_insight
+  sources:
+  - url: https://example.org/survey
+    title: Fictional survey
+    publisher: Example Org
+  text: 'A survey from Example Org found that most chatbot pilots stall because the knowledge base is
+    out of date.
+
+
+    In other words, the bot can only be as good as the articles behind it. To put it simply, if the articles
+    are wrong, the answers are wrong. This means that teams need to review the articles before the bot
+    goes live. Essentially, the content is the product.
+
+
+    So who on your team owns the articles?
+
+    '
+  expect:
+    max_score: 8
+    fail:
+    - no_over_explaining
+- id: manufactured-emotion
+  area: manufactured emotion
+  kind: bad
+  content_type: external_insight
+  sources:
+  - url: https://example.org/survey
+    title: Fictional survey
+    publisher: Example Org
+  text: 'I was genuinely surprised by a new survey from Example Org. It found that 40% of service desks
+    have paused their chatbot.
+
+
+    I love that someone finally measured this, because the pause usually comes from stale articles, not
+    the bot.
+
+
+    Which articles would you check first?
+
+    '
+  expect:
+    verdict: FAIL
+    errors:
+    - pov.unbacked_emotion
+    fail:
+    - no_manufactured_opinion
+- id: unbacked-approach
+  area: '''I''d ask'' without a confirmed approach'
+  kind: bad
+  content_type: external_insight
+  sources:
+  - url: https://example.org/survey
+    title: Fictional survey
+    publisher: Example Org
+  text: 'A survey from Example Org found that 40% of service desks paused their chatbot in year one.
+
+
+    Before buying one, I''d ask who keeps the articles current. And I''d look at the last few escalations,
+    because they show where the bot will get stuck.
+
+    '
+  expect:
+    verdict: FAIL
+    errors:
+    - pov.unbacked_belief
+    fail:
+    - no_manufactured_opinion
