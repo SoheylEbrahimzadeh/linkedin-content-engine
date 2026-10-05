@@ -191,8 +191,7 @@ stance_markers:               # the author takes a position (point-of-view evide
   - "\\bi (?:agree|disagree|see no reason|would ask|'d ask|would say|'d say)\\b"
   - "\\b(?:we|you) (?:need to|must|should) (?:first|carefully|examine|identify|consider|discuss|test)\\b"
   - "\\bit is (?:essential|important|necessary) (?:that|to)\\b"
-  - "\\bmy (?:view|take|position|read|bet|rule|default)\\b"
-  - "\\bin my view\\b"
+  - "\\bmy (?:rule|default|bet)\\b"
   - "\\bi'?m (?:skeptical|not sure|convinced|wary)\\b"
   - "\\b(?:this is|that is|that's|it's) (?:wrong|backwards|the wrong|a mistake|the real|where)\\b"
   - "\\b(?:should|shouldn't|should not) (?:be|start|stop|ask|measure)\\b"
@@ -234,3 +233,34 @@ team_signal_markers:          # shows how the author works with people and decis
   - "\\b(?:owner|ownership|handover|hand-off|on-call|service desk|operations team)\\b"
   - "\\b(?:decide|decision|prioriti[sz]e|trade-?off|scope)\\b"
   - "\\b(?:ask|asked|agree|agreed|align|explain|explained) (?:the|with|them|what|why|how)\\b"
+editorial_phrases:            # analyst/editorial voice: grammatical, but not a person talking (voice.editorial_phrase)
+  - my reading
+  - my read is
+  - in my view
+  - this suggests that
+  - this suggests
+  - the key takeaway
+  - key takeaway
+  - the takeaway
+  - the bottom line
+  - what this tells us
+  - what this means is
+  - it is worth noting
+  - it's worth noting
+  - in other words
+  - put simply
+  - in short
+  - the lesson here
+  - notably
+  - crucially
+  - it is clear that
+  - it's clear that
+  - taken together
+editorial_labels:             # a label and a colon instead of a sentence ("My reading: …") (pattern.editorial-label)
+  - "(?:^|[.!?]\\s+)(?:my (?:reading|take|view|read)|the (?:takeaway|point|upshot|catch|lesson|result|bottom line)|bottom line|short version|in short|net net)\\s*:"
+belief_markers:               # first-person belief: needs an owner-confirmed opinion (pov.unbacked_belief)
+  - "\\bi (?:think|believe|suspect|am convinced|'m convinced|would argue|'d argue)\\b"
+  - "\\bin my (?:opinion|view)\\b"
+  - "\\bmy (?:view|opinion|take|reading|read) (?:is|was)\\b"
+  - "\\bmy (?:reading|take)\\s*:"
+  - "\\bi (?:agree|disagree)\\b"

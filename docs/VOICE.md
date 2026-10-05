@@ -32,7 +32,7 @@ actually believe about this?" from the recorded material only.
 ## Realism and networking checks (QA, English ruleset)
 
 Errors: `claim.experience_unsupported` (in my experience / I've seen / a client … without a PUBLIC
-story or confirmed observation), `insight.summary_only` (external summary without a stance),
+story or confirmed observation), `insight.summary_only` (external summary with no consequence, reasoning or question),
 `lesson.no_story`, `observation.no_evidence`, `network.transactional` (DM me, let's connect,
 I help companies, looking for projects, book a call).
 Warnings: `voice.consultant_language`, `pattern.generic-opening`, `pattern.empty-leadership`,
@@ -66,3 +66,24 @@ approval time: a proposed view is the owner's only once the owner approves it as
 `voice.yaml` `formatting.em_dash_allowed: false` and `formatting.guillemets_allowed: false` make an em dash
 (`style.em_dash_forbidden`) or guillemets (`style.guillemets_forbidden`) a QA error. `registers` records which
 registers posts use and in what balance.
+
+## Editorial voice (polished, natural, not the owner)
+
+The failure mode: a text that is factually careful and grammatically natural but reads like an
+analyst summarizing a report ("My reading: …", "In my view, …", "This suggests that …", a tidy
+three-part reading). The ruleset carries `editorial_phrases`, `editorial_labels` and
+`belief_markers`; "my reading" and "in my view" are no longer stance markers.
+
+- `voice.editorial_phrase`, `pattern.editorial-label`: warnings, errors when `voice.yaml`
+  `formatting.editorial_phrases_allowed: false`.
+- `style.symmetry`: error when `formatting.symmetry_allowed: false` and the text has two or more
+  three-part lists or consecutive sentences with the same opening (one list is allowed).
+- `pov.unbacked_belief` (error): a first-person belief (I think, in my view, my reading is) without
+  an owner-confirmed opinion, disagreement or approach in `opinions_used`. The source fact stays the
+  source's; an angle the writer proposes is written as a consequence or a question, not as the
+  owner's belief (`angle_origin: proposed` on the post); only a Golden Set item becomes "I think".
+
+Any of these codes fails the humanity criteria point of view, voice and said aloud. Point of view
+now passes only for an owner opinion with a stance, or (outside `personal_pov`) a reasoned
+consequence that borrows no belief. The evaluation set has a fictional `itsm-bad-editorial`
+scenario for this regression, and `voice.yaml` `counter_examples` holds owner-flagged sentences.
