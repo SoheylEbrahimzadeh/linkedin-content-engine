@@ -167,7 +167,10 @@ def findings(
     ct = post.get("content_type")
     owner_view = any(golden_items.get(r, {}).get("kind") in ("opinions", "disagreements", "approaches")
                      for r in post.get("opinions_used") or [])
-    if sig["beliefs"] and not owner_view:
+    if post.get("angle_origin") == "owner" and not owner_view:
+        out.append(("pov.unbacked_belief", "error",
+                    "angle_origin: owner, but no owner-confirmed opinion is referenced"))
+    elif sig["beliefs"] and not owner_view:
         out.append(("pov.unbacked_belief", "error",
                     "states a first-person belief ('I think', 'in my view', 'my reading') without an "
                     "owner-confirmed opinion; keep it to the source fact and a clearly proposed angle"))

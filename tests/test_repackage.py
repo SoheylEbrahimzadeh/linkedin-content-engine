@@ -255,6 +255,7 @@ def test_package_rejects_incomplete_packages(store):
         ({**PKG, "reason": " "}, "reason"),
         ({**PKG, "media": {}}, "media must be"),
         ({**PKG, "claims": [{"text": CLAIM, "source_url": "https://other.example"}]}, "claim"),
+        ({**PKG, "angle_origin": "writer"}, "angle_origin"),
     ]:
         with pytest.raises(StoreError, match=match):
             repackage.package(store, pid, bad)

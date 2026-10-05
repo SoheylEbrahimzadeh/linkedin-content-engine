@@ -403,3 +403,10 @@ def test_the_editorial_failure_mode_fails_pov_voice_and_aloud():
     by = {c["id"]: c["result"] for c in res["criteria"]}
     assert by["pov"] == by["voice"] == by["aloud"] == "fail"
     assert res["stance_origin"] == "none"
+
+
+def test_an_owner_angle_needs_an_owner_opinion():
+    text = "Ownership matters here, because rules age."
+    assert found(text, angle_origin="owner")["pov.unbacked_belief"] == "error"
+    assert "pov.unbacked_belief" not in found(text, angle_origin="owner", opinions_used=["op-owner"])
+    assert "pov.unbacked_belief" not in found(text, angle_origin="proposed")
