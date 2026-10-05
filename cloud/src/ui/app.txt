@@ -1114,15 +1114,11 @@ function qualityStrip(p) {
   const meaning = g?.dimensions?.owner_grounded_meaning?.result;
   const appr = approvalValidity(p);
   const chips = [
-    hm ? h("span", { class: "pill " + (hm.verdict === "PASS" ? "ok" : hm.verdict === "FAIL" ? "warn" : "muted") }, `Humanity ${hm.score}/${hm.of} ${hm.verdict} (mechanical)`) : null,
-    g ? h("span", { class: "pill " + (gateTone[g.verdict] ?? "muted") }, `Voice Gate ${g.verdict.replace("_", " ")}`) : null,
-    g && g.classification === "source_heavy_insufficient_owner_voice" ? h("span", { class: "pill muted" }, "Source-heavy") : null,
-    meaning ? h("span", { class: "pill " + (meaning === "pass" ? "ok" : meaning === "fail" ? "warn" : "muted") }, meaning === "pass" ? "Owner-grounded" : meaning === "fail" ? "Not owner-grounded" : "No owner material") : null,
-    g?.needs_owner_input ? h("span", { class: "pill muted" }, "Needs owner input") : null,
+    hm ? h("span", { class: "pill " + (hm.verdict === "PASS" ? "ok" : hm.verdict === "FAIL" ? "warn" : "muted") }, `Humanity ${hm.score}/${hm.of} ${hm.verdict}`) : null,
     h("span", { class: "pill " + appr.tone }, appr.text[0].toUpperCase() + appr.text.slice(1)),
   ].filter(Boolean);
   return h("div", { class: "quality-strip" }, h("div", { class: "chips" }, chips),
-    h("p", { class: "small muted" }, "Humanity is a mechanical floor, not proof of your voice. Voice Gate and approval are separate."));
+    h("p", { class: "small muted" }, "Humanity: does it read like a person talking. Approval is bound to this exact text."));
 }
 
 function humanityCard(p) {
@@ -1149,7 +1145,7 @@ function voiceGateCard(p) {
   const word = { pass: "yes", fail: "no", insufficient: "not enough of you", review: "needs your read" };
   const c = g.counts ?? {};
   const invented = (g.sentences ?? []).filter((r) => r.kind === "invented_personal");
-  return card("Soheyl Voice Gate",
+  return h("details", { class: "card tech voice-gate" }, h("summary", {}, "Owner-material check (informational)"),
     h("p", {}, h("span", { class: "pill " + (tone[g.verdict] ?? "muted") }, g.verdict.replace("_", " ")), " ", g.classification_label),
     h("p", { class: "small" }, `${Math.round((g.owner_share ?? 0) * 100)}% of sentences from your confirmed material: ${c.owner ?? 0} yours, ${c.source ?? 0} source, ${c.writer ?? 0} writer framing, ${c.invented_personal ?? 0} invented personal`),
     invented.length ? h("ul", { class: "list small" }, invented.map((r) => h("li", {}, h("span", { class: "warn-text" }, r.sentence), r.note ? h("span", { class: "muted" }, ` (${r.note})`) : null))) : null,

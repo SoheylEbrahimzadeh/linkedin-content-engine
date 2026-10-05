@@ -332,3 +332,10 @@ uncontracted:                 # forms a person usually contracts in speech (styl
   - "\\b(?:would|could|should|might|must) have\\b"
 contractions:
   - "\\b(?:\\w+n['’]t|\\w+['’](?:re|ve|ll|d|m)|(?:it|that|there|what|here|let|who|where|how)['’]s)\\b"
+bookish_words:                # written-register words people rarely say aloud (style.bookish)
+  [however, approximately, numerous, individuals, regarding, demonstrate, demonstrates, demonstrated,
+   obtain, obtained, purchase, purchased, assist, assists, sufficient, whilst, significantly, primarily,
+   nevertheless, nonetheless, wherein, thereby, hereby, therein, in addition to, commonly, predominantly,
+   approximately, substantial, substantially, inquire, enquire, endeavour, utilises, utilizes, prior,
+   respectively, accordingly, henceforth, thus far, in order for]
+
