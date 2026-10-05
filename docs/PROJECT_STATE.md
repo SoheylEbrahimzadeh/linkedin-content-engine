@@ -617,3 +617,16 @@ The cloud path is verified up to publishing. Remaining gates:
   - the media was re-evaluated;
   - plan date (2026-10-06) and approval are unchanged; no replacement was requested.
 - Not verified: a fresh production dashboard check after these changes. Dispatching it was refused by the permission classifier; the last cloud-sync of the mirror succeeded.
+
+## Update 5 Oct (voice correction: polished editorial voice)
+
+Owner review of the 29 Sep agentic AI / ITSM post: factually fine, but "too polished, editorial,
+consultant-like". Engine #109/#110: editorial phrases and labels, borrowed beliefs
+(`pov.unbacked_belief`), repeated symmetric constructions (`style.symmetry`) and `angle_origin` on
+packages; these codes fail the pov, voice and aloud humanity criteria. Eval set 16/16 with the
+fictional `itsm-bad-editorial` regression. lce-data #109: voice v5 (both flags false, the owner's
+avoided phrases and counter examples), WRITER.md and skills rules, pin c9fef44.
+
+Rescore with v5: 29 Sep 3/10, FAIL (four QA errors). The approved 6 Oct post now shows
+`style.symmetry` and the 10 Oct post (AWAITING_APPROVAL) shows `pov.unbacked_belief`; approved posts
+are not re-checked unless their text changes. Nothing was approved, rewritten or published.
