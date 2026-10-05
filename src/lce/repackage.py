@@ -485,7 +485,7 @@ def package(
             errors, _ = images.check(store, post_id)
             if errors:
                 raise StoreError("media: " + "; ".join(errors))
-            prepare(store, post_id)
+            prepare(store, post_id, writing_gate=not media_only)
             _progress(store, post_id, "approval_prepared", req)
         except Exception:
             versions.restore_backup(store, post_id, Path(tmp))

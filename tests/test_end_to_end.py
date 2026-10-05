@@ -27,11 +27,10 @@ from lce.store import StoreError
 SOURCE = "https://research.example/service-desk-report"
 CLAIM = "In the survey, 37% of service desks still route tickets by hand."
 TEXT = (
-    "Most service desks still sort their tickets by hand.\n\n"
-    "A recent survey found that 37% of service desks still route tickets by hand, "
-    "which means the first automation win is often not a model at all.\n\n"
-    "Writing down the routing rules the team already follows is cheaper, easier to "
-    "explain and easier to audit than training anything.\n\n"
+    "A recent survey found that 37% of service desks still route tickets by hand.\n\n"
+    "So the first automation win often isn't a model. Start with the rules your team already follows.\n\n"
+    "Writing them down is cheaper than training anything, and much easier to explain to the people "
+    "who use them every day.\n\n"
     "Which routing rule in your queue changes least often?\n"
 )
 URN = "urn:li:share:7000000000000000042"

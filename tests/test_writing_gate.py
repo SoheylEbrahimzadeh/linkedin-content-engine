@@ -82,3 +82,33 @@ def test_media_only_refresh_is_not_blocked_by_the_writing_gate(store):
     refresh_click(store, pid)
     repackage.package(store, pid, {**PKG, "text": NATURAL_DRAFT})
     assert store.load_post(pid)["state"] == "AWAITING_APPROVAL"
+
+
+def test_no_bypass_cli_draft_and_scheduler_path_is_gated(store):
+    """lce draft/humanize save → QA → duplicate check → prepare: the weak text never reaches approval."""
+    from conftest import selected_post
+
+    from lce.approval import prepare
+    from lce.dupcheck import run_dupcheck
+    from lce.posts import save_draft, save_humanized
+    from lce.qa import run_qa
+
+    pid = selected_post(store)
+    weak = CONSULTANT_DRAFT.replace(
+        "Before I would support a model, I want three answers written down.\n", ""
+    ).replace("His question is the one I would put in front of any model purchase", "The question is")
+    save_draft(store, pid, weak)
+    save_humanized(store, pid, weak)
+    run_qa(store, pid, denylist=[])
+    assert store.load_post(pid)["state"] == "QA_PASSED"   # warnings only: QA alone would let it through
+    run_dupcheck(store, pid)
+    with pytest.raises(StoreError, match="writing gate"):
+        prepare(store, pid)
+    assert store.load_post(pid)["state"] != "AWAITING_APPROVAL"
+
+
+def test_owner_edit_is_the_owners_own_text_and_not_gated(store):
+    from conftest import awaiting_post
+
+    pid = awaiting_post(store)
+    assert store.load_post(pid)["state"] == "AWAITING_APPROVAL"

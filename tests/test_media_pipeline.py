@@ -17,8 +17,8 @@ from lce.store import StoreError
 from lce.visuals import concept, diagram
 
 ITEMS = ["Start with the boring rules",
-         "They cover more than you expect, and they are easy to explain to the team"]
-TITLE = "Most small service teams do not need a model to sort tickets"
+         "They cover more than you expect, and they're easy to explain to the team"]
+TITLE = "Most small service teams don't need a model to sort tickets"
 # LCE-041: a conceptual visual of GOOD_POST's idea (its own short labels, not the post's sentences).
 SPEC = {"visual_type": "flow", "concept": "rules first; a model only when rules stop being enough",
         "relevance_reason": "shows the order of decisions the post argues for, which the text only states",

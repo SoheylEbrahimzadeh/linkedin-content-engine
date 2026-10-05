@@ -244,3 +244,9 @@ packaging (exit 1 while revisions remain). The engine never writes new prose its
 refresh does not touch the text and is not gated. Settings `writing.gate: off` exists for
 emergencies only; the default is on.
 
+**No bypass (5 Oct).** The writing gate also sits in `approval.prepare`, the single door to the
+owner's approval, so a text saved through `lce draft save` / `lce humanize save` and moved on by the
+scheduler is gated too (QA alone passed such a text: its findings are warnings). The scheduler sends a
+refused text back to NEEDS_REVISION with the revisions. Exempt: the owner's own Control Center edit
+(`owner_edit`) and a media-only refresh of an unchanged, already approved text.
+
