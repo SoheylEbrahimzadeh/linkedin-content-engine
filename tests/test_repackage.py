@@ -402,3 +402,20 @@ def test_a_rejected_post_is_not_reopened(store):
     reject(store, pid, "off-topic")
     with pytest.raises(StoreError, match="only a post rejected by Skip"):
         repackage.unskip_as_refresh(store, pid, by="x")
+
+
+def test_voice_gate_review_is_bound_to_the_new_text_and_never_carried_over(store):
+    pid = legacy_post(store)
+    refresh_click(store, pid)
+    rev = {"natural_english": "pass", "owner_grounded_opinion": "insufficient",
+           "owner_phrasing": "insufficient", "notes": "source-heavy"}
+    repackage.package(store, pid, {**PKG, "voice_gate_review": rev})
+    post = store.load_post(pid)
+    assert post["voice_gate_review"]["content_hash"] == content_hash(current_text(store, pid))
+    assert post["voice_gate_review"]["reviewer"] == "writer"
+    refresh_click(store, pid, note="again", decision_id="d-2")
+    third = {**PKG, "text": THIRD_TEXT, "media": {"spec": SPEC3, "owner_requested": True}}
+    repackage.package(store, pid, third)
+    assert "voice_gate_review" not in store.load_post(pid)
+    with pytest.raises(StoreError, match="voice_gate_review"):
+        repackage.package(store, pid, {**PKG, "voice_gate_review": {"natural_english": "great"}})

@@ -1102,7 +1102,24 @@ function humanityCard(p) {
     h("ul", { class: "hz" }, hm.criteria.map((c) => h("li", {}, h("span", { class: "hz-label" }, c.label),
       h("span", { class: "pill " + mark[c.result] }, c.result === "pass" ? "yes" : c.result === "fail" ? "no" : "unknown"),
       c.result === "pass" ? null : h("div", { class: "small muted" }, c.why)))),
-    h("p", { class: "small muted" }, "10 of 10 (PASS) only when every check holds. Deterministic checks of the current text; your judgement at approval still decides."));
+    h("p", { class: "small muted" }, "10 of 10 (PASS) only when every check holds. Deterministic checks of the current text; your judgement at approval still decides."),
+    voiceGate(hm.voice_gate));
+}
+
+// Owner Voice Gate: a separate judgement; a 10/10 humanity score is never a voice pass.
+function voiceGate(g) {
+  if (!g) return null;
+  const tone = { PASS: "ok", FAIL: "warn", SOURCE_HEAVY: "muted", REVIEW_NEEDED: "muted" };
+  const label = { natural_english: "Natural English", owner_grounded_opinion: "Owner-grounded opinion", owner_phrasing: "Sounds like you (phrasing, reasoning)" };
+  const word = { pass: "yes", fail: "no", insufficient: "not enough of you", review: "needs your read" };
+  const c = g.counts ?? {};
+  return h("div", { class: "voice-gate" },
+    h("h4", {}, "Voice Gate ", h("span", { class: "pill " + (tone[g.verdict] ?? "muted") }, g.verdict.replace("_", " "))),
+    h("p", { class: "small" }, g.classification_label, ` · ${Math.round((g.owner_share ?? 0) * 100)}% of sentences from your own material (${c.owner ?? 0} yours, ${c.source ?? 0} source, ${c.writer ?? 0} writer)`),
+    h("ul", { class: "hz" }, Object.entries(g.dimensions ?? {}).map(([k, d]) => h("li", {}, h("span", { class: "hz-label" }, label[k] ?? k),
+      h("span", { class: "pill " + (d.result === "pass" ? "ok" : d.result === "fail" ? "warn" : "muted") }, word[d.result] ?? d.result),
+      h("div", { class: "small muted" }, d.why)))),
+    h("p", { class: "small muted" }, g.rule));
 }
 
 function voiceSummary(v) {

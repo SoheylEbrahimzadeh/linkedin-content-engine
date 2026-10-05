@@ -338,6 +338,18 @@ def cmd_humanity_score(args):
             print(f"  {mark} {c['label']}: {c['why']}")
         if r["errors"]:
             print(f"  QA errors: {', '.join(r['errors'])}")
+        g = r.get("voice_gate")
+        if g:
+            print(f"  Voice Gate: {g['verdict']} ({g['classification_label']}; owner share "
+                  f"{g['owner_share']:.0%}). {g['rule']}")
+            for k, d in g["dimensions"].items():
+                print(f"    {k}: {d['result']} ({d['why']})")
+            c = g["counts"]
+            print(f"    sentences: {c['source']} source, {c['owner']} owner, {c['writer']} writer, "
+                  f"{c['unbacked_personal']} unbacked personal")
+            if getattr(args, "sentences", False):
+                for row in g["sentences"]:
+                    print(f"      [{row['kind']}] {row['sentence']}")
     return 0
 
 
@@ -1564,6 +1576,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = gcmd(g4, "score", cmd_humanity_score, "score a post's current text (read-only)")
     p.add_argument("post", nargs="+")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--sentences", action="store_true", help="show each sentence as source / owner / writer")
     p = gcmd(g4, "eval", cmd_humanity_eval, "run the evaluation set (bundled, or --file)")
     p.add_argument("--file", default=None)
     p.add_argument("--json", action="store_true")

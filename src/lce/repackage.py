@@ -173,6 +173,13 @@ def _validate_package(pkg: dict) -> None:
 
     if pkg.get("content_type") and pkg["content_type"] not in CONTENT_TYPES:
         raise StoreError(f"unknown content_type {pkg['content_type']!r} ({', '.join(CONTENT_TYPES)})")
+    rev = pkg.get("voice_gate_review")
+    if rev is not None:
+        from lce.voice_gate import REVIEW_FIELDS, REVIEW_VALUES
+
+        bad = [k for k in REVIEW_FIELDS if (rev or {}).get(k) not in REVIEW_VALUES]
+        if bad:
+            raise StoreError(f"voice_gate_review needs {', '.join(bad)} as one of {', '.join(REVIEW_VALUES)}")
     if pkg.get("angle_origin") not in (None, "owner", "proposed"):
         raise StoreError("angle_origin must be owner (an owner-confirmed view) or proposed")
     media = pkg.get("media") or {}
@@ -370,6 +377,7 @@ def package(
             for key in keys:
                 if pkg.get(key):
                     post[key] = pkg[key]
+            post.pop("voice_gate_review", None)          # a review never carries over to a new text
             store.save_post(post)
             if S(post["state"]) == S.SELECTED:
                 from lce.posts import save_draft
@@ -407,6 +415,14 @@ def package(
                 d = images.load(store, post_id)
                 d["source_visual"] = media["source_check"]
                 store.write_doc(images.path(store, post_id), "image", d)
+            if pkg.get("voice_gate_review"):         # the writer's Voice Gate review, bound to the final text
+                from lce.voice_gate import make_review
+
+                post = store.load_post(post_id)
+                rev = pkg["voice_gate_review"]
+                post["voice_gate_review"] = make_review(
+                    current_text(store, post_id), reviewer="writer", values=rev, notes=rev.get("notes", ""))
+                store.save_post(post)
             _progress(store, post_id, "humanization", req)
             qa = run_qa(store, post_id)
             if qa["status"] != "passed":
