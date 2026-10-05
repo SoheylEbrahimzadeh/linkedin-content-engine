@@ -290,9 +290,11 @@ def findings(
         out.append(("pov.unbacked_belief", "error",
                     "angle_origin: owner, but no owner-confirmed opinion is referenced"))
     elif sig["beliefs"] and not owner_view:
-        out.append(("pov.unbacked_belief", "error",
-                    "states a first-person belief ('I think', 'in my view', 'my reading') without an "
-                    "owner-confirmed opinion; keep it to the source fact and a clearly proposed angle"))
+        hits = [x for x in sentences(_body(text)) if _count(rules.get("belief_markers"), x)]
+        for what in [f"{h[:110]!r}" for h in hits] or ["a first-person belief"]:
+            out.append(("pov.unbacked_belief", "error",
+                        f"first-person position without owner-confirmed material: {what}; "
+                        "drop it or attribute the idea to the source"))
     if ct == "personal_pov" and not sig["stance"]:
         out.append(("pov.no_stance", "error", "a point-of-view post that never takes a position"))
     if ct in ("external_insight", "observation") and not sig["stance"] and not sig["reasoning"] \
@@ -604,6 +606,23 @@ def score(
         "verdict": verdict(passed, res, errors),
         "criteria": [{"id": k, "label": label, **res[k]} for k, label in CRITERIA],
     }
+
+
+def _recent_findings(store, post_id: str) -> list:
+    """Every QA finding for a post's current text (read-only)."""
+    from lce import persona
+    from lce.posts import current_text
+    from lce.privacy.scan import load_denylist
+    from lce.qa import _recent_texts, run_checks
+    from lce.rules import ready_ruleset
+
+    post = store.load_post(post_id)
+    rules = ready_ruleset(post["language"])
+    return run_checks(
+        current_text(store, post_id), rules=rules, voice=store.voice(), profile=store.profile(), post=post,
+        stories=store.stories(), denylist=load_denylist(), brand=store.brand(),
+        recent=_recent_texts(store, post, rules), golden_items=persona.confirmed(store),
+    )
 
 
 def score_post(store, post_id: str) -> dict:

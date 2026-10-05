@@ -19,18 +19,18 @@ from lce.textutil import content_hash
 URL = "https://example.com/report"
 CLAIM = "Manual triage dropped from about 40 minutes a day to about 10"
 NEW_TEXT = (
-    "Before buying a triage model, look at the rules your team already understands.\n\n"
-    "Manual triage dropped from about 40 minutes a day to about 10 in our pilot, and the work was plain "
-    "keyword matching.\n\n"
-    "I would not buy a model until the rules stop covering the queue, because until then it adds cost and "
-    "makes routing harder to explain.\n\n"
+    "Before buying a triage model, look at the rules your team already gets.\n\n"
+    "In our pilot, manual triage dropped from about 40 minutes a day to about 10. It was plain keyword "
+    "matching.\n\n"
+    "I wouldn't buy a model until the rules stop covering the queue. Until then it adds cost, and routing "
+    "gets harder to explain.\n\n"
     "Which routing rule would you write first?\n"
 )
 THIRD_TEXT = (
-    "Keyword rules are boring, and that is their strength.\n\n"
+    "Keyword rules are boring, and that's their strength.\n\n"
     "They cut manual triage from about 40 minutes a day to about 10 for us. Everyone on the team could read "
-    "them and fix them.\n\n"
-    "When a queue outgrows the rules, the misroutes show it first. That is the moment to test a model, not "
+    "them. And fix them.\n\n"
+    "When a queue outgrows the rules, the misroutes show it first. That's the moment to test a model, not "
     "before.\n\n"
     "What do your misroutes tell you?\n"
 )
