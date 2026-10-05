@@ -98,7 +98,8 @@ def owner_material(post: dict, golden_items: dict, stories: dict) -> list[str]:
     for s in post.get("stories_used") or []:
         st = stories.get(s) or {}
         if st.get("publication_status") == "PUBLIC":
-            out += [str(c.get("text", c)) for c in st.get("allowed_claims") or []]
+            claims = st.get("allowed_claims") or []
+            out += [str(c.get("text", "")) if isinstance(c, dict) else str(c) for c in claims]
             out.append(str(st.get("summary") or ""))
     return [t for t in out if t.strip()]
 

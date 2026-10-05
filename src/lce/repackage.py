@@ -307,6 +307,40 @@ def without_credit(text: str, credit: str) -> str:
     return "\n\n".join(paras) + "\n"
 
 
+def writing_gate(store: DataStore, post_id: str, limitation: str | None = None) -> dict:
+    """Refuse a text that does not read like a person wrote it, with the exact revisions to make."""
+    from lce.humanity import score_post
+    from lce.revise import gate
+
+    if (store.settings().get("writing") or {}).get("gate") == "off":
+        return {"pass": True, "reasons": ["writing gate off in settings"]}
+    res = score_post(store, post_id)
+    g = gate(res, set(res.get("errors") or []), limitation)
+    if not g["pass"]:
+        items = revision_items(store, post_id, res)
+        raise StoreError(
+            f"writing gate: humanity {res['score']}/{res['of']} {res['verdict']}; "
+            + "; ".join(g["reasons"]) + ". Revise and resubmit:\n- " + "\n- ".join(items or g["reasons"])
+        )
+    return g
+
+
+def revision_items(store: DataStore, post_id: str, res: dict | None = None) -> list[str]:
+    """Every concrete revision for the post's current text (sentences to split, phrases to drop, ...)."""
+    from lce.humanity import _recent_findings, score_post
+    from lce.revise import report
+
+    res = res or score_post(store, post_id)
+    return report(current_text(store, post_id), findings=_recent_findings(store, post_id),
+                  humanity=res, rules=_rules_for(store, post_id))
+
+
+def _rules_for(store: DataStore, post_id: str) -> dict:
+    from lce.rules import ready_ruleset
+
+    return ready_ruleset(store.load_post(post_id)["language"])
+
+
 def package(
     store: DataStore,
     post_id: str,
@@ -324,6 +358,12 @@ def package(
 
     post = _refreshable(store, post_id)
     _validate_package(pkg)
+    autofixed: list[str] = []
+    if not media_only:          # writing gate step 1: safe mechanical fixes before anything is stored
+        from lce.revise import autofix
+
+        fixed, autofixed = autofix(pkg["text"])
+        pkg = {**pkg, "text": fixed}
     as_of = as_of or refresh.today_local(store)
     req = post.get("refresh_request") or {}
     # LCE-049: a rolling-calendar candidate is a post without text yet (SELECTED); it is
@@ -427,10 +467,14 @@ def package(
             _progress(store, post_id, "humanization", req)
             qa = run_qa(store, post_id)
             if qa["status"] != "passed":
-                raise StoreError(
-                    "QA failed: " + "; ".join(f"{f['code']}: {f['message']}" for f in qa["errors"])
-                )
+                msg = "QA failed: " + "; ".join(f"{f['code']}: {f['message']}" for f in qa["errors"])
+                if not media_only:      # one pass: every revision the writer must make, not only the errors
+                    items = revision_items(store, post_id)
+                    msg += ". writing gate: revise and resubmit:\n- " + "\n- ".join(items)
+                raise StoreError(msg)
             _progress(store, post_id, "qa", req, "QA passed")
+            if not media_only:      # writing gate: a weak draft never becomes the candidate
+                writing_gate(store, post_id, pkg.get("humanity_limitation"))
             dup = run_dupcheck(store, post_id)
             if dup["status"] != "passed":
                 raise StoreError(

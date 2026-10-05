@@ -222,3 +222,25 @@ the decisions path refuses a decision bound to an old hash, `mark_ready` discard
 approval, and a Voice Gate review of an older text is stale. Tested end to end in
 `tests/test_approval_hash_safety.py`. The dashboard shows "Approval invalid (text changed)".
 
+## Writing gate: weak drafts never reach the dashboard (5 Oct)
+
+Root cause of 5/10 texts on the dashboard: style findings (long sentences, uncontracted forms,
+editorial phrasing) were QA warnings, so a refresh package could pass QA and reach approval with a
+failing humanity score; the score was only displayed. Now every package (`lce refresh package`,
+slot `mode: new`) and every same-day update (`lce refresh update`) goes through `lce.revise`:
+
+1. `autofix`: safe contractions (do not → don't, it is → it's before a word, I would → I'd, ...),
+   never inside quotes, credit lines or hashtags;
+2. `gate`: QA errors, or any failing mechanical humanity criterion (real person, spoken, variation,
+   stiffness, symmetry, manufactured opinion, over-explaining, ending) refuse the package; a failing
+   owner_voice or substance criterion needs `humanity_limitation` in the package (an honest reason,
+   e.g. source-heavy) instead of an invented opinion;
+3. the refusal lists every revision at once (sentences to split with their word count, phrases to
+   drop, first-person positions without owner material, contrast frames, flat rhythm, ...). Nothing
+   is stored; the writer rewrites and resubmits.
+
+`lce humanity revise <post> --file draft.md [--write]` runs the same loop on a draft before
+packaging (exit 1 while revisions remain). The engine never writes new prose itself. A media-only
+refresh does not touch the text and is not gated. Settings `writing.gate: off` exists for
+emergencies only; the default is on.
+

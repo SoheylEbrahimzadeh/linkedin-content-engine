@@ -393,6 +393,50 @@ def cmd_humanity_score(args):
     return 0
 
 
+def cmd_humanity_revise(args):
+    """The writer's revision loop for one draft: autofix, the exact revisions, the gate verdict."""
+    from lce import persona
+    from lce.humanity import score
+    from lce.privacy.scan import load_denylist
+    from lce.qa import _recent_texts, run_checks
+    from lce.revise import autofix, gate, report
+    from lce.rules import ready_ruleset
+
+    store = _store(args)
+    post = store.load_post(args.post)
+    draft = Path(args.file).read_text(encoding="utf-8") if args.file else None
+    if draft is None:
+        from lce.posts import current_text
+
+        draft = current_text(store, args.post)
+    text, changes = autofix(draft)
+    rules = ready_ruleset(post["language"])
+    golden = persona.confirmed(store)
+    found = run_checks(text, rules=rules, voice=store.voice(), profile=store.profile(), post=post,
+                       stories=store.stories(), denylist=load_denylist(), brand=store.brand(),
+                       recent=_recent_texts(store, post, rules), golden_items=golden)
+    samples = [i["text"] for i in golden.values() if i["kind"] == "samples"]
+    errors = {f.code for f in found if f.severity == "error"}
+    res = score(text, rules=rules, codes={f.code for f in found}, post=post, samples=samples,
+                voice=store.voice(), errors=errors)
+    g = gate(res, errors, args.limitation)
+    items = report(text, findings=found, humanity=res, rules=rules)
+    if args.write and args.file:
+        Path(args.file).write_text(text, encoding="utf-8")
+    if args.json:
+        print(json.dumps({"gate": g, "autofix": changes, "revise": items, "text": text}, indent=2,
+                         ensure_ascii=False))
+        return 0 if g["pass"] else 1
+    print(f"gate: {'PASS' if g['pass'] else 'REVISE'} (humanity {res['score']}/{res['of']} {res['verdict']})")
+    for c in changes:
+        print(f"  autofixed: {c}")
+    for r in g["reasons"]:
+        print(f"  why: {r}")
+    for i in items:
+        print(f"  revise: {i}")
+    return 0 if g["pass"] else 1
+
+
 def cmd_humanity_eval(args):
     from importlib import resources
 
@@ -1641,6 +1685,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("post", nargs="+")
     p.add_argument("--json", action="store_true")
     p.add_argument("--sentences", action="store_true", help="show each sentence as source / owner / writer")
+    p = gcmd(g4, "revise", cmd_humanity_revise,
+             "writer loop: autofix contractions, list the exact revisions, and the writing-gate verdict")
+    p.add_argument("post")
+    p.add_argument("--file", help="a draft to check instead of the post's current text")
+    p.add_argument("--write", action="store_true", help="write the autofixed text back to --file")
+    p.add_argument("--limitation",
+                   help="why owner voice/substance cannot honestly pass (no invented opinion)")
+    p.add_argument("--json", action="store_true")
     p = gcmd(g4, "eval", cmd_humanity_eval, "run the evaluation set (bundled, or --file)")
     p.add_argument("--file", default=None)
     p.add_argument("--json", action="store_true")

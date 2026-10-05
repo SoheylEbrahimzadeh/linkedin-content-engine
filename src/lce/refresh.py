@@ -373,9 +373,12 @@ def apply_update(
         raise StoreError("the post is in the cloud publisher; withdraw it there first, then refresh")
     if not reason.strip() or not sources:
         raise StoreError("a refresh update needs --reason and the --source(s) that justify it")
+    from lce.revise import autofix
+
+    text = autofix(text)[0]          # writing gate step 1: safe contractions before anything is stored
     post = store.load_post(post_id)
     before_text = current_text(store, post_id)
-    if content_hash(text) == content_hash(before_text):
+    if content_hash(text) == content_hash(autofix(before_text)[0]):   # contractions alone are no update
         raise StoreError("the text is unchanged; record a check or research result instead")
     before = {
         "content_hash": content_hash(before_text),
@@ -388,7 +391,19 @@ def apply_update(
     post = save_humanized(store, post_id, text, source="session", by=by)
     qa = run_qa(store, post_id)
     steps = {"humanization": post.get("humanization", {}).get("checklist"), "qa": qa["status"]}
-    if qa["status"] == "passed":
+    gate_ok = True
+    if qa["status"] == "passed":         # writing gate: a weak draft never reaches approval
+        from lce.posts import set_state
+        from lce.repackage import writing_gate
+
+        try:
+            writing_gate(store, post_id)
+            steps["writing_gate"] = "passed"
+        except StoreError as exc:
+            gate_ok = False
+            steps["writing_gate"] = str(exc)
+            set_state(store, store.load_post(post_id), S.NEEDS_REVISION, "writing gate: revise the text")
+    if qa["status"] == "passed" and gate_ok:
         dup = run_dupcheck(store, post_id)
         steps["duplicate"] = {
             "status": dup["status"],

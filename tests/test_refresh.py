@@ -108,6 +108,9 @@ def test_material_change_runs_the_full_pipeline_and_invalidates_approval(store):
     post = store.load_post(pid)
     assert rec["decision"] == "updated" and rec["approval_before"] == "pending"
     assert rec["approval_effect"] == "invalidated"
+    from lce.revise import autofix
+
+    new = autofix(new)[0]   # the writing gate's safe contractions are applied before storing
     assert rec["content_hash_before"] == old_hash and rec["content_hash"] == content_hash(new) != old_hash
     assert rec["steps"]["qa"] == "passed" and rec["steps"]["duplicate"]["status"] == "passed"
     assert rec["steps"]["duplicate"]["compared_against"] >= 1  # archive checked again
@@ -122,7 +125,8 @@ def test_update_that_duplicates_the_archive_is_stopped(store):
     pid = with_source(store, awaiting_post(store))
     import_external(store, "published-earlier", archived)  # already in the archive
     rec = refresh.apply_update(store, pid, as_of=DAY, text=archived, reason="r", sources=[URL])
-    assert rec["steps"]["duplicate"]["status"] == "failed" and rec["steps"]["duplicate"]["exact"] >= 1
+    dup = rec["steps"]["duplicate"]
+    assert dup["status"] == "failed" and dup["exact"] + dup["near"] >= 1
     assert store.load_post(pid)["state"] == "NEEDS_REVISION" and rec["status"] == "update_in_progress"
 
 
