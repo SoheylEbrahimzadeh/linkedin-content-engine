@@ -107,3 +107,13 @@ recorded. See [ANALYTICS.md](ANALYTICS.md).
 ## Images
 
 Posts with an approved image are published with it (Images API upload, then the post). See [IMAGES.md](IMAGES.md).
+
+## Approval invalidation after any text change
+
+The approval is bound to the exact text (`approved_hash`). If the text changes after approval, for
+any reason (manual edit, same-day refresh, Refresh replacement), the approval is no longer valid:
+`lce publish` and the cloud delegation refuse with "the text does not match the approved hash;
+nothing is sent", a Control Center decision bound to the old hash is refused, and the post returns
+to the owner for a new approval. The post page shows "Approval invalid (text changed)". The chain
+is exercised end to end in `tests/test_approval_hash_safety.py`.
+

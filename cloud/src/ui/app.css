@@ -546,3 +546,6 @@ main > *:nth-child(2) { animation-delay: .03s; } main > *:nth-child(3) { animati
   .radar-side { grid-auto-flow: column; align-items: center; justify-content: start; gap: 16px; }
   .progress-panel { padding: 18px; }
 }
+.quality-strip { margin: 10px 0 14px; padding: 10px 12px; border: 1px solid var(--line, rgba(127,127,127,.25)); border-radius: 10px; }
+.quality-strip .chips { gap: 6px; }
+.quality-strip p { margin: 6px 0 0; }

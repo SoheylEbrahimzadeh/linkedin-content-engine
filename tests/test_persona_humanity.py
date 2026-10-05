@@ -583,7 +583,7 @@ def test_humanity_ten_is_never_a_voice_pass():
 
 def test_source_heavy_post_must_not_be_personalised():
     hum, g = gate(SOURCE_ONLY + "\n\nFor me, my approach would be to check the logs.")
-    assert g["verdict"] == "FAIL" and g["dimensions"]["owner_grounded_opinion"]["result"] == "fail"
+    assert g["verdict"] == "FAIL" and g["dimensions"]["owner_grounded_meaning"]["result"] == "fail"
 
 
 def test_owner_sentences_are_counted_only_from_referenced_material():
@@ -591,7 +591,7 @@ def test_owner_sentences_are_counted_only_from_referenced_material():
                                "I think AI doesn't always get it right. It needs human judgment and "
                                "control over it.")
     _, g = gate(text, opinions_used=["op-oversight"])
-    assert g["counts"]["owner"] == 2 and g["dimensions"]["owner_grounded_opinion"]["result"] == "pass"
+    assert g["counts"]["owner"] == 2 and g["dimensions"]["owner_grounded_meaning"]["result"] == "pass"
     _, g = gate(text)
     assert g["verdict"] == "FAIL"  # without the owner's item the same words are invented
 
@@ -599,12 +599,12 @@ def test_owner_sentences_are_counted_only_from_referenced_material():
 def test_review_is_bound_to_the_text_and_never_overrides_a_failure():
     from lce.voice_gate import assess, make_review
 
-    text = ("I'd keep that approval on. AI doesn't always get it right, and a person needs to keep "
-            "control over it.\n\nCopilot asks for approval before it controls an app.")
+    text = ("AI doesn't always get it right, and a person needs to keep judgment and control over it."
+            "\n\nCopilot asks for approval before it controls an app.")
     post = {"sources": SRC, "claims": GATE_CLAIMS, "stories_used": [], "content_type": "external_insight",
             "opinions_used": ["op-oversight"]}
     rev = make_review(text, reviewer="owner", values={"natural_english": "pass",
-                      "owner_grounded_opinion": "pass", "owner_phrasing": "pass"})
+                      "owner_grounded_meaning": "pass", "owner_phrasing": "pass"})
     hum = {"criteria": [], "score": 10, "of": 10}
     g = assess(text, post={**post, "voice_gate_review": rev}, golden_items=OP_TEXT, stories={},
                samples=SAMPLES, humanity=hum, codes=set())
@@ -638,7 +638,8 @@ def test_general_owner_principle_does_not_license_a_specific_first_person_positi
                  "I would always keep a human in the loop.",
                  "I'd never automate this without a review.",
                  "I'd keep that approval on."):
-        assert "pov.stronger_than_owner" in errs("Copilot asks before it acts. " + line), line
+        scope_codes = {"pov.stronger_than_owner", "pov.narrower_than_owner", "pov.different_from_owner"}
+        assert scope_codes & errs("Copilot asks before it acts. " + line), line
 
 
 def test_a_sentence_that_is_the_sources_stays_the_sources():

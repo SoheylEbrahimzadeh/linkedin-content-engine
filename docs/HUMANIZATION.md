@@ -1,5 +1,8 @@
 # Humanization: audit and design (LCE-037)
 
+> Humanity score is a mechanical floor, not proof of owner voice. The owner's voice is judged
+> separately by the Soheyl Voice Gate (docs/VOICE.md).
+
 ## Audit (before LCE-037)
 
 Traced through the code: research → selection → draft → humanize → QA →

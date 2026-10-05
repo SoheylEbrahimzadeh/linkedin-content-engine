@@ -362,6 +362,22 @@
     "counter_examples": {
       "$ref": "#/$defs/trait",
       "description": "Sentences the owner marked as NOT their voice (never imitate)."
+    },
+    "natural_phrases": {
+      "$ref": "#/$defs/trait",
+      "description": "phrases and words the owner naturally uses"
+    },
+    "communication_habits": {
+      "$ref": "#/$defs/trait",
+      "description": "how the owner usually communicates with colleagues and managers"
+    },
+    "reasoning_patterns": {
+      "$ref": "#/$defs/trait",
+      "description": "the order in which the owner reasons through a problem"
+    },
+    "professional_priorities": {
+      "$ref": "#/$defs/trait",
+      "description": "what the owner genuinely cares about in professional work"
     }
   },
   "$defs": {

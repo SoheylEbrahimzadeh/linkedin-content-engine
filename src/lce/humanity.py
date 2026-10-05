@@ -243,23 +243,49 @@ def findings(
     if sig["emotions"] and not backed:
         out.append(("pov.unbacked_emotion", "error",
                     "a felt reaction (I was surprised, I love …) the owner never recorded"))
-    # Owner rule 2026-10-05: material that supports a general principle does not license a
-    # stronger or more specific first-person position ("AI needs oversight" does not make
-    # "I wouldn't cut that checking"). A first-person stance must stay close to the item's words.
-    if owner_view:
-        from lce.voice_gate import _overlap
+    # Owner rule 2026-10-05: no stronger position than the owner's confirmed material. A faithful
+    # paraphrase is allowed; a stronger, narrower, broader or different position is not
+    # (lce.owner_scope judges meaning, not just shared words).
+    refs = (post.get("opinions_used") or []) + (post.get("observations_used") or [])
+    items = [golden_items[r] for r in refs if r in golden_items]
+    if items:
+        from lce import owner_scope
+        from lce.voice_gate import ATTRIBUTION_RE
 
-        texts = [" ".join(str(golden_items[r].get(k) or "") for k in ("text", "why", "instead"))
-                 for r in post.get("opinions_used") or [] if r in golden_items]
+        claims = [c.get("text", "") for c in post.get("claims") or []]
+        seen = set()
         for sent in sentences(_body(text)):
-            if not FIRST_PERSON_RE.search(sent):
+            personal = bool(FIRST_PERSON_RE.search(sent)) and bool(
+                _hits(rules.get("stance_markers"), sent) or _count(rules.get("belief_markers"), sent)
+                or owner_scope.COMMIT_RE.search(sent) or owner_scope.AGREE_RE.search(sent))
+            res = owner_scope.check(sent, items)
+            src = max((owner_scope.similarity(sent, c) for c in claims), default=0.0)
+            owner_meaning = (
+                res["similarity"] >= 0.34 and not ATTRIBUTION_RE.search(sent) and src < res["similarity"]
+            )
+            if not (personal or owner_meaning) or res["verdict"] == "faithful":
                 continue
-            if not (_hits(rules.get("stance_markers"), sent) or _count(rules.get("belief_markers"), sent)):
+            if res["verdict"] == "unsupported" and not personal:
                 continue
-            if max((_overlap(sent, t) for t in texts), default=0.0) < 0.5:
-                out.append(("pov.stronger_than_owner", "error",
-                            f"{sent[:90]!r} is a more specific first-person position than the owner's "
-                            "recorded material; keep to what the owner said, or attribute it to the source"))
+            code = owner_scope.CODES[res["verdict"]]
+            if (code, sent) in seen:
+                continue
+            seen.add((code, sent))
+            why = "; ".join(res["reasons"])
+            out.append((code, "error",
+                        f"{sent[:90]!r} {owner_scope.MESSAGES[res['verdict']]} ({why}); "
+                        "keep to what the owner said, or attribute it to the source"))
+    never = [i for i in golden_items.values() if i.get("kind") == "never_say"]
+    if never:
+        from lce import owner_scope
+
+        for sent in sentences(_body(text)):
+            for i in never:
+                said = i.get("text", "")
+                if owner_scope.similarity(sent, said) >= 0.7 or said.lower() in sent.lower():
+                    out.append(("voice.never_say", "error",
+                                f"{sent[:80]!r} is close to something the owner would never say: "
+                                f"{said[:60]!r}"))
     if post.get("angle_origin") == "owner" and not owner_view:
         out.append(("pov.unbacked_belief", "error",
                     "angle_origin: owner, but no owner-confirmed opinion is referenced"))
@@ -338,6 +364,10 @@ EVIDENCE_CODES = (
 MANUFACTURED_CODES = (
     "pov.unbacked_belief",
     "pov.stronger_than_owner",
+    "pov.narrower_than_owner",
+    "pov.broader_than_owner",
+    "pov.different_from_owner",
+    "pov.unsupported_by_owner",
     "pov.unbacked_emotion",
     "pov.no_owner_opinion",
     "golden.unconfirmed_ref",

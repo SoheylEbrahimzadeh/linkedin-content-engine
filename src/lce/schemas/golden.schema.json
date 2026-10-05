@@ -20,7 +20,11 @@
         "disagreements",
         "approaches",
         "observations",
-        "principles"
+        "principles",
+        "noticings",
+        "explanations",
+        "never_say",
+        "priorities"
       ]
     },
     "instructions": {
@@ -59,7 +63,7 @@
           "text": {
             "type": "string",
             "minLength": 10,
-            "description": "The owner's own words: the sample, belief, rejected idea, approach or observation."
+            "description": "The normalized wording the owner confirmed (English). The owner's raw words are kept unchanged in `original`."
           },
           "why": {
             "type": "string",
@@ -96,7 +100,9 @@
           "status": {
             "enum": [
               "owner_confirmed",
-              "draft"
+              "draft",
+              "proposed",
+              "unresolved"
             ]
           },
           "source": {
@@ -106,6 +112,124 @@
           "publishable": {
             "type": "boolean",
             "description": "May the substance appear in a post (default false for samples)."
+          },
+          "original": {
+            "type": "string",
+            "description": "The owner's raw answer, exactly as given (any language). Never overwritten."
+          },
+          "confidence": {
+            "enum": [
+              "confirmed",
+              "proposed",
+              "unresolved"
+            ],
+            "description": "confirmed: the owner confirmed this normalized interpretation; proposed: awaiting confirmation; unresolved: ambiguous, kept as is."
+          },
+          "provenance": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "channel": {
+                "type": "string"
+              },
+              "question_id": {
+                "type": "string"
+              },
+              "recorded_at": {
+                "type": "string"
+              },
+              "confirmed_at": {
+                "type": "string"
+              },
+              "proposal_hash": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          },
+          "public_use": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "May the substance appear in a public post (null: not asked yet)."
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Semantic scope: what the item does and does not say. Used to reject stronger, narrower, broader or different positions.",
+            "properties": {
+              "meaning": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Atomic statements the item makes."
+              },
+              "strength": {
+                "enum": [
+                  "tentative",
+                  "conditional",
+                  "normal",
+                  "strong",
+                  "absolute"
+                ]
+              },
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Concrete actions the owner explicitly commits to (verbs or short phrases)."
+              },
+              "topics": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "agrees_with": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "excludes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Readings the item explicitly does not make."
+              }
+            }
+          },
+          "allowed_paraphrases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 5
+            }
+          },
+          "forbidden_interpretations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 5
+            }
+          },
+          "ambiguities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }

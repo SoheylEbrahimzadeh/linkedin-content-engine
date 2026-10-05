@@ -494,7 +494,7 @@
         "reviewer",
         "at",
         "natural_english",
-        "owner_grounded_opinion",
+        "owner_grounded_meaning",
         "owner_phrasing"
       ],
       "properties": {
@@ -518,14 +518,6 @@
             "insufficient"
           ]
         },
-        "owner_grounded_opinion": {
-          "type": "string",
-          "enum": [
-            "pass",
-            "fail",
-            "insufficient"
-          ]
-        },
         "owner_phrasing": {
           "type": "string",
           "enum": [
@@ -536,6 +528,14 @@
         },
         "notes": {
           "type": "string"
+        },
+        "owner_grounded_meaning": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "insufficient"
+          ]
         }
       }
     }

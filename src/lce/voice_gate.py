@@ -5,13 +5,16 @@ keeps three judgements apart and never derives a pass from the humanity score:
 
 1. natural English: spoken, varied, plain (the mechanical humanity criteria are evidence here,
    not the verdict);
-2. owner-grounded opinion: every first-person view comes from an owner-confirmed item, and no
-   personal language is added to a source-heavy post to make it feel personal;
+2. owner-grounded meaning: every owner sentence is a faithful paraphrase of a referenced
+   owner-confirmed item (never stronger, narrower, broader or different: `lce.owner_scope`), and
+   no personal language is added to a source-heavy post to make it feel personal;
 3. owner-recognizable phrasing and reasoning: the owner's sentences sound like the owner's own
    samples. Only a person can judge this; the engine shows the evidence and asks for a review.
 
 Each prose sentence is classed as `source` (attributed to, or taken from, the source), `owner`
-(backed by referenced owner material) or `writer` (framing the writer added). When the owner's
+(a faithful paraphrase of referenced owner material), `writer` (connective framing that adds no
+personal meaning) or `invented_personal` (a personal position, or a writer judgement, that the
+owner's material does not contain). Any invented personal sentence fails the gate. When the owner's
 share is small, the post is classified as source-heavy with insufficient owner voice: that is
 an honest label, not a failure to be fixed by inventing "I would …", "For me …" or "my approach".
 
@@ -31,8 +34,9 @@ LABELS = {
     "owner_voiced": "Owner-voiced",
 }
 MIN_OWNER_SHARE = 0.25
-KINDS = ("source", "owner", "writer", "unbacked_personal")
-REVIEW_FIELDS = ("natural_english", "owner_grounded_opinion", "owner_phrasing")
+KINDS = ("source", "owner", "writer", "invented_personal")
+REVIEW_FIELDS = ("natural_english", "owner_grounded_meaning", "owner_phrasing")
+LEGACY_REVIEW_FIELDS = {"owner_grounded_opinion": "owner_grounded_meaning"}
 REVIEW_VALUES = ("pass", "fail", "insufficient")
 RULE = "A post can pass the mechanical humanity checks and still fail the owner's Voice Gate."
 
@@ -54,7 +58,15 @@ PERSONALISING_RE = re.compile(
     r"i think|i believe|i agree|i(?:'m| am) (?:convinced|wary|skeptical))\b",
     re.I,
 )
-VIEW_KINDS = ("opinions", "disagreements", "approaches", "observations", "principles")
+VIEW_KINDS = ("opinions", "disagreements", "approaches", "observations", "principles", "noticings",
+              "priorities")
+# A writer sentence that judges (instead of connecting) adds personal meaning nobody confirmed.
+NORMATIVE_RE = re.compile(
+    r"\b(?:should(?:n't)?|must|ought to|needs? to|have to|has to|the (?:right|wrong|better|best|real) "
+    r"(?:way|question|answer|move|call|choice)|is (?:a )?(?:mistake|wrong|right|the answer)|"
+    r"don't|never|always)\b",
+    re.I,
+)
 NATURAL_CRITERIA = (
     "real_person", "spoken", "variation", "no_stiffness", "no_symmetry", "no_over_explaining",
 )
@@ -74,13 +86,15 @@ def _overlap(sentence: str, ref: str) -> float:
     return len(shared) / len(a) if a and len(shared) >= 2 else 0.0
 
 
+def owner_items(post: dict, golden_items: dict) -> list[dict]:
+    refs = (post.get("opinions_used") or []) + (post.get("observations_used") or [])
+    return [golden_items[r] for r in refs if golden_items.get(r, {}).get("kind") in VIEW_KINDS]
+
+
 def owner_material(post: dict, golden_items: dict, stories: dict) -> list[str]:
     """Texts of the owner material the post references (confirmed items, PUBLIC story claims)."""
-    out = []
-    for r in (post.get("opinions_used") or []) + (post.get("observations_used") or []):
-        item = golden_items.get(r)
-        if item and item.get("kind") in VIEW_KINDS:
-            out.append(" ".join(str(item.get(k) or "") for k in ("text", "why", "instead")))
+    out = [" ".join(str(i.get(k) or "") for k in ("text", "why", "instead"))
+           for i in owner_items(post, golden_items)]
     for s in post.get("stories_used") or []:
         st = stories.get(s) or {}
         if st.get("publication_status") == "PUBLIC":
@@ -90,8 +104,10 @@ def owner_material(post: dict, golden_items: dict, stories: dict) -> list[str]:
 
 
 def classify_sentences(text: str, post: dict, golden_items: dict, stories: dict) -> list[dict]:
+    from lce import owner_scope
     from lce.humanity import _body
 
+    items = owner_items(post, golden_items)
     material = owner_material(post, golden_items, stories)
     claims = [c.get("text", "") for c in post.get("claims") or []]
     rows = []
@@ -99,18 +115,26 @@ def classify_sentences(text: str, post: dict, golden_items: dict, stories: dict)
         first = bool(FIRST_PERSON_RE.search(s))
         own = max((_overlap(s, m) for m in material), default=0.0)
         src = max((_overlap(s, c) for c in claims), default=0.0)
+        scope = owner_scope.check(s, items) if items else None
+        own = max(own, scope["similarity"] if scope else 0.0)
         source_first = src >= 0.3 and src >= own   # a sentence that is the source's stays the source's
-        if material and (first or own >= 0.34) and not ATTRIBUTION_RE.search(s) and not source_first:
-            kind = "owner"
-        elif ATTRIBUTION_RE.search(s) or src >= 0.3:
+        attributed = bool(ATTRIBUTION_RE.search(s))
+        note = ""
+        if material and (first or own >= 0.34) and not attributed and not source_first:
+            if scope and scope["verdict"] != "faithful":
+                kind, note = "invented_personal", f"{scope['verdict']}: {'; '.join(scope['reasons'])}"
+            else:
+                kind = "owner"
+        elif attributed or src >= 0.3:
             kind = "source"
         elif first:
-            kind = "unbacked_personal"
+            kind, note = "invented_personal", "first-person position without owner material"
+        elif NORMATIVE_RE.search(s):
+            kind, note = "invented_personal", "writer judgement that no owner material or source states"
         else:
             kind = "writer"
-        rows.append(
-            {"sentence": s, "kind": kind, "owner_overlap": round(own, 2), "source_overlap": round(src, 2)}
-        )
+        rows.append({"sentence": s, "kind": kind, "owner_overlap": round(own, 2),
+                     "source_overlap": round(src, 2), **({"note": note} if note else {})})
     return rows
 
 
@@ -132,6 +156,7 @@ def review_of(post: dict, text: str) -> dict | None:
     rev = post.get("voice_gate_review")
     if not rev:
         return None
+    rev = {LEGACY_REVIEW_FIELDS.get(k, k): v for k, v in rev.items()}
     return {**rev, "stale": rev.get("content_hash") != content_hash(text)}
 
 
@@ -150,7 +175,7 @@ def assess(
     rows = classify_sentences(text, post, golden_items, stories)
     n = len(rows) or 1
     owner = [r for r in rows if r["kind"] == "owner"]
-    unbacked = [r for r in rows if r["kind"] == "unbacked_personal"]
+    unbacked = [r for r in rows if r["kind"] == "invented_personal"]
     share = round(len(owner) / n, 2)
     classification = "owner_voiced" if owner and share >= MIN_OWNER_SHARE else SOURCE_HEAVY
     by = {c["id"]: c for c in humanity.get("criteria", [])}
@@ -163,7 +188,7 @@ def assess(
         else "no mechanical failure; read it aloud: mechanical checks are not proof",
     }
 
-    # 2. owner-grounded opinion
+    # 2. owner-grounded meaning
     manufactured = sorted(codes & set(MANUFACTURED_CODES))
     personalising = [
         r["sentence"] for r in rows if r["kind"] != "owner" and PERSONALISING_RE.search(r["sentence"])
@@ -174,7 +199,8 @@ def assess(
             "why": "; ".join(
                 x for x in (
                     ", ".join(manufactured),
-                    f"{len(unbacked)} first-person sentence(s) without owner material" if unbacked else "",
+                    f"{len(unbacked)} invented personal sentence(s): {unbacked[0].get('note', '')}"
+                    if unbacked else "",
                     f"personal language outside the owner's material: {personalising[0][:80]!r}"
                     if personalising else "",
                 ) if x
@@ -186,7 +212,7 @@ def assess(
             "why": f"{len(owner)} sentence(s) from referenced owner material, none invented",
         }
     else:
-        opinion = {"result": "insufficient", "why": "no owner opinion in the post (nothing invented either)"}
+        opinion = {"result": "insufficient", "why": "no owner material in the post (nothing invented either)"}
 
     # 3. owner-recognizable phrasing / reasoning (a person decides)
     material = owner_material(post, golden_items, stories)
@@ -202,7 +228,7 @@ def assess(
         }
 
     review = review_of(post, text)
-    dims = {"natural_english": natural, "owner_grounded_opinion": opinion, "owner_phrasing": phrasing}
+    dims = {"natural_english": natural, "owner_grounded_meaning": opinion, "owner_phrasing": phrasing}
     if review and not review["stale"]:
         for k in REVIEW_FIELDS:
             if dims[k]["result"] == "fail":
@@ -220,9 +246,15 @@ def assess(
         verdict = "PASS"
     else:
         verdict = "REVIEW_NEEDED"
+    needs_input = classification == SOURCE_HEAVY or "insufficient" in results
     return {
         "rule": RULE,
         "verdict": verdict,
+        "needs_owner_input": needs_input,
+        "owner_input_reason": (
+            "not enough confirmed owner material on this topic; answer the owner intake"
+            if needs_input else ""
+        ),
         "classification": classification,
         "classification_label": LABELS[classification],
         "owner_share": share,
@@ -240,6 +272,7 @@ def make_review(text: str, *, reviewer: str, values: dict, notes: str = "", at: 
 
     if reviewer not in ("owner", "writer"):
         raise ValueError("reviewer must be owner or writer")
+    values = {LEGACY_REVIEW_FIELDS.get(k, k): v for k, v in values.items()}
     for k in REVIEW_FIELDS:
         if values.get(k) not in REVIEW_VALUES:
             raise ValueError(f"{k} must be one of {', '.join(REVIEW_VALUES)}")
