@@ -127,8 +127,8 @@ def test_media_only_replacement_with_a_reviewed_openverse_image(store, sources):
     )
     assert doc["selection"]["tried"][-1]["outcome"] == "selected"
     text = current_text(store, pid)
-    assert text.split("\n\nImage:")[0].rstrip() == text_before
-    assert "Image: Example Photographer, CC BY 2.0, via flickr" in text and "Jane Example" not in text
+    # LCE-052: the credit stays in the provenance (asserted above); the post shows no label
+    assert text.rstrip() == text_before and "Image:" not in text and "Example Photographer" not in text
     assert versions.listing(store, pid)[-1]["status"] == "replaced"
     assert images.check(store, pid)[0] == []
 

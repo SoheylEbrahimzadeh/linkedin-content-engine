@@ -47,8 +47,9 @@ is not the same thing.
 decision to post the cited source's own image (Open Graph / hero image or a figure on that page)
 without an explicit licence. The engine then accepts `reviewed: {source: source_page, page_url,
 image_url, publisher}` only when the image is published on that page; provenance is
-`source_publication` / `owner_accepted_risk`, and the credit line `Image: <publisher>` is always
-added to the post. Default `licensed_only` keeps the licence requirement.
+`source_publication` / `owner_accepted_risk`, and the attribution `Image: <publisher>` is recorded
+in the image record (LCE-052: never as a line in the post). Default `licensed_only` keeps the
+licence requirement.
 
 ## LCE-044: real images are chosen by looking at them
 
@@ -72,7 +73,7 @@ now two steps:
    `no_suitable_licensed_image`. `lce refresh media` (only the media changes)
    or `lce refresh package` fetches that exact file again, re-checks its
    licence at the source, hashes it and attaches it with the review. The
-   credit line goes into the post when the licence requires it.
+   attribution is recorded in the image record (LCE-052: not in the post).
 
 ## LCE-043: a real image first; generated diagrams only on request
 
@@ -155,3 +156,24 @@ post or is shorter than 40 characters. Images from before LCE-041 without a
 record are re-evaluated from what they draw; a verbatim checklist fails and must
 be regenerated or replaced by text-only. The Control Center shows the concept,
 type, reason, copied ratio, facts, decision and image hash next to the image.
+
+## LCE-052: no visible image attribution in the post (owner rule 2026-10-06)
+
+A selected image appears with the post on its own. The pipeline never writes a source label for it
+into the text: no `Image: CIO.com`, `Photo: ...`, `Credit: ...`, `Image source: ...`.
+
+- Provenance is unchanged and stays in `image.yaml` (`provenance.source_url`, `creator`, `credit`,
+  `license`, `attribution`, `attribution_required`, `retrieved_url`, ...) for auditing, debugging,
+  copyright tracking and compliance. The dashboard shows it as "kept in the image record, not shown
+  in the post".
+- `lce.credit` recognises visible image labels (a whole line `Image:` / `Photo:` / `Picture:` /
+  `Illustration:` / `Credit:` / `Image source:` / `Image credit:` / `Header image by:` ...; a
+  `Source:` or `Via` line only when it names the image's own credit or publisher, so text
+  citations stay).
+- Where it is enforced: `repackage._credit` (after an image is attached) no longer inserts the
+  attribution and removes any label already in the text; `revise.autofix` (writing gate step 1:
+  package, same-day refresh) removes labels; QA reports `media.visible_credit` as an error for
+  pipeline text (a warning for the owner's own edit). The Worker publishes the approved text
+  unchanged, so the published post carries no label.
+- Posts approved before this rule keep their approved text (and its label) until the owner
+  refreshes or edits them: an approval is bound to its exact text.

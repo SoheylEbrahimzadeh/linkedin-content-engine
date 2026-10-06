@@ -262,26 +262,15 @@ def _reviewed_media(store, post_id, sel, text, history, used, by) -> str:
 
 
 def _credit(store, post_id, doc, text, by) -> None:
-    from lce import relevance as relv
+    """LCE-052: the image appears without a visible source label. Its attribution stays in the
+    image record (provenance) only; a label already in the text (a writer's, or an earlier
+    image's) is taken out before QA and approval."""
+    from lce.credit import image_credit_names, strip_image_labels
     from lce.posts import save_humanized
 
-    prov = doc["provenance"]
-    if prov.get("attribution_required"):
-        # The licence asks for credit: it goes into the post itself, before QA and approval.
-        save_humanized(store, post_id, with_credit(text, prov["attribution"]), source="session", by=by)
-        from lce.posts import current_text as ct
-
-        sem = doc["media_relevance"].get("semantic")
-        doc["media_relevance"] = relv.declared(
-            concept=doc["media_relevance"]["concept"],
-            visual_type=doc["media_relevance"]["visual_type"],
-            reason=doc["media_relevance"]["relevance_reason"],
-            alt_text=doc["alt_text"],
-            post=store.load_post(post_id),
-            text=ct(store, post_id),
-        )
-        doc["media_relevance"]["semantic"] = sem
-        store.write_doc(images.path(store, post_id), "image", doc)
+    clean, removed = strip_image_labels(text, image_credit_names(doc.get("provenance")))
+    if removed:
+        save_humanized(store, post_id, clean, source="session", by=by)
 
 
 def _progress(store, post_id, stage, req, note=""):
@@ -295,14 +284,6 @@ def _progress(store, post_id, stage, req, note=""):
 
 _TRANSPORT = None  # tests replace the Commons transport
 _SOURCE_CHECK: dict = {}
-
-
-def with_credit(text: str, credit: str) -> str:
-    """The licence's credit line, above a closing hashtag paragraph (hashtags stay last)."""
-    paras = text.rstrip().split("\n\n")
-    if len(paras) > 1 and all(w.startswith("#") for w in paras[-1].split()):
-        return "\n\n".join(paras[:-1] + [credit, paras[-1]]) + "\n"
-    return text.rstrip() + "\n\n" + credit + "\n"
 
 
 def without_credit(text: str, credit: str) -> str:

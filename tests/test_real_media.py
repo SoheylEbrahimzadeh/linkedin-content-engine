@@ -141,6 +141,10 @@ def requested(store):
     return pid
 
 
+def prov_of(store, pid):
+    return images.load(store, pid)["provenance"]
+
+
 def test_refresh_attaches_a_real_licensed_image_chosen_by_subject(store, fake):
     pid = requested(store)
     pkg = {
@@ -174,10 +178,10 @@ def test_refresh_attaches_a_real_licensed_image_chosen_by_subject(store, fake):
         doc["media_relevance"]["visual_type"] == "photo"
         and doc["media_relevance"]["media_decision"] == "accepted"
     )
-    # the licence asks for credit: it is in the post that will be approved
-    assert (
-        current_text(store, pid).rstrip().endswith("Image: Jane Example, CC BY-SA 4.0, via Wikimedia Commons")
-    )
+    # LCE-052: the licence's credit is kept in the image record, never as a line in the post
+    assert prov_of(store, pid)["attribution"] == "Image: Jane Example, CC BY-SA 4.0, via Wikimedia Commons"
+    assert prov_of(store, pid)["attribution_required"] is True
+    assert "Image:" not in current_text(store, pid) and "Jane Example" not in current_text(store, pid)
     assert store.load_post(pid)["state"] == "AWAITING_APPROVAL"
     assert "Wikimedia Commons" in rec["media"]["note"]
     assert images.check(store, pid)[0] == []
@@ -310,8 +314,8 @@ def test_media_only_correction_keeps_the_text_and_the_wrong_package_in_history(s
         pid,
         {**PKG, "media": {"source_check": SC, "commons": {**COMMONS, "candidates": [SERVER_ROOM["title"]]}}},
     )
-    text_with_credit = current_text(store, pid)
-    assert "Image: Jane Example" in text_with_credit
+    text_before = current_text(store, pid)
+    assert "Image:" not in text_before                    # LCE-052: no visible label
     rec = repackage.replace_media(
         store,
         pid,
@@ -322,8 +326,7 @@ def test_media_only_correction_keeps_the_text_and_the_wrong_package_in_history(s
     doc = images.load(store, pid)
     assert doc["provenance"]["title"] == PD_DESK["title"]  # never the earlier version's file
     text = current_text(store, pid)
-    assert "Jane Example, CC BY-SA" not in text  # the old credit went with the old image
-    assert text.rstrip() == text_with_credit.split("\n\nImage:")[0].rstrip()
+    assert "Image:" not in text and text == text_before   # the text is untouched; no label added
     last = versions.listing(store, pid)[-1]
     assert (
         last["status"] == "replaced" and "media replaced: the photo was not about the post" in last["reason"]
@@ -352,9 +355,10 @@ def test_media_correction_never_touches_an_approved_version(store, fake):
         )
 
 
-def test_credit_line_goes_above_the_hashtags_and_comes_out_cleanly():
+def test_a_legacy_credit_line_comes_out_cleanly():
     text = "Body.\n\nMore.\n\n#AgenticAI #ITGovernance\n"
-    out = repackage.with_credit(text, "Image: A, CC BY 4.0, via Wikimedia Commons")
-    assert out == "Body.\n\nMore.\n\nImage: A, CC BY 4.0, via Wikimedia Commons\n\n#AgenticAI #ITGovernance\n"
-    assert repackage.without_credit(out, "Image: A, CC BY 4.0, via Wikimedia Commons") == text
-    assert repackage.with_credit("Body.\n", "C") == "Body.\n\nC\n"
+    legacy = "Body.\n\nMore.\n\nImage: A, CC BY 4.0, via Wikimedia Commons\n\n#AgenticAI #ITGovernance\n"
+    assert repackage.without_credit(legacy, "Image: A, CC BY 4.0, via Wikimedia Commons") == text
+    assert not hasattr(repackage, "with_credit")          # LCE-052: nothing writes a label any more
+
+
