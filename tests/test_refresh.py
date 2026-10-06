@@ -235,3 +235,20 @@ def test_snapshot_exposes_freshness(store):
     refresh.check(store, pid, as_of=DAY, fetch=page(CLAIM))
     view = next(p for p in build_snapshot(store, mode="real")["posts"] if p["post_id"] == pid)
     assert view["freshness"]["latest"]["status"] == "current" and len(view["freshness"]["history"]) == 1
+
+
+def test_removing_a_visible_image_label_is_a_real_update(store):
+    """LCE-052: a post written before the rule loses its 'Image: X' line through the same-day
+    refresh; the label removal is not mistaken for an unchanged text."""
+    from lce.credit import find_image_labels
+    from lce.posts import reopen, save_humanized
+
+    pid = with_source(store, awaiting_post(store))
+    reopen(store, pid, "legacy text")
+    body = current_text(store, pid).rstrip()
+    save_humanized(store, pid, body + "\n\nImage: Example News\n", source="session", by="writer")
+    post = store.load_post(pid)
+    post["state"] = "AWAITING_APPROVAL"                       # as the legacy post stood
+    store.save_post(post)
+    refresh.apply_update(store, pid, as_of=DAY, text=body + "\n", reason="LCE-052", sources=[URL])
+    assert find_image_labels(current_text(store, pid)) == []
