@@ -570,7 +570,7 @@ export function mediaRecord(post) {
     else if (prov.credit) rows.push(["Credit", prov.credit]);
     if (prov.license || prov.usage) rows.push(["Rights", [prov.license, prov.usage].filter(Boolean).join(" · ")]);
     if (prov.license_url) rows.push(["Licence", { href: prov.license_url }]);
-    if (prov.attribution_required !== undefined) rows.push(["Attribution", `${prov.attribution_required ? "required" : "not required"}${prov.attribution ? ` · “${prov.attribution}”` : ""} · kept in the image record, not shown in the post (LCE-052)`]);
+    if (prov.attribution_required !== undefined) rows.push(["Attribution", `${prov.attribution_required ? "required" : "not required"}${prov.attribution ? ` · “${prov.attribution}”` : ""} · kept in the image record, not shown in the post${prov.attribution_display ? ` (${prov.attribution_display})` : ""}`]);
     if (prov.source_url) rows.push(["Source URL", { href: prov.source_url }]);
     if (prov.retrieved) rows.push(["Retrieved", `${prov.retrieved}${prov.retrieved_at ? " · " + String(prov.retrieved_at).slice(0, 16).replace("T", " ") : ""}`]);
     if (prov.original_sha1) rows.push(["Original SHA-1", prov.original_sha1]);

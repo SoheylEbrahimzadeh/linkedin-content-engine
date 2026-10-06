@@ -177,3 +177,15 @@ into the text: no `Image: CIO.com`, `Photo: ...`, `Credit: ...`, `Image source: 
   unchanged, so the published post carries no label.
 - Posts approved before this rule keep their approved text (and its label) until the owner
   refreshes or edits them: an approval is bound to its exact text.
+
+## LCE-053: attribution is metadata only, made explicit (owner rule 2026-10-06)
+
+- Policy: `settings.visuals.attribution_display: metadata_only` (the only valid value, also the
+  default). Every attached image records `provenance.attribution_display: metadata_only`
+  (`images.decide`). Internal provenance (source URL, creator, credit, licence, attribution,
+  retrieval) is unchanged; visible post attribution does not exist as an option.
+- `Source:` / `Sources:` / `Via:` label lines count as credit lines too: posts name their sources
+  in their sentences.
+- The Worker refuses to schedule (409) or publish (`publish.blocked: visible_image_credit`, nothing
+  sent to LinkedIn) an approved text that still shows such a line. It never edits the approved text:
+  such a post (approved before the rule) is withdrawn, refreshed without the line and approved again.

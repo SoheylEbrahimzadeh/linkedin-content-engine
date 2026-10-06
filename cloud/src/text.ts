@@ -67,3 +67,16 @@ export function toLittle(text: string): string {
 export function stripText(text: string): string {
   return strip(text);
 }
+
+// LCE-053 (owner rule 2026-10-06): an image's attribution is internal provenance only. A whole line
+// labelling an image ("Image: X", "Photo credit: X", "Credit: X", ...) or a source label line
+// ("Source: X", "Sources: X", "Via: X") is never published. Mirrors lce.credit (Python).
+const VISIBLE_CREDIT_RE = new RegExp(
+  String.raw`^\s*(?:(?:(?:header|cover|featured|hero|lead)\s+)?(?:images?|photos?|pictures?|illustrations?|graphics?|visuals?|credits?)` +
+  String.raw`(?:\s+(?:source|credit|courtesy|by)s?)?|sources?|via)\s*:\s*\S.*$`, "im");
+
+/** The first visible credit/source label line in a post text, or null. */
+export function visibleCredit(text: string): string | null {
+  const m = VISIBLE_CREDIT_RE.exec(text);
+  return m ? m[0].trim() : null;
+}

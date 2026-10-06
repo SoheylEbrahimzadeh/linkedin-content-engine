@@ -1,12 +1,14 @@
-"""LCE-052 (owner rule 2026-10-06): no visible image attribution in the post text.
+"""LCE-052/053 (owner rule 2026-10-06): no visible image attribution in the post text.
 
 A post's image appears on its own. The pipeline never writes a source label for it into the
 text (`Image: CIO.com`, `Photo: ...`, `Credit: ...`, `Image source: ...`). Provenance stays where
 it belongs, in the image record (`image.yaml`: source URL, creator, licence, attribution,
 retrieval), for auditing, copyright tracking and compliance; only the visible line goes.
 
-`Source:` and `Via` lines are ambiguous (a text citation is allowed); they count as an image
-label only when they name the image's own credit, publisher or attribution.
+LCE-053: a standalone `Source:` / `Sources:` / `Via:` line is a credit line too (owner: the post
+names its sources in its sentences, never as a label line). Policy:
+`settings.visuals.attribution_display: metadata_only` (the only value; explicit), and every
+attached image records `provenance.attribution_display: metadata_only`.
 """
 
 from __future__ import annotations
@@ -20,7 +22,8 @@ IMAGE_LABEL_RE = re.compile(
     r"(?:\s+(?:source|credit|courtesy|by)s?)?\s*:\s*\S.*$",
     re.I,
 )
-SOURCE_LINE_RE = re.compile(r"^\s*(?:sources?\s*:|via\b:?)\s*(?P<who>\S.*?)\s*$", re.I)
+SOURCE_LINE_RE = re.compile(r"^\s*(?:sources?\s*:|via\s*:|via\s+(?P<who>\S.*?)\s*$)\s*\S?", re.I)
+ATTRIBUTION_DISPLAY = "metadata_only"   # LCE-053: internal provenance only, never visible in the post
 
 
 def _norm(s: str) -> str:
@@ -38,7 +41,10 @@ def is_image_label(line: str, names: set[str] = frozenset()) -> bool:
     if IMAGE_LABEL_RE.match(line):
         return True
     m = SOURCE_LINE_RE.match(line)
-    return bool(m and names and _norm(m.group("who")) in names)
+    if not m:
+        return False
+    # "Source: X" / "Via: X" always; a bare "Via X" line only when it names the image's own source
+    return m.group("who") is None or bool(names and _norm(m.group("who")) in names)
 
 
 def find_image_labels(text: str, names: set[str] = frozenset()) -> list[str]:

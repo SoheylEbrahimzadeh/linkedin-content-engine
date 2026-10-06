@@ -146,6 +146,12 @@
         },
         "source_name": {
           "type": "string"
+        },
+        "attribution_display": {
+          "enum": [
+            "metadata_only"
+          ],
+          "description": "LCE-053: the attribution is internal provenance only; it is never written into the post."
         }
       }
     },
