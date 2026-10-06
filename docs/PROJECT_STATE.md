@@ -670,3 +670,23 @@ Scratch candidates (not in production): 6, 8 and 10 Oct each pass the writing ga
 Voice Gate SOURCE_HEAVY with no invented personal sentence. Production 6, 8 and 10 Oct are unchanged
 (READY_TO_PUBLISH, approved hash = text hash), unscheduled and unpublished; a Refresh plus owner
 re-approval is the owner's call.
+
+## Update 6 Oct (operational archive for finished posts)
+
+Owner report: the rejected 29 Sep post kept appearing as work (its earlier refresh failure, "Worker
+network policy blocks source sites ... claims cannot be verified", sat in the Failed tile and in
+Needs your attention). Root cause: the board and the attention list took every refused decision,
+failed refresh and passed-slot refresh request at face value, without asking whether the post was
+still live; and there was no way to take a finished post out of the working views.
+
+- Finished posts (REJECTED, PUBLISHED) are history: their old failures, refused decisions and
+  refresh requests no longer show as work. Live posts' failures still do.
+- New owner decision `archive` (typed phrase `ARCHIVE <post_id>`, optional reason) for REJECTED or
+  PUBLISHED posts with nothing open in the cloud publisher; `restore` reverses it. Display state
+  only (`archived` + append-only `archive_history` on the post): state, history, versions, approval
+  reason and run log are untouched; nothing is deleted. Archived posts leave Overview and Upcoming;
+  History lists them ("Archived posts") and their page still opens, with the archive notice.
+- An archived post takes no other decision (except Duplicate, the explicit new attempt), and the
+  engine refuses to prepare, approve or delegate it (defence in depth; both states are terminal).
+- Migration 0010 rebuilds `decisions` with `archive`, `restore` and `radar_use` (the CHECK
+  constraint never listed `radar_use`, so recording a radar recommendation failed with HTTP 500).

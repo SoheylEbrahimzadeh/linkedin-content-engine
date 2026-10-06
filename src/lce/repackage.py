@@ -42,6 +42,9 @@ def _refreshable(store: DataStore, post_id: str) -> dict:
     from lce import cloud
 
     post = store.load_post(post_id)
+    from lce.archive import require_active
+
+    require_active(post, "refresh it")
     if S(post["state"]) in NOT_REFRESHABLE:
         raise StoreError(f"a {post['state']} post is not refreshed (history is never rewritten)")
     if cloud.load_delegation(store, post_id):

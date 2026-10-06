@@ -538,6 +538,66 @@
           ]
         }
       }
+    },
+    "archived": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "by",
+        "state"
+      ],
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "decision_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "description": "Taken out of the operational views (Overview, Upcoming) by the owner. Display only: the state, history, versions and audit records stay; only REJECTED or PUBLISHED posts are archived."
+    },
+    "archive_history": {
+      "type": "array",
+      "description": "Earlier archive and restore actions (audit; never rewritten).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action",
+          "at",
+          "by"
+        ],
+        "properties": {
+          "action": {
+            "enum": [
+              "archived",
+              "restored"
+            ]
+          },
+          "at": {
+            "type": "string"
+          },
+          "by": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "decision_id": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

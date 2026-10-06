@@ -121,6 +121,9 @@ def prepare(store: DataStore, post_id: str, *, writing_gate: bool = True) -> tup
     update, CLI draft + scheduler, version restore). Exempt: the owner's own edit, and a media-only
     refresh that leaves an already approved text unchanged (`writing_gate=False`)."""
     post = store.load_post(post_id)
+    from lce.archive import require_active
+
+    require_active(post, "prepare an approval")
     if PostState(post["state"]) != S.DUPLICATE_CHECKED:
         raise StoreError(f"approval needs a DUPLICATE_CHECKED post; this one is {post['state']}")
     if writing_gate and (post.get("humanization") or {}).get("source") != "owner_edit":
@@ -147,6 +150,9 @@ def approve(store: DataStore, post_id: str, hash_prefix: str, *,
         raise StoreError("approval requires an interactive terminal; run it yourself, not via "
                          "a script or an agent")
     post = store.load_post(post_id)
+    from lce.archive import require_active
+
+    require_active(post, "approve it")
     if PostState(post["state"]) != S.AWAITING_APPROVAL:
         raise StoreError(f"only AWAITING_APPROVAL posts can be approved; this one is {post['state']}")
     h = _require_consistent(store, post)
@@ -181,6 +187,9 @@ def approve_recorded(store: DataStore, post_id: str, content_hash_: str, image_s
     to the full hash of that text. Here the same checks as `approve` run against
     the git-tracked files; any difference refuses the decision. Never publishes."""
     post = store.load_post(post_id)
+    from lce.archive import require_active
+
+    require_active(post, "approve it")
     if PostState(post["state"]) != S.AWAITING_APPROVAL:
         raise StoreError(f"only AWAITING_APPROVAL posts can be approved; this one is {post['state']}")
     h = _require_consistent(store, post)

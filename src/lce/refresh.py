@@ -377,6 +377,9 @@ def apply_update(
 
     text = autofix(text)[0]          # writing gate step 1: safe contractions before anything is stored
     post = store.load_post(post_id)
+    from lce.archive import require_active
+
+    require_active(post, "refresh it")
     before_text = current_text(store, post_id)
     if content_hash(text) == content_hash(autofix(before_text)[0]):   # contractions alone are no update
         raise StoreError("the text is unchanged; record a check or research result instead")

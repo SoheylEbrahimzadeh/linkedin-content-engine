@@ -249,9 +249,30 @@ def _radar_use(store, client, d) -> str:
             "(a writer still researches and writes it)")
 
 
+def _archive(store, client, d) -> str:
+    from lce import archive
+
+    archive.archive(store, d["post_id"], by=f"cloud-access:{d['created_by']}",
+                    reason=(d.get("payload") or {}).get("reason", ""), decision_id=d["decision_id"])
+    return "archived: out of Overview and Upcoming; state, history and versions kept (History shows it)"
+
+
+def _restore(store, client, d) -> str:
+    from lce import archive
+
+    post = archive.restore(store, d["post_id"], by=f"cloud-access:{d['created_by']}",
+                           decision_id=d["decision_id"])
+    return f"restored to the views as {post['state']}; nothing re-enters the pipeline"
+
+
+# An archived post takes no decision except restore, archive (refused as already archived) and
+# duplicate (the explicit new attempt: a new post that needs approval like any other).
+ON_ARCHIVED = {"archive", "restore", "duplicate"}
+
+
 HANDLERS = {"approve": _approve, "reject": _reject, "edit": _edit, "regenerate": _regenerate,
             "reschedule": _reschedule, "skip": _skip, "duplicate": _duplicate, "refresh": _refresh,
-            "radar_use": _radar_use}
+            "radar_use": _radar_use, "archive": _archive, "restore": _restore}
 
 
 def pending(client: cloud.CloudClient) -> list[dict]:
@@ -310,6 +331,13 @@ def apply_all(store: DataStore, client: cloud.CloudClient) -> list[dict]:
             try:
                 if handler is None:
                     raise Refused(f"unknown action {d.get('action')!r}")
+                pid = d.get("post_id")
+                exists = pid and (store.post_dir(pid) / "post.yaml").exists()
+                if exists and d.get("action") not in ON_ARCHIVED:
+                    from lce.archive import is_archived
+
+                    if is_archived(store.load_post(pid)):
+                        raise Refused("the post is archived; restore it first")
                 result, status = handler(store, client, d), "applied"
                 store.log_event(APPLIED_EVENT, decision_id=did, action=d["action"],
                                 post_id=d.get("post_id"), result=result)

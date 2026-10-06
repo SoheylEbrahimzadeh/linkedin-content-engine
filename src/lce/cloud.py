@@ -399,6 +399,8 @@ def push(
     applying an owner's Control Center approval (`decision_id`, LCE-036), where
     the person already confirmed in the dashboard."""
     post = store.load_post(post_id)
+    if post.get("archived"):
+        raise CloudError(f"{post_id} is archived; restore it before you send it to the cloud publisher")
     if PostState(post["state"]) != S.READY_TO_PUBLISH:
         raise CloudError(f"only READY_TO_PUBLISH posts can be delegated; this one is {post['state']}")
     text = current_text(store, post_id)

@@ -214,6 +214,8 @@ def _post_view(store: DataStore, pid: str, calendar_by_ref: dict, events: list[d
         "freshness": _freshness_view(store, pid),
         "versions": _versions_view(store, pid),
         "refresh_request": meta.get("refresh_request"),
+        "archived": meta.get("archived"),
+        "archive_history": meta.get("archive_history", []),
         "refresh": meta.get("refresh"),
         "objective": meta.get("objective"),
         "humanization": meta.get("humanization"),
