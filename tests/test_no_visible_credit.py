@@ -80,21 +80,25 @@ def test_selected_source_image_is_published_without_a_label_and_keeps_its_proven
     assert "Image:" not in snap["text"]
 
 
-def test_qa_refuses_a_label_in_pipeline_text_but_only_warns_on_the_owners_own_edit(store):
+def test_every_stored_text_loses_labels_including_owner_edits_and_duplicates(store):
+    """LCE-054: the owner's Edit box is prefilled with the stored text; Duplicate copies it. A legacy
+    label must not travel through either. Stripping happens where every text is stored."""
     from conftest import awaiting_post
-
-    from lce.posts import reopen, save_humanized
-    from lce.qa import run_qa
+    from test_cloud_decisions import decision, run
 
     pid = awaiting_post(store)
-    reopen(store, pid, "test")
     body = current_text(store, pid).rstrip()
-    save_humanized(store, pid, body + "\n\nPhoto: Example\n", source="session", by="writer")
-    rep = run_qa(store, pid)
-    assert "media.visible_credit" in {e["code"] for e in rep["errors"]}
-    save_humanized(store, pid, body + "\n\nPhoto: Example\n", source="owner_edit", by="owner")
-    rep = run_qa(store, pid)
-    assert "media.visible_credit" in {w["code"] for w in rep["warnings"]}
+    from lce.textutil import content_hash
+
+    h = content_hash(current_text(store, pid))
+    _, out = run(store, decision("edit", pid, content_hash=h, text=body + "\n\nImage: CIO.com\n"))
+    assert out[0]["status"] == "applied", out
+    assert find_image_labels(current_text(store, pid)) == []
+    # a legacy text written before the rule (the file itself still carries the label)
+    (store.post_dir(pid) / "post.md").write_text(body + "\n\nImage: CIO.com\n", "utf-8")
+    _, out = run(store, decision("duplicate", pid, plan_date="2026-11-02"))
+    new_id = out[0]["result"].split()[2]
+    assert find_image_labels(current_text(store, new_id)) == []
 
 
 def test_png_helper_is_a_real_image():

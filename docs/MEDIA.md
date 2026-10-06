@@ -189,3 +189,13 @@ into the text: no `Image: CIO.com`, `Photo: ...`, `Credit: ...`, `Image source: 
 - The Worker refuses to schedule (409) or publish (`publish.blocked: visible_image_credit`, nothing
   sent to LinkedIn) an approved text that still shows such a line. It never edits the approved text:
   such a post (approved before the rule) is withdrawn, refreshed without the line and approved again.
+
+## LCE-054: labels are removed where every text is stored
+
+Root cause of labels coming back: LCE-052/053 removed them in the package and same-day refresh
+paths, but texts are also stored by the owner's Edit (the box is prefilled with the stored text,
+legacy label included), Duplicate (copies the stored text) and version restore, and QA only warned
+on owner edits. Now `posts.save_draft` / `posts.save_humanized` strip visible image/source credit
+lines for every caller (event `text.image_label_removed`), and QA `media.visible_credit` is always
+an error. Approved texts are never rewritten: they change only through withdraw → refresh →
+approval.

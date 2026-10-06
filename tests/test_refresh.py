@@ -246,7 +246,9 @@ def test_removing_a_visible_image_label_is_a_real_update(store):
     pid = with_source(store, awaiting_post(store))
     reopen(store, pid, "legacy text")
     body = current_text(store, pid).rstrip()
-    save_humanized(store, pid, body + "\n\nImage: Example News\n", source="session", by="writer")
+    save_humanized(store, pid, body + "\n", source="session", by="writer")
+    # a text stored before the rule still carries the label in its file
+    (store.post_dir(pid) / "post.md").write_text(body + "\n\nImage: Example News\n", "utf-8")
     post = store.load_post(pid)
     post["state"] = "AWAITING_APPROVAL"                       # as the legacy post stood
     store.save_post(post)

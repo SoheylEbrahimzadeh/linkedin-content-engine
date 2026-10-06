@@ -56,6 +56,18 @@ def _invalidate_checks(post: dict) -> None:
         post.pop(key, None)
 
 
+def _without_labels(store: DataStore, post_id: str, text: str, where: str) -> str:
+    """LCE-054: every stored post text loses visible image/source credit lines, whatever wrote it
+    (writer, refresh, owner edit prefilled with an older text, Duplicate, version restore). The
+    attribution lives in the image record only (attribution_display: metadata_only)."""
+    from lce.credit import strip_image_labels
+
+    clean, removed = strip_image_labels(text)
+    if removed:
+        store.log_event("text.image_label_removed", post_id=post_id, where=where, lines=removed)
+    return clean
+
+
 def save_draft(store: DataStore, post_id: str, text: str) -> dict:
     """Store the first draft (DRAFTED)."""
     post = store.load_post(post_id)
@@ -64,6 +76,7 @@ def save_draft(store: DataStore, post_id: str, text: str) -> dict:
         raise StoreError(f"cannot save a draft while the post is {state.value}")
     if not text.strip():
         raise StoreError("draft text is empty")
+    text = _without_labels(store, post_id, text, "draft")
     store.write_text(store.post_dir(post_id) / "draft.md", normalize_text(text))
     post["draft_hash"] = content_hash(text)
     _invalidate_checks(post)
@@ -90,6 +103,7 @@ def save_humanized(store: DataStore, post_id: str, text: str, *, source: str = "
         )
     if not text.strip():
         raise StoreError("text is empty")
+    text = _without_labels(store, post_id, text, source)
     store.write_text(store.post_dir(post_id) / "post.md", normalize_text(text))
     post["content_hash"] = content_hash(text)
     _invalidate_checks(post)

@@ -708,3 +708,10 @@ Explicit policy `visuals.attribution_display: metadata_only` and `provenance.att
 text that still shows a credit line (the approved text is never altered). Approved 6, 8 and 10 Oct
 still carry `Image: <publisher>` lines from before the rule: they cannot be published until the
 owner withdraws them, the label is removed by a refresh and the owner approves again.
+
+## Update 6 Oct (LCE-054: strip credit lines at storage)
+
+Labels could re-enter through owner Edit (prefilled), Duplicate and version restore. Stripping now
+happens in `save_draft` / `save_humanized` for every caller; QA `media.visible_credit` is always an
+error. Affected current posts: 6, 8, 10 Oct (approved, in the cloud publisher; Worker refuses to
+schedule or publish them until withdraw → refresh → re-approval). 13 and 15 Oct are already clean.
