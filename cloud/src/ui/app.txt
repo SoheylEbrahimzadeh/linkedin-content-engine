@@ -9,7 +9,7 @@
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
   REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, PROGRESS_STEPS, fmtElapsed, refreshProgress, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
-  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived,
+  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow,
 } from "./lib.js";
 
 const main = document.getElementById("main");
@@ -522,7 +522,8 @@ function planRow(i) {
         p && !locked && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.reschedule(p) }, "Reschedule") : null,
         !i.post_id && !locked && i.status === "PLANNED" ? h("button", { type: "button", class: "small", onclick: () => A.skip(null, i.plan_date) }, "Skip") : null,
         locked ? h("button", { type: "button", class: "small", onclick: () => A.cancel(i.pending) }, `Undo ${locked}`) : null,
-        i.status === "SCHEDULED" && i.consent_id ? h("button", { type: "button", class: "small", onclick: () => A.revoke({ consent_id: i.consent_id }) }, "Unschedule") : null)));
+        i.status === "SCHEDULED" && i.consent_id ? h("button", { type: "button", class: "small", onclick: () => A.revoke({ consent_id: i.consent_id }) }, "Unschedule") : null,
+        i.post_id && !locked && canPublishNow(cloudPost(i.post_id), activeConsent(i.post_id), st()).ok ? link(`#publish/${i.post_id}`, "Publish now", "btn small primary") : null)));
 }
 function freshLine(f) {
   return h("div", { class: "fresh-line" }, h("span", { class: "pill " + f.tone }, "Freshness: " + f.label),
@@ -831,7 +832,8 @@ function viewPost(id) {
     p && canRefresh(p, queued) && !locked ? B("Refresh", () => A.refresh(p)) : null,
     editable && p.text ? B("Edit", () => A.edit(p)) : null,
     editable ? B("Reschedule", () => A.reschedule(p)) : null,
-    queued && c.state === "READY_TO_PUBLISH" && !consent ? link(`#test/${id}`, "Controlled test publish", "btn") : null,
+    // LCE-055: manual path, independent of auto-publish; opens the confirmation page (pre-flight, exact post, phrase)
+    queued && canPublishNow(c, consent, st()).ok ? link(`#publish/${id}`, "Publish now", "btn primary") : null,
     queued && consent ? B("Unschedule", () => A.revoke(consent)) : null,
     queued && ["READY_TO_PUBLISH", "PUBLISH_FAILED"].includes(c.state) ? B("Withdraw", () => A.postAction(id, "withdraw", `Withdraw ${id}; it will not be published.`), "danger") : null,
     queued && c.state === "PUBLISH_FAILED" ? B("Rearm", () => A.postAction(id, "rearm", `Make ${id} publishable again after a failed attempt.`)) : null,
@@ -846,7 +848,9 @@ function viewPost(id) {
     link(`#history/${id}`, "Execution log", "tier3"),
     pb?.url ? ext(pb.url, "View on LinkedIn") : null,
   ].filter(Boolean);
-  const controls = [...lead, lead.length ? h("span", { class: "controls-rule", "aria-hidden": "true" }) : null, ...rare];
+  const pn = queued ? canPublishNow(c, consent, st()) : null;
+  const pnNote = pn && !pn.ok && c.state === "READY_TO_PUBLISH" ? h("p", { class: "small muted" }, "Publish now unavailable: " + pn.why) : null;
+  const controls = [...lead, lead.length ? h("span", { class: "controls-rule", "aria-hidden": "true" }) : null, ...rare, pnNote];
 
   const kv = (rows) => h("dl", { class: "kv" }, rows.filter(Boolean).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v ?? UNKNOWN)]));
   return [
@@ -1196,8 +1200,9 @@ function voiceSummary(v) {
 
 function viewTest(id) {
   const s = st();
-  const ready = (S.snap.posts ?? []).filter((p) => p.state === "READY_TO_PUBLISH" && !activeConsent(p.post_id));
+  const ready = (S.snap.posts ?? []).filter((p) => canPublishNow(p, activeConsent(p.post_id), s).ok);
   const c = id ? cloudPost(id) : null;
+  const last = id ? S.publishResult?.[id] : null;
   const checks = [
     ["Provider: LinkedIn API", s.provider === "linkedin_api"],
     ["Personal profile configured", Boolean(s.person_urn)],
@@ -1206,30 +1211,41 @@ function viewTest(id) {
     ["Emergency stop off", !s.emergency_stop],
   ];
   const allOk = checks.every(([, ok]) => ok);
-  const pick = ready.length ? h("div", { class: "cards" }, ready.map((p) => h("a", { class: "post-card" + (p.post_id === id ? " selected" : ""), href: `#test/${p.post_id}` },
+  const pick = ready.length ? h("div", { class: "cards" }, ready.map((p) => h("a", { class: "post-card" + (p.post_id === id ? " selected" : ""), href: `#publish/${p.post_id}` },
     h("div", { class: "post-card-title" }, hook(p.text) ?? p.post_id), h("div", { class: "meta" }, typeChip(media(pipePost(p.post_id) ?? p, S.snap).type)))))
-    : empty("No approved post is ready (approve one first; scheduled posts must be unscheduled).");
+    : empty("No approved post can be published now (approve one first; a scheduled post must be unscheduled; a text with an image/source label must be refreshed).");
   const parts = [
-    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Controlled test publish"), h("p", { class: "muted" }, "One post, now, as your personal profile"))),
-    h("div", { class: "notice warn" }, "This sends ONE post to LinkedIn immediately. It never runs automatically, does not change auto-publish, and asks for your confirmation twice."),
+    h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Publish now"), h("p", { class: "muted" }, "One approved post, now, as your personal profile"))),
+    h("div", { class: "notice warn" }, "This will publish this approved post to your personal LinkedIn profile now. It does not need a scheduled time, " +
+      "does not change auto-publish, runs the same publishing path as a scheduled post, and asks for your confirmation twice."),
     card("1. Pre-flight", h("ul", { class: "checks" }, checks.map(([label, ok]) => h("li", {}, h("span", { class: "dot " + (ok ? "ok" : "err") }), label, ok ? null : h("span", { class: "err small" }, " — blocked"))))),
     card("2. Choose an approved post", pick),
   ];
-  if (c && c.state === "READY_TO_PUBLISH") {
+  const pn = c ? canPublishNow(c, activeConsent(c.post_id), s) : null;
+  if (c && !pn.ok && !last) parts.push(h("div", { class: "notice info" }, "Publish now unavailable: " + pn.why));
+  if (c && pn.ok) {
     const type = media(pipePost(c.post_id) ?? c, S.snap).type;
     const input = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: `PUBLISH NOW ${c.post_id}`, "aria-label": "Confirmation phrase" });
-    const go = h("button", { type: "button", class: "danger solid", disabled: true }, "Publish to LinkedIn now");
+    const go = h("button", { type: "button", class: "danger solid", disabled: true }, "Publish now");
     input.addEventListener("input", () => { go.disabled = !(allOk && type.implemented && input.value.trim() === `PUBLISH NOW ${c.post_id}`); });
     go.addEventListener("click", async () => {
       const yes = await confirmBox("Last check before sending", `Send this exact post to LinkedIn now, as ${targetName()} (personal profile)? This cannot be undone from here.`, "Send now", "danger");
       if (!yes) return;
       go.disabled = true;
+      go.textContent = "Publishing…";
+      S.publishResult = S.publishResult ?? {};
       try {
         const r = await api("POST", `/posts/${encodeURIComponent(c.post_id)}/publish-now`, { approved_hash: c.approved_hash, confirm: input.value.trim() });
-        toast(r.outcome === "published" ? "Published on LinkedIn." : `Result: ${r.outcome}`, r.outcome === "published" ? "ok" : "warn");
+        // success is only what LinkedIn accepted (the Worker answers 200 only for outcome "published")
+        S.publishResult[c.post_id] = r.outcome === "published"
+          ? { ok: true, text: "Published on LinkedIn.", publication: r.publication }
+          : { ok: false, text: `Publish failed: ${r.detail ?? r.outcome ?? "unknown result"}` };
       } catch (err) {
-        toast("Not published: " + err.message, "err");
+        const d = err.data ?? {};
+        S.publishResult[c.post_id] = { ok: false, text: `Publish failed: ${d.detail ?? d.reason ?? err.message}` +
+          (d.outcome ? ` (${d.outcome})` : "") };
       }
+      toast(S.publishResult[c.post_id].text, S.publishResult[c.post_id].ok ? "ok" : "err");
       await load();
     });
     parts.push(card("3. Exact final post", publishingAs(true), feedPreview(pipePost(c.post_id), c),
@@ -1237,6 +1253,7 @@ function viewTest(id) {
       card("4. Confirm", h("p", { class: "small" }, "Type ", h("code", {}, `PUBLISH NOW ${c.post_id}`), ". A final dialog appears before anything is sent."),
         input, h("div", { class: "controls" }, go), allOk ? null : h("p", { class: "err small" }, "Blocked: fix the pre-flight items first.")));
   }
+  if (last) parts.push(h("div", { class: "notice " + (last.ok ? "ok" : "err") }, last.text));
   const pb = id ? pub(id) : null;
   if (pb) {
     parts.push(card("Result", h("dl", { class: "kv" }, h("dt", {}, "State"), h("dd", {}, stateBadge(pb.state)),
@@ -1319,7 +1336,7 @@ function viewSystem() {
 }
 
 // ── shell ───────────────────────────────────────────────────────────
-const NAV = [["overview", "Overview"], ["upcoming", "Upcoming"], ["posts", "Posts"], ["radar", "Radar"], ["test", "Test publish"], ["history", "History"], ["system", "System"]];
+const NAV = [["overview", "Overview"], ["upcoming", "Upcoming"], ["posts", "Posts"], ["radar", "Radar"], ["publish", "Publish now"], ["history", "History"], ["system", "System"]];
 const MOBILE_NAV = new Set(["overview", "upcoming", "posts", "radar", "system"]);
 
 function render() {
@@ -1332,7 +1349,7 @@ function render() {
   estop.classList.toggle("solid", !s.emergency_stop);
   document.getElementById("banner").replaceChildren(...(s.emergency_stop ? [h("div", { class: "notice err" }, "Emergency stop is on — nothing publishes. ",
     h("button", { type: "button", class: "small", onclick: () => A.emergency(false) }, "Release…"))] : []));
-  const views = { overview: viewOverview, upcoming: viewUpcoming, posts: viewPosts, post: viewPost, radar: viewRadar, test: viewTest, history: viewHistory, system: viewSystem };
+  const views = { overview: viewOverview, upcoming: viewUpcoming, posts: viewPosts, post: viewPost, radar: viewRadar, test: viewTest, publish: viewTest, history: viewHistory, system: viewSystem };
   main.replaceChildren(...[(views[view] || viewOverview)(arg)].flat(Infinity).filter(Boolean));
 }
 
@@ -1386,7 +1403,7 @@ window.addEventListener("focus", () => {
 function shell() {
   const nav = (cls, items) => h("nav", { class: cls, "aria-label": "Main" }, items.map(([id, label]) => h("a", { href: "#" + id, "data-nav": id }, label)));
   document.getElementById("sidebar").replaceChildren(nav("side-nav", NAV));
-  document.getElementById("bottombar").replaceChildren(nav("bottom-nav", NAV.filter(([id]) => MOBILE_NAV.has(id)).map(([id, l]) => [id, id === "test" ? "Publish" : l])));
+  document.getElementById("bottombar").replaceChildren(nav("bottom-nav", NAV.filter(([id]) => MOBILE_NAV.has(id)).map(([id, l]) => [id, id === "publish" ? "Publish" : l])));
   document.getElementById("refresh").addEventListener("click", () => { S.identity = null; load(); });
   document.getElementById("estop").addEventListener("click", () => A.emergency(!st().emergency_stop));
   window.addEventListener("hashchange", () => { if (S.snap) { render(); window.scrollTo({ top: 0 }); } });

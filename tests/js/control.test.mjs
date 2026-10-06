@@ -540,3 +540,18 @@ test("the media record shows the image provenance as internal, not as post text"
   assert.doesNotMatch(rows.Attribution, /in the post:/);
   assert.equal(rows["Source URL"].href, "https://news.example.com/a");
 });
+
+// LCE-055: Publish now appears only when the Worker would accept it.
+test("Publish now is offered only for an approved, unscheduled, clean post with the emergency stop off", () => {
+  const { canPublishNow } = lib;
+  const ready = { post_id: "p", state: "READY_TO_PUBLISH", text: "A clean post.\n\n#Demo" };
+  assert.equal(canPublishNow(ready, null, { auto_publish: true }).ok, true);
+  assert.equal(canPublishNow(ready, null, { auto_publish: false }).ok, true);          // independent of auto-publish
+  assert.equal(canPublishNow(null, null, {}).ok, false);                                // awaiting approval: not in the publisher
+  assert.equal(canPublishNow({ ...ready, state: "WITHDRAWN" }, null, {}).ok, false);
+  assert.equal(canPublishNow({ ...ready, state: "PUBLISHED" }, null, {}).ok, false);
+  assert.equal(canPublishNow({ ...ready, state: "PUBLISHING" }, null, {}).ok, false);   // no duplicate request
+  assert.match(canPublishNow(ready, { consent_id: "c" }, {}).why, /scheduled/);
+  assert.match(canPublishNow(ready, null, { emergency_stop: true }).why, /emergency stop/);
+  assert.match(canPublishNow({ ...ready, text: "Body.\n\nImage: CIO.com\n" }, null, {}).why, /image\/source label/);
+});

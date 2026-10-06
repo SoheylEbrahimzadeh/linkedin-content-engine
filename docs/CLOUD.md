@@ -109,7 +109,7 @@ records the URN in the private `config/linkedin.yaml`; commit that file and run
 
 `<api_base>/` is the owner's Control Center (Access-protected, phone and
 desktop): Overview, Upcoming (7/14-day calendar of planned, scheduled and free
-slots), Posts with a feed-style preview, Controlled test publish, History and
+slots), Posts with a feed-style preview, Publish now, History and
 System. It publishes as the **personal profile** only: the author is the
 configured `person_urn`, which the read-only identity check matches against
 the token's member; company pages are not implemented. `/pipeline/` stays as
@@ -128,7 +128,12 @@ NEEDS_REVISION for the next drafting session; reschedule/skip/duplicate →
 plan), commits, and resolves each decision as `applied` or `refused`. A
 decision on a post already in the cloud queue is refused (withdraw it first).
 
-Controlled test publish (`POST /api/posts/:id/publish-now`): a person, the
+Publish now (LCE-055; `#publish/<post>`, `POST /api/posts/:id/publish-now`; formerly "Controlled
+test publish"): the manual path, offered on the post page and the Upcoming card only when the post
+can be published (`canPublishNow`: READY_TO_PUBLISH in the cloud, not scheduled, emergency stop off,
+no visible image/source label). Two publishing paths, independent: automatic (a scheduled time and
+auto-publish on) and manual (Publish now, no time needed). The result shown is LinkedIn's: Published
+with the post URN, or Publish failed with the Worker's reason. Requirements: a person, the
 phrase `PUBLISH NOW <post>`, the approved hash of the exact text shown, a post
 READY_TO_PUBLISH in the cloud queue without a scheduled consent, and a fresh
 identity check whose member equals `person_urn` — otherwise nothing is sent.
