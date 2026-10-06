@@ -20,7 +20,7 @@ export class DecisionError extends Error {
 }
 
 export const ACTIONS = ["approve", "reject", "edit", "regenerate", "reschedule", "skip", "duplicate", "refresh",
-  "radar_use"] as const;
+  "radar_use", "archive", "restore"] as const;
 type Action = typeof ACTIONS[number];
 const POST_ID_RE = /^\d{8}-[a-z0-9-]{1,56}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -31,7 +31,11 @@ const EDITABLE = new Set(["SELECTED", "DRAFTED", "HUMANIZED", "NEEDS_REVISION", 
 const MAX_TEXT = 3000;
 
 type MirrorPost = { post_id: string; state: string; text?: string | null; actual_hash?: string | null;
-  plan_date?: string | null; image?: { sha256?: string } | null };
+  plan_date?: string | null; image?: { sha256?: string } | null; archived?: { at: string } | null };
+// Archive (owner request 2026-10-06): display state only, for posts with nothing left to do.
+const ARCHIVABLE = new Set(["REJECTED", "PUBLISHED"]);
+// cloud publisher states in which the post still has work there (a published post may be archived)
+const CLOUD_ACTIVE = new Set(["READY_TO_PUBLISH", "PUBLISHING", "PUBLISH_FAILED", "NEEDS_RECONCILE"]);
 type MirrorEntry = { date?: string; topic?: string; status?: string; draft_ref?: string; pillar?: string };
 type RadarItem = { id: string; title: string; url: string; pillar?: string | null };
 
@@ -90,6 +94,9 @@ export async function createDecision(env: Env, now: number, who: { subject: stri
   const payload: Record<string, unknown> = {};
 
   const needPost = () => { if (!post) throw new DecisionError(400, `${action} needs a post_id`); return post; };
+  if (post?.archived && !["archive", "restore", "duplicate"].includes(action)) {
+    throw new DecisionError(409, "this post is archived; restore it first");
+  }
   const notDelegated = () => {
     if (delegated) throw new DecisionError(409, "this post is in the cloud publisher; withdraw it there first");
   };
@@ -179,6 +186,22 @@ export async function createDecision(env: Env, now: number, who: { subject: stri
       if (!wanted) throw new DecisionError(409, "no open slot to plan it for (every slot in the horizon has a post)");
       planDate = String(wanted.date);
       Object.assign(payload, { item_id: item.id, title: item.title.slice(0, 300), url: item.url });
+      break;
+    }
+    case "archive": {
+      const p = needPost();
+      phrase(b, `ARCHIVE ${p.post_id}`);
+      if (p.archived) throw new DecisionError(409, "this post is already archived");
+      if (!ARCHIVABLE.has(p.state)) {
+        throw new DecisionError(409, `a ${p.state} post is not archived; only rejected or published posts are (finish, reject or reconcile it first)`);
+      }
+      if (cloud && CLOUD_ACTIVE.has(cloud.state)) throw new DecisionError(409, `the post is in the cloud publisher (${cloud.state}); withdraw or reconcile it there first`);
+      payload.reason = str(b.reason, 500, "reason", false);
+      break;
+    }
+    case "restore": {
+      const p = needPost();
+      if (!p.archived) throw new DecisionError(409, "this post is not archived");
       break;
     }
     case "duplicate": {

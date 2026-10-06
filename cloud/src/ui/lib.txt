@@ -192,10 +192,12 @@ export function attention({ cloud, pipeline, decisions }) {
     if (p.state === "NEEDS_RECONCILE" || p.state === "PUBLISHING") out.push({ level: "err", post_id: p.post_id, text: "Publication outcome unknown: reconcile" });
     if (p.state === "PUBLISH_FAILED") out.push({ level: "err", post_id: p.post_id, text: "Publication failed" });
   }
+  const settled = new Set((pipeline?.posts ?? []).filter(isSettled).map((p) => p.post_id));
   for (const d of decisions ?? []) {
-    if (d.status === "refused" && !OVERRIDDEN.test(d.result ?? "")) out.push({ level: "warn", post_id: d.post_id, text: `Decision refused (${d.action}): ${d.result ?? ""}` });
+    if (d.status === "refused" && !settled.has(d.post_id) && !OVERRIDDEN.test(d.result ?? "")) out.push({ level: "warn", post_id: d.post_id, text: `Decision refused (${d.action}): ${d.result ?? ""}` });
   }
   for (const p of pipeline?.posts ?? []) {
+    if (settled.has(p.post_id)) continue;   // history, not work
     if (p.state === "AWAITING_APPROVAL") out.push({ level: "info", post_id: p.post_id, text: "Ready for your approval" });
     if (p.refresh_request && p.plan_date && p.plan_date < new Date().toISOString().slice(0, 10)) {
       out.push({ level: "warn", post_id: p.post_id, text: "Slot passed: reschedule it to get the replacement written" });
@@ -465,7 +467,10 @@ export function contentPlan({ pipeline, cloud, now, tz, days = 14 }) {
       pending: pending ? { decision_id: pending.decision_id, action: pending.action, created_at: pending.created_at, post_id: pending.post_id ?? null, plan_date: pending.plan_date ?? null } : null, consent_id: consent?.consent_id ?? null,
       plan_date: entry?.date ?? post?.plan_date ?? null, sources: post?.sources ?? (entry?.sources ?? []).map((u) => ({ url: u })) });
   };
+  // An archived post (and its plan entry) is history: it leaves the plan, never the History view.
+  for (const p of pipeline?.posts ?? []) if (isArchived(p)) seen.add(p.post_id);
   for (const e of pipeline?.calendar ?? []) {
+    if (e.draft_ref && seen.has(e.draft_ref)) continue;
     if (e.draft_ref) seen.add(e.draft_ref);
     add(e.draft_ref ?? null, e);
   }
@@ -736,10 +741,20 @@ export function versionCompare(post, versionMedia = []) {
 }
 
 
+/** Owner request 2026-10-06: a post with nothing left to do. A rejected or published post, or one the owner
+ * archived, is history: its old refresh failures and refused decisions no longer ask for attention, and an
+ * archived post leaves Overview and Upcoming (History keeps it, with every record). */
+export const SETTLED_STATES = new Set(["REJECTED", "PUBLISHED"]);
+export const isArchived = (post) => Boolean(post?.archived);
+export const isSettled = (post) => Boolean(post) && (isArchived(post) || SETTLED_STATES.has(post.state));
+export const canArchive = (post, cloudPost) => Boolean(post) && !isArchived(post) && SETTLED_STATES.has(post.state)
+  && !(cloudPost && ["READY_TO_PUBLISH", "PUBLISHING", "PUBLISH_FAILED", "NEEDS_RECONCILE"].includes(cloudPost.state));
+
 // ── LCE-050: the "right now" board and the Content Radar ───────────────────────────────
 /** What needs the owner, and what the system is doing, from recorded facts only. */
 export function nowBoard({ pipeline, cloud, progress = {}, nowMs = Date.now() }) {
   const posts = pipeline?.posts ?? [];
+  const settled = new Set(posts.filter(isSettled).map((p) => p.post_id));
   const pending = (cloud?.decisions ?? []).filter((d) => d.status === "pending");
   const closing = new Set(pending.filter((d) => ["skip", "reject", "refresh"].includes(d.action)).map((d) => d.post_id));
   const work = pipeline?.freshness_plan?.work ?? [];
@@ -748,14 +763,14 @@ export function nowBoard({ pipeline, cloud, progress = {}, nowMs = Date.now() })
   const approval = posts.filter((p) => p.state === "AWAITING_APPROVAL" && !closing.has(p.post_id));
   const researching = work.filter((u) => u.kind === "research" || (u.post_id && lastStage(u.post_id) === "researching"));
   const writing = [
-    ...posts.filter((p) => (p.refresh_request && !(p.plan_date && p.plan_date < today)) || pending.some((d) => d.action === "refresh" && d.post_id === p.post_id))
+    ...posts.filter((p) => !settled.has(p.post_id)).filter((p) => (p.refresh_request && !(p.plan_date && p.plan_date < today)) || pending.some((d) => d.action === "refresh" && d.post_id === p.post_id))
       .map((p) => ({ post_id: p.post_id, plan_date: p.plan_date, kind: "replacement" })),
     ...work.filter((u) => u.kind === "slot" && u.started),
   ];
   const failed = [
     ...(cloud?.posts ?? []).filter((p) => ["PUBLISH_FAILED", "NEEDS_RECONCILE"].includes(p.state)).map((p) => ({ post_id: p.post_id, why: p.state })),
-    ...(cloud?.decisions ?? []).filter((d) => d.status === "refused" && !OVERRIDDEN.test(d.result ?? "") && Date.parse(d.created_at) > nowMs - 7 * 86400e3).map((d) => ({ post_id: d.post_id, why: `${d.action} refused` })),
-    ...Object.entries(progress).filter(([, st]) => (st?.events ?? []).at(-1)?.stage === "failed").map(([id, st]) => ({ post_id: id, why: st.events.at(-1).note ?? "refresh failed" })),
+    ...(cloud?.decisions ?? []).filter((d) => d.status === "refused" && !settled.has(d.post_id) && !OVERRIDDEN.test(d.result ?? "") && Date.parse(d.created_at) > nowMs - 7 * 86400e3).map((d) => ({ post_id: d.post_id, why: `${d.action} refused` })),
+    ...Object.entries(progress).filter(([id, st]) => !settled.has(id) && (st?.events ?? []).at(-1)?.stage === "failed").map(([id, st]) => ({ post_id: id, why: st.events.at(-1).note ?? "refresh failed" })),
   ];
   const radar = pipeline?.radar ?? {};
   const fresh = (radar.items ?? []).filter((i) => Date.parse(i.published_at ?? i.first_seen) > nowMs - 86400e3);

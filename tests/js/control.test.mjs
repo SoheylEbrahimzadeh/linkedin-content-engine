@@ -486,3 +486,43 @@ test("a replacement whose slot passed is not 'being written'; it asks for a resc
   const a = lib.attention({ cloud: { posts: [] }, pipeline: { posts }, decisions: [] });
   assert.match(a.find((x) => x.post_id === "old").text, /Slot passed: reschedule/);
 });
+
+// Owner request 2026-10-06: finished posts are history, archived posts leave the working views.
+test("archived posts leave Overview and Upcoming; History data keeps them", () => {
+  const { contentPlan, nowBoard, isArchived, canArchive } = lib;
+  const now = "2026-10-06T08:00:00Z";
+  const dead = { post_id: "20260929-demo-rejected", state: "REJECTED", plan_date: "2026-10-08", text: "Old rejected text.",
+    refresh_request: { requested_at: "2026-10-03T17:41:27+00:00" }, approval: { reason: "not my voice" } };
+  const live = { post_id: "20261008-demo-live", state: "AWAITING_APPROVAL", plan_date: "2026-10-08", text: "A live post." };
+  const calendar = [{ date: "2026-10-08", draft_ref: dead.post_id, topic: "dead" }, { date: "2026-10-08", draft_ref: live.post_id, topic: "live" }];
+  const before = contentPlan({ pipeline: { posts: [dead, live], calendar }, cloud: {}, now, tz: "UTC", days: 7 });
+  assert.ok(before.items.some((i) => i.post_id === dead.post_id));            // rejected, not archived: still listed
+  const archived = { ...dead, archived: { at: "2026-10-06T07:00:00+00:00", by: "owner", state: "REJECTED" } };
+  const after = contentPlan({ pipeline: { posts: [archived, live], calendar }, cloud: {}, now, tz: "UTC", days: 7 });
+  assert.ok(!after.items.some((i) => i.post_id === dead.post_id));            // gone from the plan
+  assert.ok(after.items.some((i) => i.post_id === live.post_id));             // live work untouched
+  assert.ok(isArchived(archived) && !isArchived(dead));
+  assert.ok(canArchive(dead, null) && !canArchive(live, null) && !canArchive(archived, null));
+  assert.ok(!canArchive({ ...dead, state: "PUBLISHED" }, { state: "NEEDS_RECONCILE" }));
+  assert.ok(canArchive({ ...dead, state: "PUBLISHED" }, { state: "PUBLISHED" }));
+  assert.ok(!canArchive({ ...live, state: "APPROVED" }, null) && !canArchive({ ...live, state: "READY_TO_PUBLISH" }, null));
+  void nowBoard;
+});
+
+test("a rejected post's old refresh failure and refused decisions are history, not attention", () => {
+  const { nowBoard } = lib;
+  const nowMs = Date.parse("2026-10-06T08:00:00Z");
+  const dead = { post_id: "20260929-demo-rejected", state: "REJECTED", plan_date: "2026-09-29",
+    refresh_request: { requested_at: "2026-10-03T17:41:27+00:00" } };
+  const live = { post_id: "20261010-demo-live", state: "NEEDS_REVISION", plan_date: "2026-10-10" };
+  const refused = (post_id) => ({ decision_id: "d-" + post_id, post_id, action: "refresh", status: "refused",
+    result: "Worker network policy blocks source sites; claims cannot be verified", created_at: "2026-10-05T10:00:00+00:00" });
+  const failed = { events: [{ stage: "failed", note: "Worker network policy blocks source sites" }] };
+  const pipeline = { posts: [dead, live], calendar: [] };
+  const cloud = { decisions: [refused(dead.post_id), refused(live.post_id)] };
+  const b = nowBoard({ pipeline, cloud, progress: { [dead.post_id]: failed, [live.post_id]: failed }, nowMs });
+  assert.deepEqual([...new Set(b.failed.map((f) => f.post_id))], [live.post_id]);   // the live failure still shows
+  const att = attention({ cloud, pipeline, decisions: cloud.decisions });
+  assert.ok(att.every((a) => a.post_id !== dead.post_id));
+  assert.ok(att.some((a) => a.post_id === live.post_id));
+});

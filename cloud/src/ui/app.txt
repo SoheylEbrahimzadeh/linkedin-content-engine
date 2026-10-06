@@ -9,7 +9,7 @@
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
   REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, PROGRESS_STEPS, fmtElapsed, refreshProgress, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
-  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge,
+  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived,
 } from "./lib.js";
 
 const main = document.getElementById("main");
@@ -286,7 +286,7 @@ const st = () => S.snap?.settings ?? {};
 const targetName = () => st().display_name || "Personal profile";
 
 const LABELS = { approve: "approval", reject: "rejection", edit: "edit", refresh: "refresh", regenerate: "regeneration request",
-  reschedule: "reschedule", skip: "skip", duplicate: "copy" };
+  reschedule: "reschedule", skip: "skip", duplicate: "copy", archive: "archive", restore: "restore" };
 function decide(body, ok) {
   const label = LABELS[body.action] ?? body.action;
   return mutate({ method: "POST", path: "/decisions", body: { request_id: newRequestId(), ...body } },
@@ -306,6 +306,21 @@ const A = {
     if (reason === null) return;
     const phrase = await typed(`REJECT ${p.post_id}`, "The post will not be published.", "danger", "Reject");
     if (phrase) decide({ action: "reject", post_id: p.post_id, reason, confirm: phrase });
+  },
+  // Owner request 2026-10-06: Archive takes a finished (rejected or published) post out of Overview and Upcoming.
+  // Nothing is deleted or published; History keeps the post with every record, and Restore brings it back.
+  async archive(p) {
+    const reason = await askText("Archive", "Why? (optional, kept with the post)", { max: 500 });
+    if (reason === null) return;
+    const phrase = await typed(`ARCHIVE ${p.post_id}`, "The post leaves Overview and Upcoming. Its state, history, versions and " +
+      "failure records stay, and it stays in History, where Restore brings it back. Nothing is published or deleted.", "primary", "Archive");
+    if (phrase) decide({ action: "archive", post_id: p.post_id, reason, confirm: phrase },
+      "Archive recorded. The post leaves Overview and Upcoming at the next private run; History keeps it.");
+  },
+  async restore(p) {
+    const ok = await confirmBox("Restore to the working views?", `The post comes back to Overview and Upcoming as ${p.state.toLowerCase()}. ` +
+      "It does not re-enter writing, refresh, approval or publishing; for a new attempt use Duplicate.", "Restore");
+    if (ok) decide({ action: "restore", post_id: p.post_id }, "Restore recorded. The post is back in the views after the next private run.");
   },
   async edit(p) {
     const text = await askText("Edit post", "Post text (QA and the duplicate check run again; a new approval is needed)",
@@ -826,6 +841,8 @@ function viewPost(id) {
     editable ? B("Skip", () => A.skip(p), "tier3") : null,
     editable ? B("Reject", () => A.reject(p), "danger tier3") : null,
     p?.text ? B("Duplicate", () => A.duplicate(p), "tier3") : null,
+    canArchive(p, c) && !d ? B("Archive", () => A.archive(p), "tier3") : null,
+    isArchived(p) && !d ? B("Restore", () => A.restore(p), "tier3") : null,
     link(`#history/${id}`, "Execution log", "tier3"),
     pb?.url ? ext(pb.url, "View on LinkedIn") : null,
   ].filter(Boolean);
@@ -833,10 +850,13 @@ function viewPost(id) {
 
   const kv = (rows) => h("dl", { class: "kv" }, rows.filter(Boolean).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v ?? UNKNOWN)]));
   return [
-    h("div", { class: "page-head post-head" }, h("div", { class: "page-title" }, link("#upcoming", "Upcoming", "back"),
+    h("div", { class: "page-head post-head" }, h("div", { class: "page-title" }, isArchived(p) ? link("#history", "History", "back") : link("#upcoming", "Upcoming", "back"),
       h("h1", { class: "post-h1" }, hook(p?.text ?? c?.text, 90) ?? p?.topic ?? id),
       h("div", { class: "post-sub" }, statusPill(code), item?.date ? h("span", {}, fmtLong(item.plan_date ?? item.date)) : null,
         p?.objective ? h("span", {}, objectiveLabel(p.objective)) : null))),
+    isArchived(p) ? h("div", { class: "notice info archived-note" }, `Archived ${fmtWhen(p.archived.at)}` +
+      (p.archived.reason ? `: ${p.archived.reason}` : "") + `. Not shown in Overview or Upcoming; kept in History with its state (${p.state.toLowerCase()}), ` +
+      "versions and every record. Nothing can be approved, scheduled or published from here.") : null,
     d ? h("div", { class: "notice info" }, locked ? CLOSED_NOTE[locked](d) : `Your ${d.action} decision is recorded (${fmtWhen(d.created_at)}). It is applied to the repository at the next private run, within about an hour. `,
       B(locked ? `Undo ${locked}` : "Cancel", () => A.cancel(d), "small")) : null,
     outcomeLine(id, true),
@@ -1233,6 +1253,7 @@ function viewHistory(postId) {
   return [
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "History"), h("p", { class: "muted" }, postId ? hook(pipePost(postId)?.text, 80) ?? postId : "All posts")), postId ? link("#history", "All posts", "btn") : null),
     postId && pipePost(postId)?.versions?.length ? versionsCard(pipePost(postId)) : null,
+    postId ? null : archivedCard(),
     card("Your decisions", decisions.length ? h("div", { class: "table-wrap" }, h("table", {},
       h("thead", {}, h("tr", {}, ["When", "Decision", "Post", "Status", "Result", "ID"].map((x) => h("th", {}, x)))),
       h("tbody", {}, decisions.map((d) => h("tr", {}, h("td", {}, fmtWhen(d.created_at)), h("td", {}, d.action),
@@ -1245,6 +1266,19 @@ function viewHistory(postId) {
           x.id ? [" · ", h("code", {}, short(x.id, 14))] : "", h("span", { class: "small muted" }, ` · ${x.actor}`)))))
       : empty("No history yet.")),
   ];
+}
+
+// Owner request 2026-10-06: finished posts the owner archived. History is their home; every record stays.
+function archivedCard() {
+  const rows = (S.pipe?.posts ?? []).filter(isArchived).sort((a, b) => String(b.archived.at).localeCompare(String(a.archived.at)));
+  return card("Archived posts", rows.length ? h("div", { class: "table-wrap" }, h("table", {},
+    h("thead", {}, h("tr", {}, ["Archived", "Post", "State", "Why", ""].map((x) => h("th", {}, x)))),
+    h("tbody", {}, rows.map((p) => h("tr", {}, h("td", {}, fmtWhen(p.archived.at)),
+      h("td", {}, link(`#post/${p.post_id}`, hook(p.text, 60) ?? p.topic ?? p.post_id)), h("td", {}, statusPill(p.state)),
+      h("td", { class: "small" }, p.archived.reason ?? (p.approval?.reason ? `rejected: ${p.approval.reason}` : "")),
+      h("td", {}, pendingFor(p.post_id) ? h("span", { class: "small muted" }, "decision pending")
+        : h("button", { type: "button", class: "small", onclick: () => A.restore(p) }, "Restore")))))))
+    : empty("Nothing archived. A rejected or published post can be archived from its page (Archive)."));
 }
 
 function viewSystem() {

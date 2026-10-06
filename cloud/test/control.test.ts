@@ -143,6 +143,33 @@ describe("decision inbox", () => {
     expect((await call("POST", "/decisions", { action: "duplicate", post_id: AWAITING, date: "2026-10-20", replace_pending: true })).status).toBe(201);
     expect((await call("POST", "/decisions", { action: "publish", post_id: AWAITING })).status).toBe(400);
   });
+  it("archives only finished posts, with the typed phrase, and nothing else acts on an archived post", async () => {
+    // owner request 2026-10-06: Archive is display state for REJECTED / PUBLISHED posts only
+    await awaitingMirror();
+    const arch = (extra: Record<string, unknown> = {}) =>
+      call("POST", "/decisions", { action: "archive", post_id: AWAITING, confirm: `ARCHIVE ${AWAITING}`, ...extra });
+    expect((await arch()).status).toBe(409);                                   // awaiting approval: refused
+    await awaitingMirror({ state: "APPROVED" });
+    expect((await arch()).status).toBe(409);                                   // approved: refused
+    await awaitingMirror({ state: "REJECTED" });
+    expect((await call("POST", "/decisions", { action: "archive", post_id: AWAITING })).status).toBe(428);
+    expect((await arch()).status).toBe(201);
+    expect((await call("POST", "/decisions", { action: "archive", post_id: AWAITING, confirm: `ARCHIVE ${AWAITING}` }, SERVICE)).status).toBe(403);
+    await awaitingMirror({ state: "REJECTED", archived: { at: "2026-10-06T00:00:00+00:00" } });
+    expect((await arch({ replace_pending: true })).status).toBe(409);         // already archived
+    expect((await call("POST", "/decisions", { action: "refresh", post_id: AWAITING, replace_pending: true })).status).toBe(409);
+    expect((await call("POST", "/decisions", { action: "reschedule", post_id: AWAITING, date: "2026-10-12", replace_pending: true })).status).toBe(409);
+    expect((await call("POST", "/decisions", { action: "restore", post_id: AWAITING, replace_pending: true })).status).toBe(201);
+  });
+  it("archives a published post only when the cloud publisher has nothing open for it", async () => {
+    await awaitingMirror({ state: "PUBLISHED" });
+    await insertPost(e, AWAITING, TEXT, "NEEDS_RECONCILE");
+    const arch = () => call("POST", "/decisions", { action: "archive", post_id: AWAITING, confirm: `ARCHIVE ${AWAITING}` });
+    expect((await arch()).status).toBe(409);
+    await e.DB.prepare("UPDATE posts SET state = 'PUBLISHED' WHERE post_id = ?").bind(AWAITING).run();
+    expect((await arch()).status).toBe(201);
+    expect((await rows<Record<string, string>>(e, `SELECT state FROM posts WHERE post_id = '${AWAITING}'`))[0].state).toBe("PUBLISHED");
+  });
   it("refuses edits of a post already delegated to the cloud publisher", async () => {
     const h = await awaitingMirror({ state: "READY_TO_PUBLISH" });
     await insertPost(e, AWAITING);
