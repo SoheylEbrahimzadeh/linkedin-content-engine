@@ -4,7 +4,7 @@ import { handleApi } from "../src/api";
 import { resetCertsCache } from "../src/auth";
 import { runScheduled } from "../src/runner";
 import { contentHash } from "../src/text";
-import { created, enableAll, fakeFetch, insertConsent, insertPost, reset, rows, setSettings, TEXT, testEnv } from "./helpers";
+import { created, enableAll, fakeFetch, insertConsent, insertPost, reset, rows, setSettings, status, TEXT, testEnv } from "./helpers";
 
 const TEAM = "test-team.cloudflareaccess.com";
 const NOW = Date.parse("2026-10-05T12:00:00+00:00");
@@ -301,6 +301,61 @@ describe("controlled manual publish", () => {
     r = await call("POST", `/posts/${READY}/publish-now`, { approved_hash: h, confirm: `PUBLISH NOW ${READY}` });
     expect(r.status).toBe(409);
     expect(r.calls).toHaveLength(0);
+  });
+});
+
+// LCE-055: Publish now is the manual path; it reuses publishOne (same gates as scheduled publishing).
+describe("publish now (LCE-055)", () => {
+  async function ready(text?: string) {
+    await enableAll(e);                                   // auto-publish ON: manual publishing ignores it
+    return insertPost(e, READY, text);
+  }
+  const go = (h: string, f = fakeFetch()) =>
+    call("POST", `/posts/${READY}/publish-now`, { approved_hash: h, confirm: `PUBLISH NOW ${READY}` }, OWNER, f);
+
+  it("publishes an approved post with no scheduled time and leaves auto-publish as it was", async () => {
+    const h = await ready();
+    expect(await rows(e, "SELECT * FROM consents")).toHaveLength(0);          // nothing scheduled
+    const r = await go(h, fakeFetch(userinfo(), created("urn:li:share:7101")));
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ outcome: "published", publication: { state: "published", remote_id: "urn:li:share:7101" } });
+    const [s] = await rows<{ value: string }>(e, "SELECT value FROM settings WHERE key = 'auto_publish'");
+    expect(s.value).toBe("true");
+    const evs = (await rows<{ event: string }>(e, "SELECT event FROM events ORDER BY id")).map((x) => x.event);
+    expect(evs).toContain("publish.manual_requested");                       // audit
+    expect(evs).toContain("publish.published");
+  });
+  it("a second Publish now of the same post is refused (no duplicate)", async () => {
+    const h = await ready();
+    expect((await go(h, fakeFetch(userinfo(), created("urn:li:share:7102")))).status).toBe(200);
+    const f = fakeFetch(userinfo(), created("urn:li:share:7103"));
+    const r = await go(h, f);
+    expect(r.status).toBe(409);
+    expect(f.calls.filter((c) => c.url.endsWith("/rest/posts"))).toHaveLength(0);
+  });
+  it("a post that is not approved into the publisher cannot be published", async () => {
+    await enableAll(e);
+    const h = await insertPost(e, READY, TEXT, "WITHDRAWN");
+    const r = await go(h);
+    expect(r.status).toBe(409);
+    expect(String(r.body!.detail)).toContain("not READY_TO_PUBLISH");
+    expect(r.calls).toHaveLength(0);
+  });
+  it("a LinkedIn failure is reported as Publish failed with the real status, never as success", async () => {
+    const h = await ready();
+    const r = await go(h, fakeFetch(userinfo(), status(422)));
+    expect(r.status).toBe(502);
+    expect(r.body!.outcome).not.toBe("published");
+    expect((await rows<{ state: string }>(e, `SELECT state FROM posts WHERE post_id = '${READY}'`))[0].state).toBe("PUBLISH_FAILED");
+    const [ev] = await rows<{ detail: string }>(e, "SELECT detail FROM events WHERE event LIKE 'publish.failed%' ORDER BY id DESC");
+    expect(ev.detail).toContain("422");
+  });
+  it("an approved text with an image/source label is never sent (LCE-053 gate, same path)", async () => {
+    const h = await ready("A fictional approved post.\n\nImage: Example News\n\n#Demo\n");
+    const f = fakeFetch(userinfo(), created());
+    const r = await go(h, f);
+    expect(r.status).toBe(409);
+    expect(f.calls.filter((c) => c.url.endsWith("/rest/posts"))).toHaveLength(0);
   });
 });
 

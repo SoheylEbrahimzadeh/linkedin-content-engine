@@ -715,3 +715,18 @@ Labels could re-enter through owner Edit (prefilled), Duplicate and version rest
 happens in `save_draft` / `save_humanized` for every caller; QA `media.visible_credit` is always an
 error. Affected current posts: 6, 8, 10 Oct (approved, in the cloud publisher; Worker refuses to
 schedule or publish them until withdraw → refresh → re-approval). 13 and 15 Oct are already clean.
+
+## LCE-055 (6 Oct): Publish now (manual path)
+
+- PLANNED/STARTED: owner request for an immediate publish of an approved post without a schedule.
+- EXECUTED: the Worker already had the manual path (`publishNow` → `publishOne`, the scheduled
+  publisher's code, with emergency stop, approved-hash, author identity, duplicate protection and
+  audit events). The dashboard only exposed it as a separate "Controlled test publish" page. Now
+  `Publish now` appears on the post page and the Upcoming card when `canPublishNow` holds; the
+  confirmation page (pre-flight, exact post, typed phrase, final dialog) shows "Publishing…" and
+  then LinkedIn's actual result (Published with the URN, or Publish failed with the reason).
+  Auto-publish is not read or changed. Tests: Worker (no schedule needed, auto-publish untouched,
+  duplicate refused, not-approved refused, LinkedIn 422 → PUBLISH_FAILED with the status, label
+  gate, emergency stop, person/phrase/hash), JS eligibility.
+- VERIFIED: pending the production deploy and dashboard checks (no real post is published by the
+  verification).

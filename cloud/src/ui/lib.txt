@@ -750,6 +750,23 @@ export const isSettled = (post) => Boolean(post) && (isArchived(post) || SETTLED
 export const canArchive = (post, cloudPost) => Boolean(post) && !isArchived(post) && SETTLED_STATES.has(post.state)
   && !(cloudPost && ["READY_TO_PUBLISH", "PUBLISHING", "PUBLISH_FAILED", "NEEDS_RECONCILE"].includes(cloudPost.state));
 
+/** LCE-055: may the owner publish this post now (manual path, independent of auto-publish)?
+ * Mirrors the Worker's own gates so the button only appears when the request can succeed; the Worker
+ * still checks everything again (approved hash, emergency stop, author, duplicate protection). */
+const VISIBLE_CREDIT_RE = new RegExp(
+  String.raw`^\s*(?:(?:(?:header|cover|featured|hero|lead)\s+)?(?:images?|photos?|pictures?|illustrations?|graphics?|visuals?|credits?)` +
+  String.raw`(?:\s+(?:source|credit|courtesy|by)s?)?|sources?|via)\s*:\s*\S.*$`, "im");
+export function canPublishNow(cloudPost, consent, settings = {}) {
+  if (!cloudPost || cloudPost.state === "WITHDRAWN") return { ok: false, why: "not approved into the publisher yet" };
+  if (cloudPost.state === "PUBLISHED") return { ok: false, why: "already published" };
+  if (cloudPost.state === "PUBLISHING" || cloudPost.state === "NEEDS_RECONCILE") return { ok: false, why: "a publication is in progress or needs reconciling" };
+  if (cloudPost.state !== "READY_TO_PUBLISH") return { ok: false, why: `post is ${cloudPost.state}` };
+  if (consent) return { ok: false, why: "scheduled: unschedule it first to publish now" };
+  if (settings.emergency_stop) return { ok: false, why: "the emergency stop is on" };
+  if (VISIBLE_CREDIT_RE.test(cloudPost.text ?? "")) return { ok: false, why: "the approved text shows an image/source label; refresh and approve the clean text" };
+  return { ok: true, why: null };
+}
+
 // ── LCE-050: the "right now" board and the Content Radar ───────────────────────────────
 /** What needs the owner, and what the system is doing, from recorded facts only. */
 export function nowBoard({ pipeline, cloud, progress = {}, nowMs = Date.now() }) {
