@@ -9,7 +9,7 @@
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
   REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, PROGRESS_STEPS, fmtElapsed, refreshProgress, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
-  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow,
+  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats,
 } from "./lib.js";
 
 const main = document.getElementById("main");
@@ -603,6 +603,7 @@ function viewOverview() {
   return [
     pageHead("Overview", fmtLong(localDate(S.snap.now, tz())), rangeControls("overview")),
     boardView(),
+    lifetimeCard(),
     h("div", { class: "brief-grid" },
       h("section", { class: "card next-hero", "aria-label": "Next post" },
         h("h2", { class: "section-title" }, "Next post"),
@@ -688,6 +689,27 @@ function boardView() {
         first(b.failed, (f) => f.why) ?? "Nothing failed"),
       tile("next", "Next slot", b.next ? 1 : 0, "info", b.next?.draft_ref ? `#post/${b.next.draft_ref}` : "#upcoming",
         b.next ? `${fmtDate(b.next.date)}: ${b.next.status === "open" ? "open slot" : b.next.topic}` : "Nothing planned")));
+}
+
+// LCE-056: lifetime publishing (real LinkedIn publications only) and the pipeline from today on.
+function lifetimeCard() {
+  const x = publishingStats({ pipeline: S.pipe, cloud: S.snap, now: S.snap.now, tz: tz() });
+  const stat = (label, value, note) => h("div", { class: "stat" }, h("span", { class: "stat-value" }, String(value)),
+    h("span", { class: "stat-label" }, label), note ? h("span", { class: "stat-note small muted" }, note) : null);
+  const p = x.pipeline;
+  return h("section", { class: "card lifetime", "aria-label": "Lifetime publishing" },
+    h("h2", { class: "section-title" }, "Lifetime publishing"),
+    h("div", { class: "stats" },
+      stat("Published", x.published, x.lastPublishedAt ? `last ${fmtWhen(x.lastPublishedAt)}` : "accepted by LinkedIn"),
+      stat("Scheduled", x.scheduled, "has a publishing time"),
+      stat("Awaiting approval", x.awaiting),
+      stat("Planned", x.planned, "no publishing time yet")),
+    h("p", { class: "small" }, h("strong", {}, `Total published lifetime: ${x.published}`),
+      x.publishFailed ? h("span", { class: "muted" }, ` · ${x.publishFailed} failed attempt(s), not counted`) : null),
+    h("h3", { class: "section-sub" }, "Future pipeline"),
+    h("p", {}, h("strong", {}, `${p.total} post${p.total === 1 ? "" : "s"} in pipeline`), h("span", { class: "muted" },
+      ` from today: ${p.scheduled} scheduled · ${p.approved} approved, waiting to be scheduled or published · ` +
+      `${p.awaiting} awaiting approval · ${p.planned} planned or being written` + (p.attention ? ` · ${p.attention} need attention` : ""))));
 }
 
 // Run-sheet day: the date as a typeset block, then the day's rows.
