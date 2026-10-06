@@ -63,6 +63,31 @@ describe("cron runner", () => {
     expect(f.calls).toHaveLength(1);
   });
 
+  // LCE-053: the image's attribution is internal provenance; the payload never carries a credit line,
+  // and auto-publish stays ON throughout.
+  it("auto-publish ON publishes a clean text with no image/source label in the payload", async () => {
+    const f = await armed([created("urn:li:share:9101")]);
+    const [s] = await rows<{ value: string }>(e, "SELECT value FROM settings WHERE key = 'auto_publish'");
+    expect(s.value).toBe("true");
+    const r = await runScheduled(e, AT("06:31"), f.fn);
+    expect(r).toMatchObject({ status: "done", outcome: "published" });
+    const body = JSON.parse(String(f.calls[0].init.body));
+    expect(body.commentary).not.toMatch(/^(image|photo|credit|source|via)s?\b[^\n]*:/im);
+  });
+  for (const label of ["Image: Example News", "Photo: Jane Doe", "Credit: Example News", "Source: Example News",
+    "Image source: Example News"]) {
+    it(`an approved text that still shows '${label}' is never sent to LinkedIn`, async () => {
+      await enableAll(e);
+      const h = await insertPost(e, "20261006-demo-post", `A fictional approved post.\n\n${label}\n\n#Demo`);
+      await insertConsent(e, "20261006-demo-post", SLOT, SLOT_UTC, h);
+      const f = fakeFetch(created());
+      const r = await runScheduled(e, AT("06:31"), f.fn);
+      expect(r).toMatchObject({ status: "blocked", detail: "visible_image_credit" });
+      expect(f.calls).toHaveLength(0);
+      const [post] = await rows<{ state: string }>(e, "SELECT state FROM posts");
+      expect(post.state).toBe("READY_TO_PUBLISH");
+    });
+  }
   it("kill switch OFF: no request and no writes", async () => {
     const f = await armed([created()]);
     await setSettings(e, { auto_publish: "false" });

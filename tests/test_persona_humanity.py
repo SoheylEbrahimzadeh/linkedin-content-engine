@@ -497,7 +497,7 @@ def test_owner_counter_examples_and_avoided_words_fail_owner_voice():
 
 
 def test_credit_lines_and_hashtags_are_not_prose():
-    res, _ = humanity(NATURAL + "\n\nSource: https://example.org/survey\n\n#ITSM #AI")
+    res, _ = humanity(NATURAL + "\n\n#ITSM #AI")
     assert res["verdict"] == "PASS", res["criteria"]
 
 

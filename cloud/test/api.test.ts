@@ -129,6 +129,14 @@ describe("push, consent, settings, reconcile", () => {
     expect((await call("PUT", "/posts/bad id", { text: TEXT })).status).toBe(400);
   });
 
+  it("consent: an approved text with a visible image/source label cannot be scheduled (LCE-053)", async () => {
+    await setSettings(e, { timezone: SYNTH.timezone, cadence: JSON.stringify(SYNTH.cadence) });
+    await insertPost(e, "20261006-demo-post", "A fictional approved post.\n\nImage: Example News\n\n#Demo\n");
+    const r = await call("POST", "/consents", { post_id: "20261006-demo-post", slot_id: "2026-10-07-wed-0030" });
+    expect(r.status).toBe(409);
+    expect(String(r.body?.error ?? "")).toContain("image/source label");
+    expect(await rows(e, "SELECT * FROM consents")).toHaveLength(0);
+  });
   it("consent: configured future slot, one active per post and per slot, revocable", async () => {
     await setSettings(e, { timezone: SYNTH.timezone, cadence: JSON.stringify(SYNTH.cadence) });
     await insertPost(e);

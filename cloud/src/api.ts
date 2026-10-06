@@ -6,7 +6,7 @@ import { AuthError, verifyAccess, type CertsFetcher } from "./auth";
 import { event, isSchemaMissing, loadSettings, SETTING_KEYS, type ConsentRow, type Env, type PostRow } from "./db";
 import { isoUtc, loadSchedule, parseIsoUtc, ScheduleError, slotById, slotsBetween } from "./schedule";
 import { applyMigrations, MigrationConflict, migrationStatus } from "./migrations";
-import { contentHash, sha256Bytes } from "./text";
+import { contentHash, sha256Bytes, visibleCredit } from "./text";
 import { IDENTITY_HTTP, linkedinIdentity } from "./identity";
 import { cancelDecision, createDecision, DecisionError, listDecisions, resolveDecision } from "./decisions";
 import { startWriter } from "./dispatch";
@@ -245,6 +245,11 @@ async function consent(env: Env, now: number, actor: string, b: Record<string, u
   const post = await getPost(env, id);
   if (post.state !== "READY_TO_PUBLISH") throw new HttpError(409, `post is ${post.state}`);
   if ((await contentHash(post.text)) !== post.approved_hash) throw new HttpError(409, "post text does not match its approved hash");
+  const credit = visibleCredit(post.text);
+  if (credit) {
+    throw new HttpError(409, `the approved text shows an image/source label (${credit.slice(0, 80)}); it is never published. ` +
+      "Withdraw, refresh it without the line and approve the clean text.");
+  }
   const settings = await loadSettings(env.DB);
   const slot = slotById(loadSchedule(settings as unknown as Record<string, unknown>), String(b.slot_id ?? ""));
   const slotMs = parseIsoUtc(slot.utc);

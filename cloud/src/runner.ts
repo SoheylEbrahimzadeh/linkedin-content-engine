@@ -12,7 +12,7 @@
 import { event, isSchemaMissing, loadSettings, type ConsentRow, type Env, type PostRow, type Settings } from "./db";
 import { configProblems, publish, type FetchLike, type ImageInput, type LinkedInConfig, type PublishResult } from "./linkedin";
 import { isoUtc, parseIsoUtc } from "./schedule";
-import { contentHash, sha256Bytes, sha256Hex, stripText, toLittle } from "./text";
+import { contentHash, sha256Bytes, sha256Hex, stripText, toLittle, visibleCredit } from "./text";
 import { linkedinIdentity } from "./identity";
 
 const ACTOR = "cron";
@@ -116,6 +116,9 @@ async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settin
     return invalidate(env, now, c, "hash_mismatch");
   }
   if (stripText(post.text).length > cfg.maxChars) return invalidate(env, now, c, "text_too_long");
+  // LCE-053: the approved text is published unchanged, so a text that still shows an image/source label
+  // (approved before the rule) is not published at all; the owner refreshes it and approves the clean text.
+  if (visibleCredit(post.text)) return invalidate(env, now, c, "visible_image_credit");
   const img = await env.DB.prepare("SELECT data, sha256, alt_text FROM post_images WHERE post_id = ?")
     .bind(post.post_id).first<{ data: ArrayBuffer; sha256: string; alt_text: string }>();
   let image: ImageInput | undefined;

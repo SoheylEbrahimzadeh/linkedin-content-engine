@@ -700,3 +700,11 @@ records the attribution in the image record only and removes any label from the 
 `revise.autofix` strips labels at writing-gate step 1; QA `media.visible_credit` refuses a label in
 pipeline text. Provenance (`image.yaml`) is unchanged. The Worker publishes the approved text
 unchanged. Posts approved before the rule keep their approved text until the owner refreshes them.
+
+## Update 6 Oct (LCE-053: attribution metadata only; publish path enforces it)
+
+Explicit policy `visuals.attribution_display: metadata_only` and `provenance.attribution_display`;
+`Source:`/`Via:` label lines are credit lines; the Worker refuses to schedule or publish an approved
+text that still shows a credit line (the approved text is never altered). Approved 6, 8 and 10 Oct
+still carry `Image: <publisher>` lines from before the rule: they cannot be published until the
+owner withdraws them, the label is removed by a refresh and the owner approves again.

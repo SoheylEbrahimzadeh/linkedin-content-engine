@@ -17,22 +17,26 @@ from lce.revise import autofix
 @pytest.mark.parametrize("line", ["Image: CIO.com", "image: The New Stack", "Photo: Jane Doe",
                                   "Photos: Unsplash", "Image source: CIO.com", "Image credit: InfoQ",
                                   "Photo credit: Reuters", "Credit: CIO.com", "Picture: Example",
-                                  "Illustration: Example Studio", "Header image by: InfoQ"])
+                                  "Illustration: Example Studio", "Header image by: InfoQ",
+                                  # LCE-053: source label lines are credit lines too
+                                  "Source: https://example.org/report", "Sources: Gartner, IDC",
+                                  "Via: CIO.com"])
 def test_every_kind_of_image_label_is_recognised(line):
     assert find_image_labels(f"Body.\n\n{line}\n\n#AI") == [line]
 
 
-@pytest.mark.parametrize("line", ["Source: https://example.org/report", "Sources: Gartner, IDC",
-                                  "The image of AI in IT is changing.", "Photo booths are back.",
+@pytest.mark.parametrize("line", ["The image of AI in IT is changing.", "Photo booths are back.",
+                                  "The source of the problem was a config change.",
+                                  "Via the team, we heard it first.",
                                   "Credit where it's due, the team found it first."])
 def test_text_citations_and_prose_are_kept(line):
     assert find_image_labels(f"Body.\n\n{line}\n") == []
 
 
-def test_a_source_line_naming_the_image_itself_is_a_label():
+def test_a_bare_via_line_naming_the_image_itself_is_a_label():
     names = image_credit_names({"credit": "CIO.com", "attribution": "Image: CIO.com"})
-    assert find_image_labels("Body.\n\nSource: CIO.com\n", names) == ["Source: CIO.com"]
-    assert find_image_labels("Body.\n\nSource: Gartner\n", names) == []
+    assert find_image_labels("Body.\n\nVia CIO.com\n", names) == ["Via CIO.com"]
+    assert find_image_labels("Body.\n\nVia Gartner\n", names) == []
 
 
 def test_stripping_keeps_the_text_and_hashtags_tidy():
@@ -69,6 +73,7 @@ def test_selected_source_image_is_published_without_a_label_and_keeps_its_proven
     # provenance is intact for auditing and copyright tracking
     prov = images.load(store, pid)["provenance"]
     assert prov["attribution"] == "Image: Example News" and prov["attribution_required"] is True
+    assert prov["attribution_display"] == "metadata_only"             # LCE-053: explicit in the record
     assert prov["source_url"] == PAGE and prov["credit"] == "Example News"
     assert images.check(store, pid)[0] == []
     snap = next(p for p in build_snapshot(store, mode="real")["posts"] if p["post_id"] == pid)
@@ -94,3 +99,14 @@ def test_qa_refuses_a_label_in_pipeline_text_but_only_warns_on_the_owners_own_ed
 
 def test_png_helper_is_a_real_image():
     assert png_shade(10)[:8] == b"\x89PNG\r\n\x1a\n" and SC["status"]
+
+
+def test_attribution_display_policy_is_explicit_and_metadata_only(store):
+    """LCE-053: the settings schema names where attribution goes; only metadata_only is valid."""
+    from lce.validate import validate_doc
+
+    s = store.settings()
+    s.setdefault("visuals", {})["attribution_display"] = "metadata_only"
+    assert validate_doc("settings", s) == []
+    s["visuals"]["attribution_display"] = "in_post"
+    assert validate_doc("settings", s) != []

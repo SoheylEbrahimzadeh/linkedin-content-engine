@@ -34,9 +34,12 @@ NATURAL_DRAFT = (
 
 
 def test_autofix_contracts_outside_quotes_only():
-    text, changes = autofix('It is not new. We do not know. He said "it is not ours".\nSource: x is not y')
-    assert text == "It isn't new. We don't know. He said \"it is not ours\".\nSource: x is not y"
+    text, changes = autofix('It is not new. We do not know. He said "it is not ours".\n\n#It is not y')
+    assert text == "It isn't new. We don't know. He said \"it is not ours\".\n\n#It is not y"
     assert changes
+    # LCE-053: a source label line is not contracted, it is removed (sources are named in sentences)
+    text, changes = autofix("It is not new.\nSource: x is not y")
+    assert text == "It isn't new." and "removed image label: Source: x is not y" in changes
 
 
 def test_consultant_draft_is_refused_with_the_exact_revisions(store):

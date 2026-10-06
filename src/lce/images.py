@@ -117,9 +117,15 @@ def decide(store: DataStore, post_id: str, *, kind: str, rationale: str,
             raise StoreError(f"image must be an existing {'/'.join(ALLOWED_EXT)} file")
         dest = folder / f"image{ext}"
         shutil.copyfile(src, dest)
+        prov = dict(provenance or {})
+        if prov.get("attribution") or prov.get("attribution_required"):
+            # LCE-053: attribution is internal provenance only, never a visible line in the post
+            from lce.credit import ATTRIBUTION_DISPLAY
+
+            prov["attribution_display"] = ATTRIBUTION_DISPLAY
         doc.update({"file": dest.name, "sha256": file_sha256(dest), "bytes": dest.stat().st_size,
                     "mime": MIME[ext], "relation": relation.strip(), "alt_text": alt_text.strip(),
-                    "provenance": provenance or {}})
+                    "provenance": prov})
         size = dimensions(dest.read_bytes(), ext)
         if size:
             doc["width"], doc["height"] = int(size[0]), int(size[1])

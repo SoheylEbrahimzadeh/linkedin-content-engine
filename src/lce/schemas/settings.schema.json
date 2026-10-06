@@ -206,7 +206,13 @@
             "licensed_only",
             "owner_accepts_copyright_risk"
           ],
-          "description": "licensed_only (default): a source's own image only with an explicit reuse licence. owner_accepts_copyright_risk: the owner decided to post the cited source's own image without a licence, always with a credit line naming the source; the owner carries the copyright risk."
+          "description": "licensed_only (default): a source's own image only with an explicit reuse licence. owner_accepts_copyright_risk: the owner decided to post the cited source's own image without a licence; the owner carries the copyright risk. Its attribution is recorded in the image record (see attribution_display), never as a line in the post."
+        },
+        "attribution_display": {
+          "enum": [
+            "metadata_only"
+          ],
+          "description": "LCE-053: where an image's attribution goes. metadata_only (the only value, also the default): kept in the image record (provenance: source URL, creator, credit, licence, attribution) for auditing and compliance; never visible in the post text or the LinkedIn payload."
         }
       }
     }

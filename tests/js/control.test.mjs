@@ -526,3 +526,17 @@ test("a rejected post's old refresh failure and refused decisions are history, n
   assert.ok(att.every((a) => a.post_id !== dead.post_id));
   assert.ok(att.some((a) => a.post_id === live.post_id));
 });
+
+// LCE-053: provenance stays visible to the owner in the dashboard; it is never claimed to be in the post.
+test("the media record shows the image provenance as internal, not as post text", () => {
+  const { mediaRecord } = lib;
+  const post = { post_id: "20261015-demo", text: "A clean post.\n\n#Demo", image: { kind: "source_image",
+    provenance: { origin: "source_publication", credit: "Example News", source_url: "https://news.example.com/a",
+      license: "copyright of Example News", usage: "owner_accepted_risk", attribution_required: true,
+      attribution: "Image: Example News", attribution_display: "metadata_only" } } };
+  const rows = Object.fromEntries(mediaRecord(post).rows.map(([k, v]) => [k, v]));
+  assert.match(rows.Attribution, /Image: Example News/);
+  assert.match(rows.Attribution, /not shown in the post \(metadata_only\)/);
+  assert.doesNotMatch(rows.Attribution, /in the post:/);
+  assert.equal(rows["Source URL"].href, "https://news.example.com/a");
+});
