@@ -555,3 +555,55 @@ test("Publish now is offered only for an approved, unscheduled, clean post with 
   assert.match(canPublishNow(ready, null, { emergency_stop: true }).why, /emergency stop/);
   assert.match(canPublishNow({ ...ready, text: "Body.\n\nImage: CIO.com\n" }, null, {}).why, /image\/source label/);
 });
+
+// LCE-056: lifetime publishing counts real LinkedIn publications only; the pipeline is today onward.
+test("lifetime Published counts only successful publication records, once per post", () => {
+  const { publishingStats } = lib;
+  const now = "2026-10-06T10:00:00Z";
+  const base = { pipeline: { posts: [], calendar: [] }, now, tz: "UTC" };
+  const run = (publications, extra = {}) => publishingStats({ ...base, cloud: { publications, consents: [], posts: [], ...extra } });
+  assert.equal(run([]).published, 0);
+  assert.equal(run([{ post_id: "a", state: "published", published_at: "2026-10-01T08:00:00Z" }]).published, 1);   // success counts
+  assert.equal(run([{ post_id: "a", state: "publish_failed" }]).published, 0);                                      // failure does not
+  assert.equal(run([{ post_id: "a", state: "publish_failed" }]).publishFailed, 1);
+  assert.equal(run([{ post_id: "a", state: "publishing" }, { post_id: "b", state: "needs_reconcile" },
+    { post_id: "c", state: "not_published_confirmed" }]).published, 0);
+  // a repeated record for the same post (cannot happen in D1: post_id is the key) still counts once
+  assert.equal(run([{ post_id: "a", state: "published" }, { post_id: "a", state: "published" }]).published, 1);
+  // approval or scheduling alone never counts
+  const ready = { post_id: "r", state: "READY_TO_PUBLISH", text: "x" };
+  const sched = run([], { posts: [ready], consents: [{ post_id: "r", status: "active", slot_utc: "2026-10-08T08:30:00Z", consent_id: "c" }] });
+  assert.equal(sched.published, 0);
+  assert.equal(sched.scheduled, 1);
+  assert.equal(run([], { consents: [{ post_id: "r", status: "active", slot_utc: "2026-10-01T08:30:00Z" }] }).scheduled, 0);   // past time
+});
+
+test("archiving a published post does not reduce the lifetime count", () => {
+  const { publishingStats } = lib;
+  const pub = [{ post_id: "p1", state: "published", published_at: "2026-10-01T08:00:00Z" }];
+  const posts = [{ post_id: "p1", state: "PUBLISHED", plan_date: "2026-10-01", text: "x",
+    archived: { at: "2026-10-05T00:00:00Z", by: "owner", state: "PUBLISHED" } }];
+  const x = publishingStats({ pipeline: { posts, calendar: [] }, cloud: { publications: pub, consents: [], posts: [] },
+    now: "2026-10-06T10:00:00Z", tz: "UTC" });
+  assert.equal(x.published, 1);
+});
+
+test("the future pipeline counts current states from today on", () => {
+  const { publishingStats } = lib;
+  const now = "2026-10-06T10:00:00Z";
+  const posts = [
+    { post_id: "20261007-a", state: "AWAITING_APPROVAL", plan_date: "2026-10-07", text: "a" },
+    { post_id: "20261008-b", state: "READY_TO_PUBLISH", plan_date: "2026-10-08", text: "b" },
+    { post_id: "20261009-c", state: "READY_TO_PUBLISH", plan_date: "2026-10-09", text: "c" },
+    { post_id: "20261001-old", state: "AWAITING_APPROVAL", plan_date: "2026-10-01", text: "old" },   // past: not in the pipeline
+    { post_id: "20261010-r", state: "REJECTED", plan_date: "2026-10-10", text: "r" },                // rejected: not counted
+  ];
+  const calendar = [...posts.map((p) => ({ date: p.plan_date, draft_ref: p.post_id, topic: p.post_id })),
+    { date: "2026-10-12", status: "open", pillar: "x" }, { date: "2026-10-14", status: "planned", topic: "t" }];
+  const cloud = { publications: [], posts: [{ post_id: "20261008-b", state: "READY_TO_PUBLISH", text: "b" },
+    { post_id: "20261009-c", state: "READY_TO_PUBLISH", text: "c" }],
+    consents: [{ consent_id: "c1", post_id: "20261009-c", status: "active", slot_utc: "2026-10-09T08:30:00Z", slot_id: "s" }] };
+  const x = publishingStats({ pipeline: { posts, calendar }, cloud, now, tz: "UTC" });
+  assert.deepEqual(x.pipeline, { scheduled: 1, approved: 1, awaiting: 1, planned: 2, attention: 0, total: 5 });
+  assert.equal(x.published, 0);
+});

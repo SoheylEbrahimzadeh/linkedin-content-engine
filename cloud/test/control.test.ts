@@ -332,6 +332,9 @@ describe("publish now (LCE-055)", () => {
     const r = await go(h, f);
     expect(r.status).toBe(409);
     expect(f.calls.filter((c) => c.url.endsWith("/rest/posts"))).toHaveLength(0);
+    // LCE-056: the lifetime count reads these records; one row per post, still "published"
+    const pubs = await rows<{ state: string }>(e, `SELECT state FROM publications WHERE post_id = '${READY}'`);
+    expect(pubs.map((x) => x.state)).toEqual(["published"]);
   });
   it("a post that is not approved into the publisher cannot be published", async () => {
     await enableAll(e);

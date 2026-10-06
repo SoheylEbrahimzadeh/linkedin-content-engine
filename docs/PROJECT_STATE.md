@@ -730,3 +730,17 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
   gate, emergency stop, person/phrase/hash), JS eligibility.
 - VERIFIED: pending the production deploy and dashboard checks (no real post is published by the
   verification).
+
+## LCE-056 (6 Oct): Lifetime publishing on the Overview
+
+- PLANNED/STARTED: owner request for real lifetime publishing numbers and the future pipeline.
+- EXECUTED: `publishingStats` (Control Center lib) derives everything from recorded facts. Published
+  = the Worker's `publications` rows in state `published` (primary key `post_id`, so a repeated
+  attempt cannot count twice; failed, withdrawn, rejected, archived or approved-only posts never
+  count; archiving is a repository flag and never touches these rows). Scheduled = active consents
+  with a future slot. Awaiting approval / Planned / the Future pipeline = the content plan from today
+  on, by display status. No stored counter that could drift. Card "Lifetime publishing" sits under
+  the right-now board (Scheduled, Failed, Next slot). Tests: JS (success counts, failure / approval
+  / scheduling / past slot do not, archive keeps the count, one count per post, pipeline states),
+  Worker (repeated Publish now leaves one `published` row).
+- VERIFIED: pending the production deploy and dashboard check.

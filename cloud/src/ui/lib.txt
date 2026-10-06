@@ -767,6 +767,40 @@ export function canPublishNow(cloudPost, consent, settings = {}) {
   return { ok: true, why: null };
 }
 
+/** LCE-056: lifetime publishing and the future pipeline, derived only from recorded facts.
+ * Published = the Worker's publication records in state "published" (one row per post: the table's key is
+ * post_id, so a repeated attempt cannot count twice). Failed, withdrawn, rejected, archived or merely
+ * approved posts never count; archiving is a repository display flag and never touches the cloud records.
+ * The future pipeline is the content plan from today on, by its display status. Nothing is estimated. */
+export function publishingStats({ pipeline, cloud, now, tz }) {
+  const pubs = cloud?.publications ?? [];
+  const publishedIds = new Set(pubs.filter((p) => p.state === "published").map((p) => p.post_id));
+  const nowMs = Date.parse(now);
+  const scheduledIds = new Set((cloud?.consents ?? [])
+    .filter((c) => c.status === "active" && Date.parse(c.slot_utc) > nowMs).map((c) => c.post_id));
+  const cp = contentPlan({ pipeline, cloud, now, tz, days: 1 });
+  const closed = new Set(["PUBLISHED", "REJECTED", "SKIPPED"]);
+  const future = cp.items.filter((i) => !closed.has(i.status) && (!i.date || i.date >= cp.from));
+  const n = (codes) => future.filter((i) => codes.includes(i.status)).length;
+  const pipelineCounts = {
+    scheduled: n(["SCHEDULED"]),
+    approved: n(["APPROVED"]),
+    awaiting: n(["AWAITING_APPROVAL"]),
+    planned: n(["PLANNED", "OPEN_SLOT", "NEEDS_REGENERATION", "REPLACEMENT_PENDING"]),
+    attention: n(["FAILED", "NEEDS_RECONCILE"]),
+  };
+  return {
+    published: publishedIds.size,
+    publishFailed: pubs.filter((p) => p.state === "publish_failed").length,
+    scheduled: scheduledIds.size,
+    awaiting: pipelineCounts.awaiting,
+    planned: pipelineCounts.planned,
+    pipeline: { ...pipelineCounts, total: future.length },
+    lastPublishedAt: pubs.filter((p) => p.state === "published" && p.published_at)
+      .map((p) => p.published_at).sort().at(-1) ?? null,
+  };
+}
+
 // ── LCE-050: the "right now" board and the Content Radar ───────────────────────────────
 /** What needs the owner, and what the system is doing, from recorded facts only. */
 export function nowBoard({ pipeline, cloud, progress = {}, nowMs = Date.now() }) {
