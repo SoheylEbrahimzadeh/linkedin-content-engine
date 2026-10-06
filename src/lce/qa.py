@@ -115,6 +115,16 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
     limits, metrics = rules["limits"], rules["metrics"]
     defaults = rules.get("defaults", {})
 
+    # ── LCE-052: the image appears without a visible source label ──────
+    from lce.credit import find_image_labels
+
+    labels = find_image_labels(body)
+    if labels:
+        own = (post.get("humanization") or {}).get("source") == "owner_edit"
+        add("media.visible_credit", WARNING if own else ERROR,
+            "image attribution is kept in the image record, not in the post text; remove "
+            + "; ".join(repr(x) for x in labels))
+
     # ── length & structure ────────────────────────────────────────────
     n = len(body)
     if n > limits["hard_max_chars"]:

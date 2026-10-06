@@ -497,8 +497,17 @@ def test_owner_counter_examples_and_avoided_words_fail_owner_voice():
 
 
 def test_credit_lines_and_hashtags_are_not_prose():
-    res, _ = humanity(NATURAL + "\n\nSource: https://example.org/survey\nImage: Example Org\n\n#ITSM #AI")
+    res, _ = humanity(NATURAL + "\n\nSource: https://example.org/survey\n\n#ITSM #AI")
     assert res["verdict"] == "PASS", res["criteria"]
+
+
+def test_a_visible_image_label_is_refused_not_scored_as_prose():
+    # LCE-052: image attribution lives in the image record; a visible label is a QA error
+    text = NATURAL + "\n\nImage: Example Org\n\n#ITSM #AI"
+    post = {"sources": SRC, "claims": CLAIMS, "stories_used": [], "content_type": "external_insight"}
+    fs = run_checks(text, rules=RULES, voice=STRICT, profile={}, post=post, stories=STORIES, denylist=[],
+                    golden_items=GOLD)
+    assert [f.severity for f in fs if f.code == "media.visible_credit"] == ["error"]
 
 
 def test_a_list_of_numbers_is_not_ai_symmetry():

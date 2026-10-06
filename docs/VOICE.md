@@ -64,7 +64,8 @@ sounding real, not impressive:
 Verdict: PASS only at 10/10. FAIL with any QA error, when "real person" or "no manufactured
 opinion" fails, or below 7. Otherwise PARTIAL. An unknown criterion can never reach PASS. The new
 style codes are QA warnings (they do not block the pipeline); the writer must clear them.
-Credit lines (Source:, Image:) and hashtags are not scored as prose.
+Credit lines (Source:) and hashtags are not scored as prose. A visible image label (Image:, Photo:,
+Credit: ...) is not allowed in the post at all (LCE-052, `media.visible_credit`; see MEDIA.md).
 
 `lce humanity eval` runs the bundled evaluation set (fictional persona): every good text must
 reach 10/10 PASS and every bad one (generic, stiff, symmetric, invented, editorial,

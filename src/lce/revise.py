@@ -67,8 +67,12 @@ def _keep_case(src: str, repl: str) -> str:
 
 
 def autofix(text: str) -> tuple[str, list[str]]:
-    """Contractions outside quotes, credit lines and hashtags. Returns (text, changes)."""
-    changes: list[str] = []
+    """Contractions outside quotes, credit lines and hashtags; visible image labels removed
+    (LCE-052: provenance stays in the image record). Returns (text, changes)."""
+    from lce.credit import strip_image_labels
+
+    text, removed = strip_image_labels(text)
+    changes: list[str] = [f"removed image label: {r}" for r in removed]
     out_lines = []
     for line in text.split("\n"):
         if CREDIT_RE.match(line):

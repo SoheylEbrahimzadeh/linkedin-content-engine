@@ -690,3 +690,13 @@ still live; and there was no way to take a finished post out of the working view
   engine refuses to prepare, approve or delegate it (defence in depth; both states are terminal).
 - Migration 0010 rebuilds `decisions` with `archive`, `restore` and `radar_use` (the CHECK
   constraint never listed `radar_use`, so recording a radar recommendation failed with HTTP 500).
+
+## Update 6 Oct (LCE-052: no visible image attribution in posts)
+
+Owner rule: a selected image appears with the post without a source label in the text. Root cause
+of `Image: <publisher>` in posts: `repackage._credit` inserted the provenance attribution into the
+text whenever `attribution_required` was set (every source-page image, CC BY images). It now
+records the attribution in the image record only and removes any label from the text;
+`revise.autofix` strips labels at writing-gate step 1; QA `media.visible_credit` refuses a label in
+pipeline text. Provenance (`image.yaml`) is unchanged. The Worker publishes the approved text
+unchanged. Posts approved before the rule keep their approved text until the owner refreshes them.
