@@ -120,8 +120,7 @@ def run_checks(text: str, *, rules: dict, voice: dict, profile: dict, post: dict
 
     labels = find_image_labels(body)
     if labels:
-        own = (post.get("humanization") or {}).get("source") == "owner_edit"
-        add("media.visible_credit", WARNING if own else ERROR,
+        add("media.visible_credit", ERROR,
             "image attribution is kept in the image record, not in the post text; remove "
             + "; ".join(repr(x) for x in labels))
 
