@@ -381,7 +381,8 @@ def apply_update(
 
     require_active(post, "refresh it")
     before_text = current_text(store, post_id)
-    if content_hash(text) == content_hash(autofix(before_text)[0]):   # contractions alone are no update
+    # contractions alone are no update; removing a visible image label is one (LCE-052)
+    if content_hash(text) == content_hash(autofix(before_text, labels=False)[0]):
         raise StoreError("the text is unchanged; record a check or research result instead")
     before = {
         "content_hash": content_hash(before_text),

@@ -66,12 +66,15 @@ def _keep_case(src: str, repl: str) -> str:
     return repl[0].upper() + repl[1:] if src[:1].isupper() else repl
 
 
-def autofix(text: str) -> tuple[str, list[str]]:
+def autofix(text: str, *, labels: bool = True) -> tuple[str, list[str]]:
     """Contractions outside quotes, credit lines and hashtags; visible image labels removed
-    (LCE-052: provenance stays in the image record). Returns (text, changes)."""
+    (LCE-052: provenance stays in the image record; `labels=False` leaves them, for comparing a
+    text with an earlier one). Returns (text, changes)."""
     from lce.credit import strip_image_labels
 
-    text, removed = strip_image_labels(text)
+    removed: list[str] = []
+    if labels:
+        text, removed = strip_image_labels(text)
     changes: list[str] = [f"removed image label: {r}" for r in removed]
     out_lines = []
     for line in text.split("\n"):
