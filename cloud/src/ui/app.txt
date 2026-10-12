@@ -9,7 +9,7 @@
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
   REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, PROGRESS_STEPS, fmtElapsed, refreshProgress, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
-  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats,
+  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats, publishNowHint,
 } from "./lib.js";
 
 const main = document.getElementById("main");
@@ -523,7 +523,10 @@ function planRow(i) {
         !i.post_id && !locked && i.status === "PLANNED" ? h("button", { type: "button", class: "small", onclick: () => A.skip(null, i.plan_date) }, "Skip") : null,
         locked ? h("button", { type: "button", class: "small", onclick: () => A.cancel(i.pending) }, `Undo ${locked}`) : null,
         i.status === "SCHEDULED" && i.consent_id ? h("button", { type: "button", class: "small", onclick: () => A.revoke({ consent_id: i.consent_id }) }, "Unschedule") : null,
-        i.post_id && !locked && canPublishNow(cloudPost(i.post_id), activeConsent(i.post_id), st()).ok ? link(`#publish/${i.post_id}`, "Publish now", "btn small primary") : null)));
+        i.post_id && !locked && canPublishNow(cloudPost(i.post_id), activeConsent(i.post_id), st()).ok ? link(`#publish/${i.post_id}`, "Publish now", "btn small primary")
+          : (() => { const why = i.post_id ? publishNowHint({ post: p, cloudPost: cloudPost(i.post_id), consent: activeConsent(i.post_id), settings: st(),
+              pending: i.pending ? { ...i.pending, status: "pending" } : null, nowIso: S.snap.now, tz: tz() }) : null;
+            return why ? h("button", { type: "button", class: "small", disabled: true, title: why }, "Publish now") : null; })())));
 }
 function freshLine(f) {
   return h("div", { class: "fresh-line" }, h("span", { class: "pill " + f.tone }, "Freshness: " + f.label),
@@ -870,8 +873,10 @@ function viewPost(id) {
     link(`#history/${id}`, "Execution log", "tier3"),
     pb?.url ? ext(pb.url, "View on LinkedIn") : null,
   ].filter(Boolean);
-  const pn = queued ? canPublishNow(c, consent, st()) : null;
-  const pnNote = pn && !pn.ok && c.state === "READY_TO_PUBLISH" ? h("p", { class: "small muted" }, "Publish now unavailable: " + pn.why) : null;
+  // LCE-057: Publish now is always visible on an unpublished post; while it cannot be used it is disabled with the reason
+  const pnWhy = publishNowHint({ post: p, cloudPost: c, consent, settings: st(), pending: d, nowIso: S.snap.now, tz: tz() });
+  const pnNote = pnWhy ? h("div", { class: "pn-hint" }, h("button", { type: "button", class: "primary", disabled: true, title: pnWhy }, "Publish now"),
+    h("span", { class: "small muted" }, pnWhy)) : null;
   const controls = [...lead, lead.length ? h("span", { class: "controls-rule", "aria-hidden": "true" }) : null, ...rare, pnNote];
 
   const kv = (rows) => h("dl", { class: "kv" }, rows.filter(Boolean).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v ?? UNKNOWN)]));

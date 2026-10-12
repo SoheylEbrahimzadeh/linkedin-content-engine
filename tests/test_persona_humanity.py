@@ -663,3 +663,32 @@ def test_a_sentence_that_is_the_sources_stays_the_sources():
     rows = classify_sentences("The team running the migration is the same one patching systems and handling "
                               "incidents.", post, gold, {})
     assert rows[0]["kind"] == "source"
+
+
+def test_humanization_record_reads_the_confirmed_owner_material(store, monkeypatch):
+    """LCE-057: the Humanization panel's voice rules use the same owner material as QA; a post using
+    a confirmed opinion must not be checked as if that opinion were unconfirmed."""
+    from conftest import awaiting_post
+
+    from lce import voice
+    from lce.posts import _humanization_record, current_text
+
+    persona.init_templates(store)
+    path = store.root / "profile/golden/opinions.yaml"
+    doc = yaml.safe_load(path.read_text())
+    doc["items"] = [{"id": "op-real", "text": "Name an owner for each automated decision.",
+                     "status": "owner_confirmed", "source": "owner-2026-10-04"}]
+    path.write_text(yaml.safe_dump(doc))
+    seen = {}
+    real = voice.record
+    monkeypatch.setattr(voice, "record", lambda st, post, findings, **kw: (
+        seen.__setitem__("codes", {f.code for f in findings}), real(st, post, findings, **kw))[1])
+    pid = awaiting_post(store)
+    post = store.load_post(pid)
+    post["content_type"] = "external_insight"
+    post["opinions_used"] = ["op-real"]
+    _humanization_record(store, post, current_text(store, pid), source="session", by="t")
+    assert "golden.unconfirmed_ref" not in seen["codes"]
+    post["opinions_used"] = ["op-invented"]
+    _humanization_record(store, post, current_text(store, pid), source="session", by="t")
+    assert "golden.unconfirmed_ref" in seen["codes"]                # an invented reference still fails
