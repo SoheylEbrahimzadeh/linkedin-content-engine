@@ -3,7 +3,7 @@ import { handleApi, MAX_IMAGE_BYTES, snapshot } from "../src/api";
 import { resetCertsCache } from "../src/auth";
 import { runScheduled } from "../src/runner";
 import { contentHash, sha256Bytes } from "../src/text";
-import { created, enableAll, fakeFetch, insertConsent, rows, status, TEXT, testEnv, reset } from "./helpers";
+import { created, enableAll, fakeFetch, insertConsent, qualityPass, rows, status, TEXT, testEnv, reset } from "./helpers";
 
 // Fictional data only. Same Access test key setup as api.test.ts, done inline.
 const e = testEnv();
@@ -76,6 +76,7 @@ describe("cloud image upload", () => {
     await enableAll(e);
     const sha = await sha256Bytes(PNG);
     await push({ ...(await base()), image: { data_base64: b64(PNG), sha256: sha, alt_text: "A diagram" } });
+    await qualityPass(e);
     await insertConsent(e, "20261006-demo-post", SLOT, SLOT_UTC, await contentHash(TEXT));
     return fakeFetch(...responses);
   }

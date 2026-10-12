@@ -83,3 +83,21 @@ export const status = (code: number) => new Response(JSON.stringify({ message: "
 export async function rows<T = Record<string, unknown>>(e: Env, sql: string): Promise<T[]> {
   return (await e.DB.prepare(sql).all<T>()).results;
 }
+
+// LCE-059: a quality result in the pipeline mirror for one post (merged into any existing mirror). The
+// defaults describe a publishable post: Humanity PASS and Voice Gate PASS for exactly `text`.
+export async function qualityPass(e: Env, postId = "20261006-demo-post", text = TEXT,
+                                  q: { humanity?: unknown; voice?: unknown; hash?: string | null; raw?: unknown } = {}): Promise<void> {
+  const row = await e.DB.prepare("SELECT body FROM pipeline_snapshot WHERE id = 1").first<{ body: string }>();
+  const snap = row ? JSON.parse(row.body) : { schema: 1, meta: { mode: "real", generated_at: "2026-10-05T00:00:00+00:00" }, posts: [] };
+  const hash = q.hash === undefined ? await contentHash(text) : q.hash;
+  const humanity = q.raw !== undefined ? q.raw
+    : { verdict: q.humanity ?? "PASS", score: 10, ...(hash === null ? {} : { content_hash: hash }), voice_gate: { verdict: q.voice ?? "PASS" } };
+  const others = (snap.posts ?? []).filter((p: { post_id: string }) => p.post_id !== postId);
+  const mine = (snap.posts ?? []).find((p: { post_id: string }) => p.post_id === postId) ?? { post_id: postId, state: "READY_TO_PUBLISH", text };
+  snap.posts = [...others, { ...mine, humanity }];
+  const body = JSON.stringify(snap);
+  await e.DB.prepare(`INSERT INTO pipeline_snapshot (id, body, sha256, bytes, generated_at, received_at, received_by)
+    VALUES (1, ?, 'test', ?, '2026-10-05T00:00:00+00:00', '2026-10-05T00:00:00+00:00', 'test')
+    ON CONFLICT(id) DO UPDATE SET body = excluded.body`).bind(body, body.length).run();
+}

@@ -12,6 +12,7 @@
 import { event, isSchemaMissing, loadSettings, type ConsentRow, type Env, type PostRow, type Settings } from "./db";
 import { configProblems, publish, type FetchLike, type ImageInput, type LinkedInConfig, type PublishResult } from "./linkedin";
 import { isoUtc, parseIsoUtc } from "./schedule";
+import { qualityFor } from "./quality";
 import { contentHash, sha256Bytes, sha256Hex, stripText, toLittle, visibleCredit } from "./text";
 import { linkedinIdentity } from "./identity";
 
@@ -119,6 +120,9 @@ async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settin
   // LCE-053: the approved text is published unchanged, so a text that still shows an image/source label
   // (approved before the rule) is not published at all; the owner refreshes it and approves the clean text.
   if (visibleCredit(post.text)) return invalidate(env, now, c, "visible_image_credit");
+  // LCE-059: Humanity PASS and Voice Gate PASS for exactly the approved text, or nothing is published.
+  const quality = await qualityFor(env, post.post_id, post.approved_hash);
+  if (!quality.ok) return invalidate(env, now, c, `quality: ${quality.why}`);
   const img = await env.DB.prepare("SELECT data, sha256, alt_text FROM post_images WHERE post_id = ?")
     .bind(post.post_id).first<{ data: ArrayBuffer; sha256: string; alt_text: string }>();
   let image: ImageInput | undefined;
@@ -234,6 +238,9 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
   const busy = await env.DB.prepare("SELECT consent_id FROM consents WHERE post_id = ? AND status = 'active'")
     .bind(postId).first<{ consent_id: string }>();
   if (busy) return refuse(409, "this post is already scheduled; revoke that consent first");
+  // LCE-059: refused before anything is written (publishOne checks it again)
+  const quality = await qualityFor(env, postId, approvedHash);
+  if (!quality.ok) return refuse(409, `quality gate: ${quality.why}; nothing was sent`);
   const who = await linkedinIdentity(env.LINKEDIN_TOKEN, settings, fetchImpl);
   if (!who.ok) return refuse(409, `LinkedIn identity not verified (${who.status}); nothing was sent`);
   if (who.person_urn_matches !== true) {

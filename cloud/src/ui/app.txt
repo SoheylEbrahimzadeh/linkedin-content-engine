@@ -9,7 +9,7 @@
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
   REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, PROGRESS_STEPS, fmtElapsed, refreshProgress, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
-  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats, publishNowHint,
+  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats, publishNowHint, qualityGate, publishStatus,
 } from "./lib.js";
 
 const main = document.getElementById("main");
@@ -40,7 +40,14 @@ const fmtDate = (ymd) => ymd ? new Date(`${ymd}T12:00:00Z`).toLocaleDateString("
 const link = (href, text, cls) => h("a", { href, class: cls }, text);
 const ext = (href, text) => h("a", { href, target: "_blank", rel: "noopener noreferrer" }, text);
 const short = (x, n = 12) => (x ? String(x).slice(0, n) : "—");
-const statusPill = (code) => { const s = STATUSES[code] ?? { label: code, tone: "muted" }; return h("span", { class: "pill " + s.tone }, s.label); };
+const statusPill = (code, id = null) => {
+  const s = STATUSES[code] ?? { label: code, tone: "muted" };
+  // LCE-059: "Approved" alone must not suggest the post can be published now
+  if (code === "APPROVED" && id && !canPublishNow(cloudPost(id), activeConsent(id), st(), qualityOf(id)).ok) {
+    return h("span", { class: "pill warn", title: "approved in the repository; Publish now is not available (see the post page)" }, "Approved · not publishable");
+  }
+  return h("span", { class: "pill " + s.tone }, s.label);
+};
 const typeChip = (t) => h("span", { class: "type type-" + t.key + (t.implemented ? "" : " unsupported"), title: t.note }, t.label, t.implemented ? null : " (not implemented)");
 const DECISION_TONE = { pending: "info", applied: "ok", refused: "err", superseded: "muted", cancelled: "muted" };
 const PUB_TONE = { published: "ok", publish_failed: "err", needs_reconcile: "err", publishing: "warn" };
@@ -283,6 +290,8 @@ const pendingFor = (id) => (S.snap?.decisions ?? []).find((d) => d.status === "p
 const pub = (id) => (S.snap?.publications ?? []).find((p) => p.post_id === id) ?? null;
 const activeConsent = (id) => (S.snap?.consents ?? []).find((c) => c.status === "active" && c.post_id === id) ?? null;
 const st = () => S.snap?.settings ?? {};
+// LCE-059: the quality result of the pipeline mirror, counted only for the text in the publisher
+const qualityOf = (id) => qualityGate(pipePost(id), cloudPost(id)?.approved_hash);
 const targetName = () => st().display_name || "Personal profile";
 
 const LABELS = { approve: "approval", reject: "rejection", edit: "edit", refresh: "refresh", regenerate: "regeneration request",
@@ -506,7 +515,7 @@ function planRow(i) {
     h("div", { class: "row-main" },
       hasImage ? cardImage(i.post_id, i.media) : null,
       h("div", { class: "row-title" }, href ? link(href, i.title) : i.title),
-      h("div", { class: "meta" }, statusPill(i.status), typeChip(i.media.type),
+      h("div", { class: "meta" }, statusPill(i.status, i.post_id), typeChip(i.media.type),
         p && mediaSourceShort(p) ? h("span", { class: "small muted" }, mediaSourceShort(p)) : null,
         p && !p.image ? h("span", { class: "small muted" }, "no media decision") : null,
         i.objective ? h("span", { class: "small muted" }, objectiveLabel(i.objective)) : null,
@@ -523,8 +532,8 @@ function planRow(i) {
         !i.post_id && !locked && i.status === "PLANNED" ? h("button", { type: "button", class: "small", onclick: () => A.skip(null, i.plan_date) }, "Skip") : null,
         locked ? h("button", { type: "button", class: "small", onclick: () => A.cancel(i.pending) }, `Undo ${locked}`) : null,
         i.status === "SCHEDULED" && i.consent_id ? h("button", { type: "button", class: "small", onclick: () => A.revoke({ consent_id: i.consent_id }) }, "Unschedule") : null,
-        i.post_id && !locked && canPublishNow(cloudPost(i.post_id), activeConsent(i.post_id), st()).ok ? link(`#publish/${i.post_id}`, "Publish now", "btn small primary")
-          : (() => { const why = i.post_id ? publishNowHint({ post: p, cloudPost: cloudPost(i.post_id), consent: activeConsent(i.post_id), settings: st(),
+        i.post_id && !locked && canPublishNow(cloudPost(i.post_id), activeConsent(i.post_id), st(), qualityOf(i.post_id)).ok ? link(`#publish/${i.post_id}`, "Publish now", "btn small primary")
+          : (() => { const why = i.post_id ? publishNowHint({ post: p, cloudPost: cloudPost(i.post_id), consent: activeConsent(i.post_id), settings: st(), quality: qualityOf(i.post_id),
               pending: i.pending ? { ...i.pending, status: "pending" } : null, nowIso: S.snap.now, tz: tz() }) : null;
             return why ? h("button", { type: "button", class: "small", disabled: true, title: why }, "Publish now") : null; })())));
 }
@@ -617,7 +626,7 @@ function viewOverview() {
           h("a", { class: "next-title", href: next.post_id ? `#post/${next.post_id}` : "#upcoming" }, next.title),
           nextPost?.text ? h("p", { class: "next-snippet" }, nextPost.text.split("\n").filter(Boolean).slice(1, 3).join(" ").slice(0, 240)) : null,
           h("div", { class: "next-foot" },
-            h("div", { class: "meta" }, statusPill(next.status), typeChip(next.media.type), next.objective ? h("span", { class: "small muted" }, objectiveLabel(next.objective)) : null),
+            h("div", { class: "meta" }, statusPill(next.status, next.post_id), typeChip(next.media.type), next.objective ? h("span", { class: "small muted" }, objectiveLabel(next.objective)) : null),
             next.post_id ? link(`#post/${next.post_id}`, next.status === "AWAITING_APPROVAL" ? "Review post" : "Open post", "btn" + (next.status === "AWAITING_APPROVAL" ? " primary" : "")) : null),
           h("p", { class: "small muted next-note" }, next.status === "SCHEDULED" ? (s.auto_publish ? "Publishes at its time." : "Scheduled, but auto-publish is off: it will not publish.") : "Not scheduled yet. Nothing publishes without your approval."),
         ] : empty(`Nothing planned in the next ${S.range} days.`)),
@@ -822,7 +831,7 @@ function viewPosts() {
       const d = pendingFor(i.post_id);
       return h("div", { class: "post-card" },
         i.media.preview === "available" ? cardImage(i.post_id, i.media) : null,
-        h("div", { class: "meta" }, h("span", { class: "small muted" }, fmtDate(i.date)), statusPill(i.status)),
+        h("div", { class: "meta" }, h("span", { class: "small muted" }, fmtDate(i.date)), statusPill(i.status, i.post_id)),
         h("a", { class: "post-card-title", href: `#post/${i.post_id}` }, i.title),
         h("div", { class: "meta" }, typeChip(i.media.type), i.objective ? h("span", { class: "small muted" }, objectiveLabel(i.objective)) : null,
           d ? badge(`${d.action} pending`, "info") : null));
@@ -858,7 +867,7 @@ function viewPost(id) {
     editable && p.text ? B("Edit", () => A.edit(p)) : null,
     editable ? B("Reschedule", () => A.reschedule(p)) : null,
     // LCE-055: manual path, independent of auto-publish; opens the confirmation page (pre-flight, exact post, phrase)
-    queued && canPublishNow(c, consent, st()).ok ? link(`#publish/${id}`, "Publish now", "btn primary") : null,
+    queued && canPublishNow(c, consent, st(), qualityOf(id)).ok ? link(`#publish/${id}`, "Publish now", "btn primary") : null,
     queued && consent ? B("Unschedule", () => A.revoke(consent)) : null,
     queued && ["READY_TO_PUBLISH", "PUBLISH_FAILED"].includes(c.state) ? B("Withdraw", () => A.postAction(id, "withdraw", `Withdraw ${id}; it will not be published.`), "danger") : null,
     queued && c.state === "PUBLISH_FAILED" ? B("Rearm", () => A.postAction(id, "rearm", `Make ${id} publishable again after a failed attempt.`)) : null,
@@ -874,16 +883,22 @@ function viewPost(id) {
     pb?.url ? ext(pb.url, "View on LinkedIn") : null,
   ].filter(Boolean);
   // LCE-057: Publish now is always visible on an unpublished post; while it cannot be used it is disabled with the reason
-  const pnWhy = publishNowHint({ post: p, cloudPost: c, consent, settings: st(), pending: d, nowIso: S.snap.now, tz: tz() });
+  const pnWhy = publishNowHint({ post: p, cloudPost: c, consent, settings: st(), pending: d, nowIso: S.snap.now, tz: tz(), quality: qualityOf(id) });
   const pnNote = pnWhy ? h("div", { class: "pn-hint" }, h("button", { type: "button", class: "primary", disabled: true, title: pnWhy }, "Publish now"),
     h("span", { class: "small muted" }, pnWhy)) : null;
-  const controls = [...lead, lead.length ? h("span", { class: "controls-rule", "aria-hidden": "true" }) : null, ...rare, pnNote];
+  // LCE-059: repository, publisher, quality and eligibility are separate facts; never one "Approved" label
+  const facts = h("dl", { class: "kv pub-status" }, publishStatus({ post: p, cloudPost: c, consent, settings: st(), quality: qualityOf(id),
+    pending: d, nowIso: S.snap.now, tz: tz() }).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]));
+  const how = queued ? h("p", { class: "small muted" }, "The approved text is locked while it is in the publisher. To change the text or the date: " +
+    "Withdraw (it will not be published), then Edit or Refresh to prepare a new version and approve that version. Nothing publishes by itself while auto-publish is off.")
+    : null;
+  const controls = [facts, how, ...lead, lead.length ? h("span", { class: "controls-rule", "aria-hidden": "true" }) : null, ...rare, pnNote];
 
   const kv = (rows) => h("dl", { class: "kv" }, rows.filter(Boolean).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v ?? UNKNOWN)]));
   return [
     h("div", { class: "page-head post-head" }, h("div", { class: "page-title" }, isArchived(p) ? link("#history", "History", "back") : link("#upcoming", "Upcoming", "back"),
       h("h1", { class: "post-h1" }, hook(p?.text ?? c?.text, 90) ?? p?.topic ?? id),
-      h("div", { class: "post-sub" }, statusPill(code), item?.date ? h("span", {}, fmtLong(item.plan_date ?? item.date)) : null,
+      h("div", { class: "post-sub" }, statusPill(code, id), item?.date ? h("span", {}, fmtLong(item.plan_date ?? item.date)) : null,
         p?.objective ? h("span", {}, objectiveLabel(p.objective)) : null))),
     isArchived(p) ? h("div", { class: "notice info archived-note" }, `Archived ${fmtWhen(p.archived.at)}` +
       (p.archived.reason ? `: ${p.archived.reason}` : "") + `. Not shown in Overview or Upcoming; kept in History with its state (${p.state.toLowerCase()}), ` +
@@ -901,7 +916,7 @@ function viewPost(id) {
       h("div", { class: "side" },
         card("Controls", h("div", { class: "controls" }, controls)),
         card("Plan", kv([
-          ["Status", statusPill(code)],
+          ["Status", statusPill(code, id)],
           ["Objective", p?.objective ? objectiveLabel(p.objective) : "not recorded"],
           ["Topic", p?.topic ?? entry?.topic],
           ["Planned", item?.date ? `${fmtDate(item.plan_date ?? item.date)}${item.time && item.time_source === "planned slot" ? ", " + item.time + " (planned time)" : ""}` : "no date"],
@@ -1227,7 +1242,7 @@ function voiceSummary(v) {
 
 function viewTest(id) {
   const s = st();
-  const ready = (S.snap.posts ?? []).filter((p) => canPublishNow(p, activeConsent(p.post_id), s).ok);
+  const ready = (S.snap.posts ?? []).filter((p) => canPublishNow(p, activeConsent(p.post_id), s, qualityOf(p.post_id)).ok);
   const c = id ? cloudPost(id) : null;
   const last = id ? S.publishResult?.[id] : null;
   const checks = [
@@ -1248,7 +1263,7 @@ function viewTest(id) {
     card("1. Pre-flight", h("ul", { class: "checks" }, checks.map(([label, ok]) => h("li", {}, h("span", { class: "dot " + (ok ? "ok" : "err") }), label, ok ? null : h("span", { class: "err small" }, " — blocked"))))),
     card("2. Choose an approved post", pick),
   ];
-  const pn = c ? canPublishNow(c, activeConsent(c.post_id), s) : null;
+  const pn = c ? canPublishNow(c, activeConsent(c.post_id), s, qualityOf(c.post_id)) : null;
   if (c && !pn.ok && !last) parts.push(h("div", { class: "notice info" }, "Publish now unavailable: " + pn.why));
   if (c && pn.ok) {
     const type = media(pipePost(c.post_id) ?? c, S.snap).type;

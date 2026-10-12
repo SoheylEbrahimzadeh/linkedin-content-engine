@@ -4,7 +4,7 @@ import { handleApi } from "../src/api";
 import { resetCertsCache } from "../src/auth";
 import { runScheduled } from "../src/runner";
 import { contentHash } from "../src/text";
-import { created, enableAll, fakeFetch, insertConsent, insertPost, reset, rows, setSettings, status, TEXT, testEnv } from "./helpers";
+import { created, enableAll, fakeFetch, insertConsent, insertPost, qualityPass, reset, rows, setSettings, status, TEXT, testEnv } from "./helpers";
 
 const TEAM = "test-team.cloudflareaccess.com";
 const NOW = Date.parse("2026-10-05T12:00:00+00:00");
@@ -256,7 +256,9 @@ describe("controlled manual publish", () => {
   async function ready() {
     await enableAll(e);
     await setSettings(e, { auto_publish: "false" });
-    return insertPost(e, READY);
+    const h = await insertPost(e, READY);
+    await qualityPass(e, READY);
+    return h;
   }
   it("publishes one approved post now with auto-publish OFF, after verifying the author", async () => {
     const h = await ready();
@@ -308,7 +310,9 @@ describe("controlled manual publish", () => {
 describe("publish now (LCE-055)", () => {
   async function ready(text?: string) {
     await enableAll(e);                                   // auto-publish ON: manual publishing ignores it
-    return insertPost(e, READY, text);
+    const h = await insertPost(e, READY, text);
+    await qualityPass(e, READY, text);
+    return h;
   }
   const go = (h: string, f = fakeFetch()) =>
     call("POST", `/posts/${READY}/publish-now`, { approved_hash: h, confirm: `PUBLISH NOW ${READY}` }, OWNER, f);
@@ -465,6 +469,7 @@ describe("same-day freshness gate (LCE-040)", () => {
   async function scheduled(fresh: boolean) {
     await enableAll(e);
     const h = await insertPost(e, READY);
+    await qualityPass(e, READY);
     await insertConsent(e, READY, "2026-10-05-mon-0500", SLOT, h, "consent-1", fresh);
     return h;
   }

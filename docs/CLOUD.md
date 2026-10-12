@@ -140,6 +140,18 @@ identity check whose member equals `person_urn` — otherwise nothing is sent.
 It does not need or change auto-publish; it reuses the scheduled publisher's
 claim transaction and records the LinkedIn post URN.
 
+Publication-time quality gate (LCE-059): scheduled and manual publishing both require a quality
+result in the pipeline mirror for exactly the approved text (`humanity.content_hash` equals the
+approved hash) with Humanity `PASS` and Voice Gate `PASS`. `SOURCE_HEAVY`, `REVIEW_NEEDED`, `PARTIAL`,
+`FAIL`, a scoring error, a result for another text, no result, no mirror: all block (fail closed).
+Publish now refuses before anything is written; `publishOne` checks again (scheduled path: the
+consent is invalidated with reason `quality: …`). It only ever blocks: the approval hash, publisher
+state, consent, identity, label and emergency-stop gates apply unchanged. The mirror gets the hash
+from `score_post`, which hashes the very text it scored; an engine without it (an older pin) blocks
+every publication until the private repository's engine pin includes LCE-059. The dashboard shows
+Repository, Publisher, Quality and Publish now as separate facts on each post, and an approved post
+that cannot be published reads "Approved · not publishable".
+
 Emergency stop (`emergency_stop` setting): blocks every publication,
 scheduled and manual. Turning it on needs nothing; releasing it, like enabling
 auto-publish, needs a person and a typed phrase (`RELEASE EMERGENCY STOP`,

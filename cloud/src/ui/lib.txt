@@ -767,7 +767,7 @@ export function nextDecisionsRun(nowIso, tz) {
   if (next <= t) next.setUTCHours(next.getUTCHours() + 1);
   return localTime(next.toISOString(), tz);
 }
-export function publishNowHint({ post, cloudPost, consent, settings = {}, pending = null, nowIso, tz }) {
+export function publishNowHint({ post, cloudPost, consent, settings = {}, pending = null, nowIso, tz, quality = null }) {
   if (!post && !cloudPost) return null;
   if (post?.state === "PUBLISHED" || cloudPost?.state === "PUBLISHED" || post?.state === "REJECTED") return null;
   if (pending?.action === "approve" && pending.status === "pending") {
@@ -775,13 +775,63 @@ export function publishNowHint({ post, cloudPost, consent, settings = {}, pendin
   }
   if (post?.state === "AWAITING_APPROVAL") return "approve this post first; Publish now becomes available after the approval is applied";
   if (post && post.state !== "READY_TO_PUBLISH" && post.state !== "APPROVED" && !cloudPost) return "the post is still being written or revised";
-  const r = canPublishNow(cloudPost, consent, settings);
+  const r = canPublishNow(cloudPost, consent, settings, quality);
   if (r.ok) return null;
-  if (!cloudPost || cloudPost.state === "WITHDRAWN") return "the post is not in the publisher (withdrawn or not approved yet); approve it to publish";
+  if (!cloudPost || cloudPost.state === "WITHDRAWN") {
+    // LCE-059: approved in the repository is not the same as being in the publisher
+    if (post && (post.state === "READY_TO_PUBLISH" || post.state === "APPROVED")) {
+      return `approved in the repository, but ${cloudPost ? "withdrawn from" : "not in"} the publisher; the approved text is never ` +
+        "changed in place: Refresh or Edit it to prepare a new version, then approve that version";
+    }
+    return "the post is not in the publisher (withdrawn or not approved yet); approve it to publish";
+  }
   return r.why;
 }
 
-export function canPublishNow(cloudPost, consent, settings = {}) {
+/** LCE-059: the four separate facts behind "can this post be published now?", each from its own source:
+ * the repository (content and approval), the publisher (Worker posts table), the current quality result for
+ * the approved text, and manual Publish now eligibility (all gates). Nothing here is inferred from a label. */
+export function publishStatus({ post, cloudPost, consent, settings = {}, quality = null, pending = null, nowIso, tz }) {
+  const repo = !post ? "not in the repository mirror"
+    : post.state === "READY_TO_PUBLISH" || post.state === "APPROVED" ? `approved (hash ${String(post.approval?.approved_hash ?? "").slice(0, 8) || "?"}…)`
+    : post.state === "AWAITING_APPROVAL" ? "awaiting your approval" : post.state.toLowerCase().replace(/_/g, " ");
+  const pub = !cloudPost ? "not in the publisher"
+    : cloudPost.state === "WITHDRAWN" ? "withdrawn (will not be published)"
+    : cloudPost.state === "READY_TO_PUBLISH" ? (consent ? "in the publisher, scheduled" : "in the publisher, not scheduled")
+    : cloudPost.state.toLowerCase().replace(/_/g, " ");
+  const q = !cloudPost || cloudPost.state === "WITHDRAWN" ? (quality?.ok ? "passes" : "not checked against a publisher text")
+    : quality?.ok ? "Humanity PASS, Voice Gate PASS" : quality?.why ?? "no quality result";
+  const hint = publishNowHint({ post, cloudPost, consent, settings, pending, nowIso, tz, quality });
+  const eligible = canPublishNow(cloudPost, consent, settings, quality).ok;
+  return [
+    ["Repository", repo],
+    ["Publisher", pub],
+    ["Quality (approved text)", q],
+    ["Publish now", eligible ? "available (needs your typed confirmation)" : `not available: ${hint ?? "not eligible"}`],
+  ];
+}
+
+/** LCE-059: the publication-time quality rule, identical to the Worker's (cloud/src/quality.ts): a result
+ * from the pipeline mirror counts only for exactly the approved text, with Humanity PASS and Voice Gate PASS.
+ * Missing, stale, mismatched or inconclusive results fail closed; SOURCE_HEAVY never passes. */
+export function qualityGate(pipePost, approvedHash) {
+  const hq = pipePost?.humanity;
+  if (!/^[0-9a-f]{64}$/.test(approvedHash ?? "")) return { ok: false, why: "no approved text to check quality against" };
+  if (!hq || typeof hq !== "object") return { ok: false, why: "no quality result for this post" };
+  if (hq.error) return { ok: false, why: "the quality check could not run for this post" };
+  if (!/^[0-9a-f]{64}$/.test(hq.content_hash ?? "")) return { ok: false, why: "the quality result is not tied to a text hash" };
+  if (hq.content_hash !== approvedHash) return { ok: false, why: "the quality result is for a different text than the approved one" };
+  if (hq.verdict !== "PASS") return { ok: false, why: `Humanity is ${hq.verdict ?? "missing"}, not PASS` };
+  const vg = hq.voice_gate?.verdict;
+  if (vg !== "PASS") {
+    return { ok: false, why: vg === "SOURCE_HEAVY"
+      ? "Voice Gate is SOURCE_HEAVY (not enough of your own confirmed view); add your real view and approve the new version"
+      : `Voice Gate is ${vg ?? "missing"}, not PASS` };
+  }
+  return { ok: true, why: "Humanity PASS and Voice Gate PASS for the approved text" };
+}
+
+export function canPublishNow(cloudPost, consent, settings = {}, quality = null) {
   if (!cloudPost || cloudPost.state === "WITHDRAWN") return { ok: false, why: "not approved into the publisher yet" };
   if (cloudPost.state === "PUBLISHED") return { ok: false, why: "already published" };
   if (cloudPost.state === "PUBLISHING" || cloudPost.state === "NEEDS_RECONCILE") return { ok: false, why: "a publication is in progress or needs reconciling" };
@@ -789,6 +839,8 @@ export function canPublishNow(cloudPost, consent, settings = {}) {
   if (consent) return { ok: false, why: "scheduled: unschedule it first to publish now" };
   if (settings.emergency_stop) return { ok: false, why: "the emergency stop is on" };
   if (VISIBLE_CREDIT_RE.test(cloudPost.text ?? "")) return { ok: false, why: "the approved text shows an image/source label; refresh and approve the clean text" };
+  // LCE-059: fail closed; a caller that passes no quality result never gets a publishable answer
+  if (!quality?.ok) return { ok: false, why: "quality: " + (quality?.why ?? "no quality result for the approved text") };
   return { ok: true, why: null };
 }
 

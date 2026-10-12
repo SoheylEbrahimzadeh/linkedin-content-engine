@@ -692,3 +692,24 @@ def test_humanization_record_reads_the_confirmed_owner_material(store, monkeypat
     post["opinions_used"] = ["op-invented"]
     _humanization_record(store, post, current_text(store, pid), source="session", by="t")
     assert "golden.unconfirmed_ref" in seen["codes"]                # an invented reference still fails
+
+
+# ── LCE-059: a quality result is bound to the exact text it scored ──────────
+def test_score_post_records_the_hash_of_the_text_it_scored(store):
+    """The publisher accepts a quality result only for the approved text; the hash must come from the
+    very text that was scored, so a later edit can never inherit an earlier PASS."""
+    from conftest import awaiting_post
+
+    from lce.dashboard.snapshot import build_snapshot
+    from lce.humanity import score_post
+    from lce.posts import current_text
+    from lce.textutil import content_hash
+
+    pid = awaiting_post(store)
+    res = score_post(store, pid)
+    assert res["content_hash"] == content_hash(current_text(store, pid))
+    assert res["voice_gate"]["verdict"] in {"PASS", "FAIL", "SOURCE_HEAVY", "REVIEW_NEEDED"}
+    snap = next(p for p in build_snapshot(store, mode="real")["posts"] if p["post_id"] == pid)
+    assert snap["humanity"]["content_hash"] == res["content_hash"]      # what the cloud mirror carries
+    (store.post_dir(pid) / "post.md").write_text(current_text(store, pid) + "\nOne more line.\n", "utf-8")
+    assert score_post(store, pid)["content_hash"] != res["content_hash"]

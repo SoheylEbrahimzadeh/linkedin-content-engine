@@ -754,3 +754,18 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
 - Publish now is visible on every unpublished post: usable when `canPublishNow` holds, otherwise
   disabled with the reason (approve first; approval recorded and reaching the publisher at the
   next private run, hourly at :17; withdrawn; emergency stop; label line).
+
+## LCE-059 (12 Oct): publication-time quality gate and separate status facts
+
+- PLANNED/STARTED: owner model: Claude prepares content; auto-publish stays OFF; the owner edits,
+  reschedules and publishes by hand, only when every gate passes. Gap found: quality was checked only at
+  approval, so an approved text that later fails Humanity/Voice Gate stayed publishable; and "Approved"
+  (repository) was shown as if publishable.
+- EXECUTED (branch `feat/lce-059-publish-quality-gate`, not merged, not deployed): `score_post` records
+  `content_hash`; Worker `quality.ts` gate in `publishNow` (before any write) and `publishOne` (both paths);
+  UI `qualityGate` (same rule), `canPublishNow` fails closed without a quality result, `publishStatus`
+  rows, clearer hint for approved-but-withdrawn posts, "Approved · not publishable" pill.
+- ROLLOUT ORDER (owner decisions): merge + deploy; then bump the engine pin in lce-data so the mirror
+  carries the hash. Until then every publication is blocked (fail closed). Current production posts:
+  10 Oct (Humanity FAIL) and 13 Oct (Voice Gate SOURCE_HEAVY) would both be blocked.
+- VERIFIED: local tests only (Worker, engine, browser lib); no production verification.

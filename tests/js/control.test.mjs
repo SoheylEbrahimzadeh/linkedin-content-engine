@@ -545,8 +545,11 @@ test("the media record shows the image provenance as internal, not as post text"
 test("Publish now is offered only for an approved, unscheduled, clean post with the emergency stop off", () => {
   const { canPublishNow } = lib;
   const ready = { post_id: "p", state: "READY_TO_PUBLISH", text: "A clean post.\n\n#Demo" };
-  assert.equal(canPublishNow(ready, null, { auto_publish: true }).ok, true);
-  assert.equal(canPublishNow(ready, null, { auto_publish: false }).ok, true);          // independent of auto-publish
+  const Q = { ok: true, why: "pass" };                                                    // LCE-059: quality passes
+  assert.equal(canPublishNow(ready, null, { auto_publish: true }, Q).ok, true);
+  assert.equal(canPublishNow(ready, null, { auto_publish: false }, Q).ok, true);       // independent of auto-publish
+  assert.match(canPublishNow(ready, null, {}).why, /quality: no quality result/);       // no result: fail closed
+  assert.match(canPublishNow(ready, null, {}, { ok: false, why: "Voice Gate is SOURCE_HEAVY" }).why, /SOURCE_HEAVY/);
   assert.equal(canPublishNow(null, null, {}).ok, false);                                // awaiting approval: not in the publisher
   assert.equal(canPublishNow({ ...ready, state: "WITHDRAWN" }, null, {}).ok, false);
   assert.equal(canPublishNow({ ...ready, state: "PUBLISHED" }, null, {}).ok, false);
@@ -619,9 +622,58 @@ test("Publish now hint explains approval, the next private run and real blocks",
   assert.match(publishNowHint({ ...base, post: { state: "AWAITING_APPROVAL" }, pending: { action: "approve", status: "pending" } }),
     /approval is recorded.*next private run at 14:17/);
   const ready = { state: "READY_TO_PUBLISH", text: "Clean.\n\n#Demo" };
-  assert.equal(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: ready }), null);   // usable: no hint
-  assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: { ...ready, state: "WITHDRAWN" } }), /not in the publisher/);
+  const Q = { ok: true, why: "pass" };
+  assert.equal(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: ready, quality: Q }), null);   // usable: no hint
+  assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: ready }), /quality/);         // no result: blocked
+  // LCE-059: approved in the repository is not the same as in the publisher, and the text is never changed in place
+  assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: { ...ready, state: "WITHDRAWN" } }),
+    /approved in the repository, but withdrawn from the publisher.*new version/);
+  assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: null }), /approved in the repository, but not in the publisher/);
+  assert.match(publishNowHint({ ...base, post: { state: "QA_PASSED" }, cloudPost: { ...ready, state: "WITHDRAWN" } }), /not in the publisher/);
   assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: ready, settings: { emergency_stop: true } }), /emergency stop/);
   assert.equal(publishNowHint({ ...base, post: { state: "PUBLISHED" }, cloudPost: { ...ready, state: "PUBLISHED" } }), null);
   assert.equal(publishNowHint({ ...base, post: { state: "REJECTED" } }), null);
+});
+
+// LCE-059: the browser quality rule equals the Worker's; every unusable result fails closed.
+test("quality gate: PASS + PASS for exactly the approved hash, everything else blocked", () => {
+  const { qualityGate } = lib;
+  const H = "a".repeat(64);
+  const ok = (hq, h = H) => qualityGate({ humanity: hq }, h).ok;
+  const pass = { content_hash: H, verdict: "PASS", voice_gate: { verdict: "PASS" } };
+  assert.equal(ok(pass), true);
+  assert.equal(ok({ ...pass, voice_gate: { verdict: "SOURCE_HEAVY" } }), false);
+  assert.match(qualityGate({ humanity: { ...pass, voice_gate: { verdict: "SOURCE_HEAVY" } } }, H).why, /your own confirmed view/);
+  assert.equal(ok({ ...pass, voice_gate: { verdict: "FAIL" } }), false);
+  assert.equal(ok({ ...pass, voice_gate: { verdict: "REVIEW_NEEDED" } }), false);
+  assert.equal(ok({ ...pass, voice_gate: null }), false);
+  assert.equal(ok({ ...pass, verdict: "FAIL" }), false);
+  assert.equal(ok({ ...pass, verdict: "PARTIAL" }), false);
+  assert.equal(ok({ ...pass, content_hash: "b".repeat(64) }), false);                  // stale: scored another text
+  assert.equal(ok({ ...pass, content_hash: undefined }), false);                       // not tied to a text
+  assert.equal(ok({ ...pass, error: "boom" }), false);
+  assert.equal(ok(null), false);
+  assert.equal(qualityGate({ humanity: pass }, undefined).ok, false);                  // nothing in the publisher
+  assert.equal(qualityGate(null, H).ok, false);
+});
+
+test("publishStatus keeps repository, publisher, quality and eligibility apart", () => {
+  const { publishStatus } = lib;
+  const H = "c".repeat(64);
+  const post = { state: "READY_TO_PUBLISH", approval: { approved_hash: H } };
+  const rowsOf = (x) => Object.fromEntries(publishStatus({ nowIso: "2026-10-12T13:50:00Z", tz: "UTC", settings: {}, ...x }));
+  const w = rowsOf({ post, cloudPost: { state: "WITHDRAWN", text: "x", approved_hash: H } });
+  assert.match(w.Repository, /^approved \(hash cccccccc/);
+  assert.match(w.Publisher, /withdrawn/);
+  assert.match(w["Publish now"], /^not available: approved in the repository, but withdrawn/);
+  const sh = rowsOf({ post, cloudPost: { state: "READY_TO_PUBLISH", text: "Clean.\n", approved_hash: H },
+    quality: { ok: false, why: "Voice Gate is SOURCE_HEAVY (not enough of your own confirmed view)" } });
+  assert.match(sh.Publisher, /in the publisher, not scheduled/);
+  assert.match(sh["Quality (approved text)"], /SOURCE_HEAVY/);
+  assert.match(sh["Publish now"], /^not available: quality: Voice Gate is SOURCE_HEAVY/);
+  const ok = rowsOf({ post, cloudPost: { state: "READY_TO_PUBLISH", text: "Clean.\n", approved_hash: H }, quality: { ok: true, why: "p" } });
+  assert.match(ok["Publish now"], /^available \(needs your typed confirmation\)/);
+  const stop = rowsOf({ post, cloudPost: { state: "READY_TO_PUBLISH", text: "Clean.\n", approved_hash: H }, quality: { ok: true, why: "p" },
+    settings: { emergency_stop: true } });
+  assert.match(stop["Publish now"], /emergency stop/);
 });
