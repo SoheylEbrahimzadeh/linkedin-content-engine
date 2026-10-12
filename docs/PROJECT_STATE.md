@@ -744,3 +744,13 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
   / scheduling / past slot do not, archive keeps the count, one count per post, pipeline states),
   Worker (repeated Publish now leaves one `published` row).
 - VERIFIED: pending the production deploy and dashboard check.
+
+## LCE-057 (12 Oct): false "voice rule failed"; Publish now always visible
+
+- The Humanization panel's voice-rule check (`posts._humanization_record`) ran without the
+  owner-confirmed Golden Voice Set, so a post using a confirmed opinion showed
+  `golden.unconfirmed_ref` as a failed rule while QA (which passes the set) passed. It now uses
+  the same material as QA. Regression test proves fail-before / pass-after.
+- Publish now is visible on every unpublished post: usable when `canPublishNow` holds, otherwise
+  disabled with the reason (approve first; approval recorded and reaching the publisher at the
+  next private run, hourly at :17; withdrawn; emergency stop; label line).

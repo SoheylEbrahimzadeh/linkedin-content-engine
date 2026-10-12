@@ -607,3 +607,21 @@ test("the future pipeline counts current states from today on", () => {
   assert.deepEqual(x.pipeline, { scheduled: 1, approved: 1, awaiting: 1, planned: 2, attention: 0, total: 5 });
   assert.equal(x.published, 0);
 });
+
+// LCE-057: Publish now is always visible; when it cannot be used, the reason says exactly why and when.
+test("Publish now hint explains approval, the next private run and real blocks", () => {
+  const { publishNowHint, nextDecisionsRun } = lib;
+  const nowIso = "2026-10-12T13:50:00Z";
+  const base = { nowIso, tz: "UTC", settings: {} };
+  assert.equal(nextDecisionsRun("2026-10-12T13:50:00Z", "UTC"), "14:17");
+  assert.equal(nextDecisionsRun("2026-10-12T14:05:00Z", "UTC"), "14:17");
+  assert.match(publishNowHint({ ...base, post: { state: "AWAITING_APPROVAL" } }), /approve this post first/);
+  assert.match(publishNowHint({ ...base, post: { state: "AWAITING_APPROVAL" }, pending: { action: "approve", status: "pending" } }),
+    /approval is recorded.*next private run at 14:17/);
+  const ready = { state: "READY_TO_PUBLISH", text: "Clean.\n\n#Demo" };
+  assert.equal(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: ready }), null);   // usable: no hint
+  assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: { ...ready, state: "WITHDRAWN" } }), /not in the publisher/);
+  assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: ready, settings: { emergency_stop: true } }), /emergency stop/);
+  assert.equal(publishNowHint({ ...base, post: { state: "PUBLISHED" }, cloudPost: { ...ready, state: "PUBLISHED" } }), null);
+  assert.equal(publishNowHint({ ...base, post: { state: "REJECTED" } }), null);
+});

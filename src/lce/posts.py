@@ -113,15 +113,18 @@ def save_humanized(store: DataStore, post_id: str, text: str, *, source: str = "
 
 
 def _humanization_record(store: DataStore, post: dict, text: str, *, source: str, by: str) -> dict:
-    from lce import voice
+    from lce import persona, voice
     from lce.privacy.scan import load_denylist
     from lce.qa import run_checks
     from lce.rules import RulesetNotReady, ready_ruleset
 
     try:
+        # LCE-057: the same owner material QA uses; without it every confirmed opinion read as
+        # "not owner-confirmed" and the Humanization panel showed a false failed voice rule
         findings = run_checks(text, rules=ready_ruleset(post["language"]), voice=store.voice(),
                               profile=store.profile(), post=post, stories=store.stories(),
-                              denylist=load_denylist(), brand=store.brand())
+                              denylist=load_denylist(), brand=store.brand(),
+                              golden_items=persona.confirmed(store))
     except RulesetNotReady:
         findings = []
     return voice.record(store, post, findings, source=source, by=by)
