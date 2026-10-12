@@ -14,7 +14,7 @@
 // When the repository later pushes the same approval, the Worker answers "unchanged".
 
 import { createDecision, DecisionError } from "./decisions";
-import { event, loadSettings, type Env } from "./db";
+import { loadSettings, type Env } from "./db";
 import type { FetchLike } from "./linkedin";
 import { publishNow, type ManualReport } from "./runner";
 import { isoUtc } from "./schedule";
@@ -84,21 +84,50 @@ export async function approveAndPublish(env: Env, now: number, who: { subject: s
     if (err instanceof DecisionError) return refuse(err.status, err.message);
     throw err;
   }
-  // 2. the exact approved text (and hash-checked image) into the publisher
+  // 2. the exact approved text (and hash-checked image) into the publisher, atomically (one D1 batch =
+  // one transaction). A per-request token in pushed_by marks the row this request placed; the image and
+  // audit rows are written only when the posts row carries that token, so a concurrent request that lost
+  // the race never touches the image, and the post is never READY_TO_PUBLISH without its image.
   const at = isoUtc(now);
-  await env.DB.batch([
-    cloud
-      ? env.DB.prepare(`UPDATE posts SET text = ?, language = ?, plan_date = ?, state = 'READY_TO_PUBLISH', content_hash = ?,
-          approved_hash = ?, approved_at = ?, pushed_at = ?, pushed_by = ?, updated_at = ? WHERE post_id = ? AND state = 'WITHDRAWN'`)
-        .bind(p.text, p.language ?? "en", p.plan_date ?? null, h, h, at, at, `dashboard:${who.subject}`, at, id)
-      : env.DB.prepare(`INSERT INTO posts (post_id, text, language, plan_date, state, content_hash, approved_hash,
-          approved_at, pushed_at, pushed_by, updated_at) VALUES (?, ?, ?, ?, 'READY_TO_PUBLISH', ?, ?, ?, ?, ?, ?)`)
-        .bind(id, p.text, p.language ?? "en", p.plan_date ?? null, h, h, at, at, `dashboard:${who.subject}`, at),
-    env.DB.prepare("DELETE FROM post_images WHERE post_id = ?").bind(id),
-    ...(image ? [env.DB.prepare("INSERT INTO post_images (post_id, data, sha256, alt_text, bytes) VALUES (?, ?, ?, ?, ?)")
-      .bind(id, image.data, imageSha, image.alt, image.data.length)] : []),
-    event(env.DB, now, "post.approved_direct", who.subject, id, { approved_hash: h, image_sha256: imageSha, decision_id: decisionId }),
-  ]);
+  const token = `dashboard:${who.subject}:${crypto.randomUUID()}`;
+  const mine = "EXISTS (SELECT 1 FROM posts WHERE post_id = ? AND pushed_by = ? AND state = 'READY_TO_PUBLISH' AND approved_hash = ?)";
+  const place = cloud
+    ? env.DB.prepare(`UPDATE posts SET text = ?, language = ?, plan_date = ?, state = 'READY_TO_PUBLISH', content_hash = ?,
+        approved_hash = ?, approved_at = ?, pushed_at = ?, pushed_by = ?, updated_at = ? WHERE post_id = ? AND state = 'WITHDRAWN'`)
+      .bind(p.text, p.language ?? "en", p.plan_date ?? null, h, h, at, at, token, at, id)
+    : env.DB.prepare(`INSERT INTO posts (post_id, text, language, plan_date, state, content_hash, approved_hash,
+        approved_at, pushed_at, pushed_by, updated_at) VALUES (?, ?, ?, ?, 'READY_TO_PUBLISH', ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(post_id) DO NOTHING`)
+      .bind(id, p.text, p.language ?? "en", p.plan_date ?? null, h, h, at, at, token, at);
+  let res: D1Result[];
+  try {
+    res = await env.DB.batch([
+      place,
+      env.DB.prepare(`DELETE FROM post_images WHERE post_id = ? AND ${mine}`).bind(id, id, token, h),
+      ...(image ? [env.DB.prepare(`INSERT INTO post_images (post_id, data, sha256, alt_text, bytes)
+          SELECT ?, ?, ?, ?, ? WHERE ${mine}`).bind(id, image.data, imageSha, image.alt, image.data.length, id, token, h)] : []),
+      env.DB.prepare(`INSERT INTO events (at, event, actor, post_id, detail) SELECT ?, 'post.approved_direct', ?, ?, ? WHERE ${mine}`)
+        .bind(at, who.subject, id, JSON.stringify({ approved_hash: h, image_sha256: imageSha, decision_id: decisionId }), id, token, h),
+    ]);
+  } catch (err) {
+    return refuse(409, `the post could not be placed in the publisher (${String((err as Error).message).slice(0, 120)}); nothing was sent`);
+  }
+  const placed = res[0].meta.changes;
+  const imaged = image ? res[2].meta.changes : 1;
+  const audited = res[res.length - 1].meta.changes;
+  if (placed !== 1) {
+    // another request placed (or changed) this post first: this one sends nothing
+    return { ...refuse(409, "another request placed this post in the publisher first; nothing was sent by this one"), decision_id: decisionId };
+  }
+  if (imaged !== 1 || audited !== 1) {
+    // cannot happen while the batch is atomic; refuse to publish rather than publish without the approved image
+    // or without its audit event. The row this request placed is withdrawn again (only if it is still its own).
+    const back = await env.DB.prepare("UPDATE posts SET state = 'WITHDRAWN', updated_at = ? WHERE post_id = ? AND pushed_by = ? AND state = 'READY_TO_PUBLISH'")
+      .bind(at, id, token).run();
+    const what = imaged !== 1 ? "the approved image" : "the audit event";
+    return { ...refuse(500, `${what} could not be stored with the post; nothing was sent` +
+      (back.meta.changes === 1 ? "" : "; the publisher row could not be withdrawn, check it before publishing")), decision_id: decisionId };
+  }
   // 3. the existing publisher, now
   const report = await publishNow(env, now, who.subject, id, h, fetchImpl);
   return { ...report, decision_id: decisionId };

@@ -625,3 +625,14 @@ test("Publish now hint explains approval, the next private run and real blocks",
   assert.equal(publishNowHint({ ...base, post: { state: "PUBLISHED" }, cloudPost: { ...ready, state: "PUBLISHED" } }), null);
   assert.equal(publishNowHint({ ...base, post: { state: "REJECTED" } }), null);
 });
+
+// LCE-058: the browser's content hash equals the Python engine's and the Worker's, byte for byte.
+test("browser contentHash matches the shared Python/Worker vectors", async () => {
+  const { contentHash, normalizeText } = lib;
+  const vectors = JSON.parse(readFileSync(new URL("../../cloud/test/vectors.json", import.meta.url), "utf8"));
+  assert.ok(vectors.texts.length >= 5);
+  for (const v of vectors.texts) {
+    assert.equal(normalizeText(v.text), v.normalized);
+    assert.equal(await contentHash(v.text), v.hash);
+  }
+});

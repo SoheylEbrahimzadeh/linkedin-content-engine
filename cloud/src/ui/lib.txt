@@ -756,6 +756,23 @@ export const canArchive = (post, cloudPost) => Boolean(post) && !isArchived(post
 const VISIBLE_CREDIT_RE = new RegExp(
   String.raw`^\s*(?:(?:(?:header|cover|featured|hero|lead)\s+)?(?:images?|photos?|pictures?|illustrations?|graphics?|visuals?|credits?)` +
   String.raw`(?:\s+(?:source|credit|courtesy|by)s?)?|sources?|via)\s*:\s*\S.*$`, "im");
+/** LCE-058: the content hash of a text, computed in the browser exactly like lce.textutil.content_hash and the
+ * Worker's contentHash (NFC, CRLF/CR → LF, trailing whitespace per line removed, outer whitespace stripped, one
+ * trailing newline, SHA-256 hex). Parity is checked against the shared test vectors. */
+const PY_WS_LIB = "\t\n\u000b\u000c\r\u001c\u001d\u001e\u001f \u0085                 　";
+const isWsLib = (ch) => PY_WS_LIB.includes(ch);
+const rstripLib = (s) => { let e = s.length; while (e > 0 && isWsLib(s[e - 1])) e--; return s.slice(0, e); };
+const stripLib = (s) => { let b = 0; while (b < s.length && isWsLib(s[b])) b++; return rstripLib(s.slice(b)); };
+export function normalizeText(text) {
+  const t = String(text).normalize("NFC").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return stripLib(t.split("\n").map(rstripLib).join("\n")) + "\n";
+}
+export async function sha256HexOfBytes(bytes) {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+export const contentHash = (text) => sha256HexOfBytes(new TextEncoder().encode(normalizeText(text)));
+
 /** LCE-057: why Publish now is not available yet, in the owner's terms (approval first; an approval recorded
  * in the dashboard reaches the publisher at the next private decisions run, hourly at :17). */
 export const DECISIONS_MINUTE = 17;

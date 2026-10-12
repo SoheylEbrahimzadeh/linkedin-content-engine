@@ -150,10 +150,26 @@ synced preview only when its bytes hash to the image hash shown. Then the normal
 is recorded (the repository applies it later, hash-checked against its files, and the Worker answers
 "unchanged" to the push), the exact text is placed in the publisher, and `publishNow` runs at once
 (LinkedIn identity, label gate, approved-hash gate, idempotency, audit). The answer is LinkedIn's
-result. No GitHub credential, no polling; auto-publish is neither read nor changed. Known edge: if
-the repository changed the text after the last mirror sync, the dashboard text (what the owner
-approved) is what gets published, and the repository then refuses the stale approval; the
-cloud record still shows exactly what was published.
+result. No GitHub credential, no polling; auto-publish is neither read nor changed.
+
+Integrity (LCE-058 review): the confirmation dialog loads the image from the content-addressed
+route `GET /api/posts/:id/image?sha=<sha256>`, which serves bytes only when they hash to that sha
+(404 otherwise). The browser hashes the bytes it received and the exact text it displays
+(`contentHash`, same normalization as Python and the Worker, checked against the shared vectors)
+and enables Confirm only when both match; it sends the text hash it computed. The Worker checks
+independently: the hash must equal the hash of the mirror text it will publish, and the synced
+preview bytes must hash to the image sha the request names. Without `?sha=`, the image route
+prefers the publisher's image only for a post that is in the publisher and not WITHDRAWN, so a
+withdrawn post never shows (or is published with) its stale approved image. Placement is one D1
+batch keyed by a per-request token in `pushed_by`; the image and audit rows are written only for
+that token, and every row count is checked (posts 1, image 1, audit 1). A request that loses a
+race gets 409 and sends nothing; a mismatch withdraws the row it placed and sends nothing.
+
+Unresolved (needs an owner decision, not implemented): if the repository changed the text after
+the last mirror sync, the mirror text the owner approved is what gets published; the repository
+then refuses the stale approval and its local post stays AWAITING_APPROVAL while the cloud
+record shows PUBLISHED. No duplicate is possible (the publisher answers 409 to a later push), but
+the two records disagree until someone reconciles them. See PROJECT_STATE.md (LCE-058 review, F3).
 
 Emergency stop (`emergency_stop` setting): blocks every publication,
 scheduled and manual. Turning it on needs nothing; releasing it, like enabling

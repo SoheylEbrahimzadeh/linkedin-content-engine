@@ -769,3 +769,19 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
   image binding, repository push answers unchanged), engine (approval applied after a direct
   publish), UI guard narrowed to this one approval route.
 - VERIFIED: pending deploy; production verification without publishing a real post.
+- REVIEW FIXES (PR #133, not merged, not deployed):
+  - F1 image integrity: content-addressed image route; the dialog hashes the bytes it displays; the
+    Worker requires the synced preview bytes to hash to the shown sha; the generic image route no
+    longer serves a WITHDRAWN post's stale approved image.
+  - F2 text integrity: the browser hashes the exact displayed text and sends that hash; the Worker
+    recomputes the hash of the text it will publish.
+  - F4 concurrency: per-request token in one D1 batch; row counts checked (posts, image, audit); a
+    lost race sends nothing. Tests: deterministic simulated stale-read race, simulated row-count
+    mismatch, local miniflare D1 parallel requests. Not tested: production D1 concurrency.
+  - F3 repository/cloud reconciliation: UNRESOLVED, owner decision needed. Options:
+    (a) the engine adopts the publication from durable cloud evidence (published state, LinkedIn
+        URN, commentary hash = decision hash); the newer local text is kept as a version
+        (no overwrite), idempotent per decision, refused when the evidence is ambiguous;
+    (b) the Worker refuses when the repository moved on (needs repository HEAD knowledge in the
+        Worker, which means a new credential: a human gate);
+    (c) show the disagreement in the dashboard and reconcile by hand.
