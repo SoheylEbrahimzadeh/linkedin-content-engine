@@ -2,8 +2,9 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { handleApi } from "../src/api";
 import { resetCertsCache } from "../src/auth";
+import { approveAndPublish } from "../src/direct";
 import { runScheduled } from "../src/runner";
-import { contentHash } from "../src/text";
+import { contentHash, sha256Bytes } from "../src/text";
 import { created, enableAll, fakeFetch, insertConsent, insertPost, reset, rows, setSettings, status, TEXT, testEnv } from "./helpers";
 
 const TEAM = "test-team.cloudflareaccess.com";
@@ -360,6 +361,246 @@ describe("publish now (LCE-055)", () => {
     expect(r.status).toBe(409);
     expect(f.calls.filter((c) => c.url.endsWith("/rest/posts"))).toHaveLength(0);
   });
+});
+
+// LCE-058: Approve & publish now in one owner-confirmed request (no hourly wait, no new credential).
+describe("approve and publish now (LCE-058)", () => {
+  const ID = AWAITING;
+  const go = (h: string, extra: Record<string, unknown> = {}, who: Record<string, unknown> = OWNER, f = fakeFetch()) =>
+    call("POST", `/posts/${ID}/approve-and-publish`, { content_hash: h, image_sha256: null, confirm: `APPROVE AND PUBLISH ${ID}`, ...extra }, who, f);
+  async function setup(extra: Record<string, unknown> = {}) {
+    await enableAll(e);
+    await setSettings(e, { auto_publish: "false" });          // manual path: auto-publish is never needed or changed
+    return awaitingMirror(extra);
+  }
+  const count = async (sql: string) => (await rows(e, sql)).length;
+
+  it("records the approval, places the exact text and publishes now; auto-publish untouched", async () => {
+    const h = await setup();
+    const r = await go(h, {}, OWNER, fakeFetch(userinfo(), created("urn:li:share:8101")));
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ outcome: "published", publication: { state: "published", remote_id: "urn:li:share:8101" } });
+    const [d] = await rows<{ action: string; status: string; content_hash: string }>(e, "SELECT action, status, content_hash FROM decisions");
+    expect(d).toMatchObject({ action: "approve", status: "pending", content_hash: h });      // the repo applies it later
+    const [post] = await rows<{ state: string; approved_hash: string }>(e, `SELECT state, approved_hash FROM posts WHERE post_id = '${ID}'`);
+    expect(post).toMatchObject({ state: "PUBLISHED", approved_hash: h });
+    const evs = (await rows<{ event: string }>(e, "SELECT event FROM events ORDER BY id")).map((x) => x.event);
+    expect(evs).toEqual(expect.arrayContaining(["decision.approve", "post.approved_direct", "publish.manual_requested", "publish.published"]));
+    const [s] = await rows<{ value: string }>(e, "SELECT value FROM settings WHERE key = 'auto_publish'");
+    expect(s.value).toBe("false");
+    // the repository later pushes the same approval: the Worker answers "unchanged"
+    const push = await call("PUT", `/posts/${ID}`, { text: TEXT, approved_hash: h, approved_at: "2026-10-05T12:00:00+00:00" }, SERVICE, fakeFetch(), "cli");
+    expect(push.body).toMatchObject({ unchanged: true });
+  });
+  it("needs a signed-in person and the typed phrase", async () => {
+    const h = await setup();
+    expect((await go(h, {}, SERVICE)).status).toBe(403);
+    expect((await go(h, { confirm: `PUBLISH NOW ${ID}` })).status).toBe(428);
+    expect(await count("SELECT * FROM decisions")).toBe(0);
+    expect(await count("SELECT * FROM posts")).toBe(0);
+  });
+  it("refuses a post that is not awaiting approval, or a text/image other than the one reviewed", async () => {
+    let h = await setup({ state: "NEEDS_REVISION" });
+    expect((await go(h)).status).toBe(409);
+    h = await setup();
+    expect((await go("0".repeat(64))).status).toBe(409);                     // invalid approval hash
+    expect((await go(h, { image_sha256: "a".repeat(64) })).status).toBe(409);  // image differs from the one shown
+    expect(await count("SELECT * FROM decisions")).toBe(0);
+    expect(await count("SELECT * FROM posts")).toBe(0);
+  });
+  it("refuses a text with an image/source label and an archived post", async () => {
+    const labelled = "A fictional post.\n\nImage: Example News\n\n#Demo\n";
+    await setup();
+    const h = await contentHash(labelled);
+    await mirror([{ post_id: ID, state: "AWAITING_APPROVAL", text: labelled, actual_hash: h, plan_date: "2026-10-06", image: null }]);
+    expect(String((await go(h)).body!.detail)).toContain("image/source label");
+    const h2 = await awaitingMirror({ archived: { at: "2026-10-06T00:00:00+00:00" } });
+    expect((await go(h2)).status).toBe(409);
+    expect(await count("SELECT * FROM posts")).toBe(0);
+  });
+  it("the emergency stop blocks it before anything is recorded or sent", async () => {
+    const h = await setup();
+    await setSettings(e, { emergency_stop: "true" });
+    const f = fakeFetch(userinfo(), created());
+    const r = await go(h, {}, OWNER, f);
+    expect(r.status).toBe(409);
+    expect(String(r.body!.detail)).toContain("emergency stop");
+    expect(f.calls).toHaveLength(0);
+    expect(await count("SELECT * FROM decisions")).toBe(0);
+    expect(await count("SELECT * FROM posts")).toBe(0);
+  });
+  it("a second request never publishes twice", async () => {
+    const h = await setup();
+    expect((await go(h, {}, OWNER, fakeFetch(userinfo(), created("urn:li:share:8102")))).status).toBe(200);
+    const f = fakeFetch(userinfo(), created("urn:li:share:8103"));
+    const r = await go(h, {}, OWNER, f);
+    expect(r.status).toBe(409);
+    expect(f.calls.filter((c) => c.url.endsWith("/rest/posts"))).toHaveLength(0);
+    expect((await rows<{ state: string }>(e, "SELECT state FROM publications")).map((x) => x.state)).toEqual(["published"]);
+  });
+  it("a LinkedIn failure is Publish failed with the real status; the approval stays recorded", async () => {
+    const h = await setup();
+    const r = await go(h, {}, OWNER, fakeFetch(userinfo(), status(422)));
+    expect(r.status).toBe(502);
+    expect(r.body!.outcome).not.toBe("published");
+    expect((await rows<{ state: string }>(e, `SELECT state FROM posts WHERE post_id = '${ID}'`))[0].state).toBe("PUBLISH_FAILED");
+    expect(await count("SELECT * FROM decisions WHERE action = 'approve'")).toBe(1);
+  });
+  it("uses the synced image only when its bytes hash to the image the owner saw", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]);
+    const sha = await sha256Bytes(bytes);
+    const h = await setup({ image: { sha256: sha, alt_text: "alt" } });
+    await e.DB.prepare("INSERT INTO preview_media (post_id, data, sha256, bytes, mime, alt_text, updated_at) VALUES (?, ?, ?, ?, 'image/png', 'alt', ?)")
+      .bind(ID, bytes, "f".repeat(64), bytes.length, "2026-10-05T00:00:00+00:00").run();
+    let r = await go(h, { image_sha256: sha });
+    expect(String(r.body!.detail)).toContain("not synced");                   // preview is not that image
+    expect(await count("SELECT * FROM decisions")).toBe(0);
+    await e.DB.prepare("UPDATE preview_media SET sha256 = ? WHERE post_id = ?").bind(sha, ID).run();
+    r = await go(h, { image_sha256: sha }, OWNER, fakeFetch(userinfo()));       // stops at the identity check
+    const [img] = await rows<{ sha256: string }>(e, `SELECT sha256 FROM post_images WHERE post_id = '${ID}'`);
+    expect(img.sha256).toBe(sha);
+  });
+});
+
+// LCE-058 review fixes: image/text integrity, stale images, concurrency, ambiguous outcomes.
+describe("approve and publish now: integrity and concurrency (LCE-058 review)", () => {
+  const ID = AWAITING;
+  const PNG = (n: number) => new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, n, n, n, n]);
+  const go = (h: string, extra: Record<string, unknown> = {}, f = fakeFetch()) =>
+    call("POST", `/posts/${ID}/approve-and-publish`, { content_hash: h, image_sha256: null, confirm: `APPROVE AND PUBLISH ${ID}`, ...extra }, OWNER, f);
+  const preview = async (bytes: Uint8Array, sha?: string) => e.DB.prepare(`INSERT INTO preview_media (post_id, data, sha256, bytes, mime, alt_text, updated_at)
+      VALUES (?, ?, ?, ?, 'image/png', 'alt', '2026-10-05T00:00:00+00:00') ON CONFLICT(post_id) DO UPDATE SET data = excluded.data, sha256 = excluded.sha256`)
+    .bind(ID, bytes, sha ?? await sha256Bytes(bytes), bytes.length).run();
+  const linkedInPosts = (f: { calls: { url: string }[] }) => f.calls.filter((c) => c.url.endsWith("/rest/posts")).length;
+  beforeEach(async () => { await enableAll(e); await setSettings(e, { auto_publish: "false" }); });
+
+  it("the content-addressed image route serves only bytes that hash to the requested sha", async () => {
+    const good = PNG(1);
+    const sha = await sha256Bytes(good);
+    await awaitingMirror({ image: { sha256: sha } });
+    await preview(good);
+    const ok = await call("GET", `/posts/${ID}/image?sha=${sha}`);
+    expect(ok.status).toBe(200);
+    expect(await sha256Bytes(new Uint8Array(await ok.res.arrayBuffer()))).toBe(sha);
+    expect((await call("GET", `/posts/${ID}/image?sha=${"f".repeat(64)}`)).status).toBe(404);
+    await preview(PNG(9), sha);                                          // stored sha says X, bytes are not X
+    expect((await call("GET", `/posts/${ID}/image?sha=${sha}`)).status).toBe(404);
+    expect((await call("GET", `/posts/${ID}/image?sha=nothex`)).status).toBe(400);
+  });
+
+  it("a withdrawn post shows and publishes the current image, never its stale approved image", async () => {
+    const oldImg = PNG(2), newImg = PNG(3);
+    const oldSha = await sha256Bytes(oldImg), newSha = await sha256Bytes(newImg);
+    const h = await awaitingMirror({ image: { sha256: newSha, alt_text: "new" } });
+    await insertPost(e, ID, "Old approved fictional text.\n", "WITHDRAWN");
+    await e.DB.prepare("INSERT INTO post_images (post_id, data, sha256, alt_text, bytes) VALUES (?, ?, ?, 'old', ?)").bind(ID, oldImg, oldSha, oldImg.length).run();
+    await preview(newImg);
+    const shown = await call("GET", `/posts/${ID}/image`);               // generic route: stale approved image no longer wins
+    expect(await sha256Bytes(new Uint8Array(await shown.res.arrayBuffer()))).toBe(newSha);
+    const init = new Response(JSON.stringify({ value: { uploadUrl: "https://www.linkedin.com/dms-uploads/fake/0?ut=x", image: "urn:li:image:F1" } }), { status: 200 });
+    const f = fakeFetch(userinfo(), init, new Response(null, { status: 201 }), created("urn:li:share:9202"));
+    const r = await go(h, { image_sha256: newSha }, f);
+    expect(r.body!.outcome).toBe("published");
+    const put = f.calls.find((c) => c.init.method === "PUT")!;
+    expect(await sha256Bytes(new Uint8Array(put.init.body as ArrayBuffer))).toBe(newSha);   // the bytes sent to LinkedIn
+    const [img] = await rows<{ sha256: string }>(e, `SELECT sha256 FROM post_images WHERE post_id = '${ID}'`);
+    expect(img.sha256).toBe(newSha);
+  });
+
+  it("refuses when the image shown is not the image that would be published", async () => {
+    const shownImg = PNG(4), otherImg = PNG(5);
+    const shownSha = await sha256Bytes(shownImg);
+    const h = await awaitingMirror({ image: { sha256: shownSha } });
+    await preview(otherImg);                                             // the synced preview is a different image
+    const f = fakeFetch(userinfo(), created());
+    const r = await go(h, { image_sha256: shownSha }, f);
+    expect(r.status).toBe(409);
+    expect(linkedInPosts(f)).toBe(0);
+    expect(await rows(e, "SELECT * FROM decisions")).toHaveLength(0);
+  });
+
+  it("refuses when the text changed after it was shown (hash of the shown text ≠ text that would be published)", async () => {
+    const shownHash = await contentHash("The text the owner saw.\n");
+    await awaitingMirror();                                             // the mirror now holds TEXT, not the shown text
+    const f = fakeFetch(userinfo(), created());
+    const r = await go(shownHash, {}, f);
+    expect(r.status).toBe(409);
+    expect(String(r.body!.detail)).toContain("text changed");
+    expect(linkedInPosts(f)).toBe(0);
+    expect(await rows(e, "SELECT * FROM posts")).toHaveLength(0);
+  });
+
+  it("SIMULATED race (deterministic): the withdrawn row was taken by another request after the check; nothing is touched or sent", async () => {
+    const img = PNG(6);
+    const sha = await sha256Bytes(img);
+    const h = await awaitingMirror({ image: { sha256: sha } });
+    await preview(img);
+    // the other request already placed the post (its token) and its image
+    await insertPost(e, ID, TEXT, "READY_TO_PUBLISH");
+    await e.DB.prepare("UPDATE posts SET pushed_by = 'dashboard:other:token' WHERE post_id = ?").bind(ID).run();
+    await e.DB.prepare("INSERT INTO post_images (post_id, data, sha256, alt_text, bytes) VALUES (?, ?, ?, 'theirs', ?)").bind(ID, img, sha, img.length).run();
+    // this request's state check still sees the row as WITHDRAWN (stale read)
+    const db = e.DB;
+    const stale = new Proxy(db, { get(t, k) {
+      if (k === "prepare") return (sql: string) => sql.startsWith("SELECT state, approved_hash FROM posts")
+        ? { bind: () => ({ first: async () => ({ state: "WITHDRAWN", approved_hash: "x" }) }) } : db.prepare(sql);
+      const v = (t as never)[k]; return typeof v === "function" ? (v as Function).bind(t) : v;
+    } });
+    const f = fakeFetch(userinfo(), created());
+    const r = await approveAndPublish({ ...e, DB: stale as typeof db }, NOW, { subject: "owner@example.com", human: true }, ID,
+      { content_hash: h, image_sha256: sha, confirm: `APPROVE AND PUBLISH ${ID}` }, f.fn);
+    expect(r.http).toBe(409);
+    expect(r.detail).toContain("another request");
+    expect(linkedInPosts(f)).toBe(0);
+    const [img2] = await rows<{ alt_text: string }>(e, `SELECT alt_text FROM post_images WHERE post_id = '${ID}'`);
+    expect(img2.alt_text).toBe("theirs");                                 // the winner's image row was not rewritten
+    expect((await rows<{ event: string }>(e, "SELECT event FROM events")).map((x) => x.event)).not.toContain("post.approved_direct");
+  });
+
+  it.each([["image row", 2], ["audit event", 3]])(
+    "SIMULATED row-count mismatch (%s affected 0 rows): refuses, withdraws its own row, sends nothing", async (what, idx) => {
+      const img = PNG(7);
+      const sha = await sha256Bytes(img);
+      const h = await awaitingMirror({ image: { sha256: sha } });
+      await preview(img);
+      const db = e.DB;
+      const lying = new Proxy(db, { get(t, k) {
+        if (k === "batch") return async (stmts: D1PreparedStatement[]) => {
+          const res = await db.batch(stmts);
+          return res.map((r, i) => (i === idx ? { ...r, meta: { ...r.meta, changes: 0 } } : r));
+        };
+        const v = (t as never)[k]; return typeof v === "function" ? (v as Function).bind(t) : v;
+      } });
+      const f = fakeFetch(userinfo(), created());
+      const r = await approveAndPublish({ ...e, DB: lying as typeof db }, NOW, { subject: "owner@example.com", human: true }, ID,
+        { content_hash: h, image_sha256: sha, confirm: `APPROVE AND PUBLISH ${ID}` }, f.fn);
+      expect(r.http).toBe(500);
+      expect(r.detail).toContain(what === "image row" ? "approved image" : "audit event");
+      expect(f.calls).toHaveLength(0);
+      expect((await rows<{ state: string }>(e, `SELECT state FROM posts WHERE post_id = '${ID}'`))[0].state).toBe("WITHDRAWN");
+    });
+
+  it("LOCAL D1 (miniflare) parallel requests: exactly one publication and one LinkedIn post", async () => {
+    const h = await awaitingMirror();
+    const f = fakeFetch(userinfo(), created("urn:li:share:9201"));   // the losing request makes no network call at all
+    const [a, b] = await Promise.all([go(h, {}, f), go(h, {}, f)]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    expect(linkedInPosts(f)).toBe(1);
+    expect((await rows<{ state: string }>(e, "SELECT state FROM publications")).map((x) => x.state)).toEqual(["published"]);
+  });
+
+  it.each([["500", () => status(500)], ["timeout", () => new DOMException("t", "AbortError")]])(
+    "an ambiguous LinkedIn outcome (%s) ends in NEEDS_RECONCILE and is never retried", async (_n, resp) => {
+      const h = await awaitingMirror();
+      const f = fakeFetch(userinfo(), resp());
+      const r = await go(h, {}, f);
+      expect(r.body!.outcome).not.toBe("published");
+      expect((await rows<{ state: string }>(e, `SELECT state FROM posts WHERE post_id = '${ID}'`))[0].state).toBe("NEEDS_RECONCILE");
+      const again = fakeFetch(userinfo(), created());
+      expect((await go(h, {}, again)).status).toBe(409);                  // a repeated request sends nothing
+      expect((await call("POST", `/posts/${ID}/publish-now`, { approved_hash: h, confirm: `PUBLISH NOW ${ID}` }, OWNER, again)).status).toBe(409);
+      expect(linkedInPosts(f) + linkedInPosts(again)).toBe(1);
+    });
 });
 
 describe("emergency stop", () => {

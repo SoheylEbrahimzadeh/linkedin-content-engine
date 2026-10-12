@@ -230,3 +230,24 @@ def test_override_can_match_by_post_action_and_recording_time(store):
     assert by_id[d["decision_id"]]["status"] == "refused"
     assert "overridden" not in str(by_id[other["decision_id"]]["result"])
     assert store.load_post(pid)["state"] == "NEEDS_REVISION"
+
+
+def test_approval_applied_after_a_direct_publish_from_the_dashboard(store):
+    """LCE-058: Approve & publish now already published the exact approved text from the dashboard;
+    the repository applies the recorded approval afterwards and the Worker answers 'unchanged'."""
+
+    class Published(Inbox):
+        def request(self, method, url, headers, body):
+            if method == "PUT" and "/api/posts/" in url:
+                pid_ = url.split("/")[-1]
+                self.pushed[pid_] = json.loads(body)
+                return CloudResponse(200, {"post_id": pid_, "state": "PUBLISHED", "unchanged": True})
+            return super().request(method, url, headers, body)
+
+    pid = awaiting_post(store)
+    h = content_hash(current_text(store, pid))
+    inbox = Published([decision("approve", pid, content_hash=h, image_sha256=None)])
+    out = decisions.apply_all(store, CloudClient("https://lce.example", lambda: "fake.access.jwt", inbox))
+    assert out[0]["status"] == "applied", out
+    assert inbox.pushed[pid]["approved_hash"] == h
+    assert cloud.load_delegation(store, pid)["approved_hash"] == h

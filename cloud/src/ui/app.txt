@@ -9,7 +9,7 @@
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
   REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, PROGRESS_STEPS, fmtElapsed, refreshProgress, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
-  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats, publishNowHint,
+  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats, publishNowHint, contentHash, sha256HexOfBytes,
 } from "./lib.js";
 
 const main = document.getElementById("main");
@@ -322,6 +322,66 @@ const A = {
       "It does not re-enter writing, refresh, approval or publishing; for a new attempt use Duplicate.", "Restore");
     if (ok) decide({ action: "restore", post_id: p.post_id }, "Restore recorded. The post is back in the views after the next private run.");
   },
+  // LCE-058: Approve & publish now: one confirmation (exact text + image), then the Worker records the approval,
+  // places the text in the publisher and publishes immediately. No hourly wait; auto-publish is not used.
+  async approveAndPublish(p) {
+    // LCE-058: the dialog shows exactly what the server will publish, and confirm stays blocked until the browser has
+    // hashed the displayed text itself and fetched the image by its hash and hashed those bytes. The server checks the
+    // same two hashes again against the exact text and bytes it places in the publisher.
+    const phrase = `APPROVE AND PUBLISH ${p.post_id}`;
+    const text = String(p.text ?? "");
+    const imageSha = p.image?.sha256 ?? null;
+    const pinned = imageSha ? `/api/posts/${encodeURIComponent(p.post_id)}/image?sha=${imageSha}` : null;
+    const input = h("input", { type: "text", autocomplete: "off", autocapitalize: "characters", spellcheck: "false",
+      placeholder: phrase, "aria-label": "Confirmation phrase" });
+    const err = h("p", { class: "err small" });
+    const status = h("p", { class: "small muted" }, "Checking the text and image hashes…");
+    const verified = { ok: false, textHash: null };
+    (async () => {
+      try {
+        const th = await contentHash(text);
+        if (th !== p.actual_hash) throw new Error("the text shown does not match the recorded hash; reload the page");
+        if (pinned) {
+          const res = await fetch(pinned, { credentials: "same-origin", cache: "no-store" });
+          if (!res.ok) throw new Error(`the image with the expected hash is not available (HTTP ${res.status})`);
+          const got = await sha256HexOfBytes(await res.arrayBuffer());
+          if (got !== imageSha) throw new Error("the image bytes do not match the expected hash");
+        }
+        Object.assign(verified, { ok: true, textHash: th });
+        status.textContent = `Verified: text ${short(th)}…` + (imageSha ? `, image ${short(imageSha)}…` : ", no image");
+      } catch (e) {
+        status.textContent = "Not verified: " + e.message;
+        status.className = "err small";
+      }
+    })();
+    const ok = await dialog("Approve & publish now?", [
+      h("p", {}, `This approves exactly the text and image below and publishes them to your personal LinkedIn profile now, as ${targetName()}. ` +
+        "It does not use or change auto-publish. It cannot be undone from here."),
+      h("article", { class: "feed" }, h("div", { class: "feed-text" }, segments(text).map((x) => x.tag ? h("span", { class: "tag" }, x.text) : x.text)),
+        pinned ? h("img", { class: "media", src: pinned, alt: p.image?.alt_text ?? "" }) : h("p", { class: "small muted" }, "Text only, no image.")),
+      status,
+      h("p", { class: "small" }, "Type ", h("code", {}, phrase), " to confirm:"), input, err],
+      [{ label: "Approve & publish now", cls: "danger", value: () => {
+        if (!verified.ok) { err.textContent = "Wait until the text and image are verified (or reload if verification failed)."; return undefined; }
+        return input.value.trim() === phrase ? true : (err.textContent = "The phrase does not match.", undefined);
+      } }]);
+    if (!ok) return;
+    S.publishResult = S.publishResult ?? {};
+    S.publishResult[p.post_id] = { ok: null, text: "Publishing…" };
+    render();
+    try {
+      const r = await api("POST", `/posts/${encodeURIComponent(p.post_id)}/approve-and-publish`,
+        { content_hash: verified.textHash, image_sha256: imageSha, confirm: phrase, request_id: newRequestId() });
+      S.publishResult[p.post_id] = r.outcome === "published"
+        ? { ok: true, text: "Published on LinkedIn.", url: r.publication?.url ?? null }
+        : { ok: false, text: `Publish failed: ${r.detail ?? r.outcome ?? "unknown result"}` };
+    } catch (e) {
+      const d = e.data ?? {};
+      S.publishResult[p.post_id] = { ok: false, text: `Publish failed: ${d.detail ?? d.reason ?? e.message}` + (d.outcome ? ` (${d.outcome})` : "") };
+    }
+    toast(S.publishResult[p.post_id].text, S.publishResult[p.post_id].ok ? "ok" : "err");
+    await load();
+  },
   async edit(p) {
     const text = await askText("Edit post", "Post text (QA and the duplicate check run again; a new approval is needed)",
       { multiline: true, value: p.text ?? "", max: 3000 });
@@ -517,6 +577,7 @@ function planRow(i) {
       h("div", { class: "row-actions" },
         href ? link(href, "Open", "btn small") : null,
         p?.state === "AWAITING_APPROVAL" && !locked ? h("button", { type: "button", class: "small primary", onclick: () => A.approve(p) }, "Approve") : null,
+        p?.state === "AWAITING_APPROVAL" && !locked && !i.pending && !st().emergency_stop && !inCloud(p.post_id) ? h("button", { type: "button", class: "small primary", onclick: () => A.approveAndPublish(p) }, "Approve & publish now") : null,
         p && canRefresh(p, inCloud(p.post_id)) && !locked ? h("button", { type: "button", class: "small", onclick: () => A.refresh(p) }, "Refresh") : null,
         p && !locked && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && p.text && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.edit(p) }, "Edit") : null,
         p && !locked && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.reschedule(p) }, "Reschedule") : null,
@@ -854,6 +915,7 @@ function viewPost(id) {
   // three tiers: the decision, the common changes, then the rarer ones as quiet text actions
   const lead = [
     state === "AWAITING_APPROVAL" && !queued && !locked ? B("Approve", () => A.approve(p), "primary") : null,
+    state === "AWAITING_APPROVAL" && !queued && !locked && !d && !st().emergency_stop ? B("Approve & publish now", () => A.approveAndPublish(p), "primary") : null,
     p && canRefresh(p, queued) && !locked ? B("Refresh", () => A.refresh(p)) : null,
     editable && p.text ? B("Edit", () => A.edit(p)) : null,
     editable ? B("Reschedule", () => A.reschedule(p)) : null,
@@ -885,6 +947,8 @@ function viewPost(id) {
       h("h1", { class: "post-h1" }, hook(p?.text ?? c?.text, 90) ?? p?.topic ?? id),
       h("div", { class: "post-sub" }, statusPill(code), item?.date ? h("span", {}, fmtLong(item.plan_date ?? item.date)) : null,
         p?.objective ? h("span", {}, objectiveLabel(p.objective)) : null))),
+    S.publishResult?.[id] ? h("div", { class: "notice " + (S.publishResult[id].ok === true ? "ok" : S.publishResult[id].ok === false ? "err" : "info") },
+      S.publishResult[id].text, S.publishResult[id].url ? [" ", ext(S.publishResult[id].url, "Open on LinkedIn")] : null) : null,
     isArchived(p) ? h("div", { class: "notice info archived-note" }, `Archived ${fmtWhen(p.archived.at)}` +
       (p.archived.reason ? `: ${p.archived.reason}` : "") + `. Not shown in Overview or Upcoming; kept in History with its state (${p.state.toLowerCase()}), ` +
       "versions and every record. Nothing can be approved, scheduled or published from here.") : null,

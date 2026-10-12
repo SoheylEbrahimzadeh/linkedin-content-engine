@@ -754,3 +754,34 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
 - Publish now is visible on every unpublished post: usable when `canPublishNow` holds, otherwise
   disabled with the reason (approve first; approval recorded and reaching the publisher at the
   next private run, hourly at :17; withdrawn; emergency stop; label line).
+
+## LCE-058 (12 Oct): Approve & publish now (immediate, owner-confirmed)
+
+- PLANNED/STARTED: Publish now itself was already immediate; the delay was the approval, which the
+  hourly private run applies before a post reaches the publisher.
+- EXECUTED: Worker `cloud/src/direct.ts` + route `POST /api/posts/:id/approve-and-publish`: one
+  request (person, typed phrase, text and image hashes shown) records the normal approve decision,
+  places the exact text (and hash-checked synced image) in the publisher and runs `publishNow`.
+  Dashboard: "Approve & publish now" on posts awaiting approval, with a confirmation showing the text
+  and image, then Publishing… / Published (link) / Publish failed (reason). No credential, no
+  polling, auto-publish untouched. Tests: Worker (authorization, phrase, state, text and image hash,
+  label, archived, emergency stop before anything is recorded, duplicate, LinkedIn failure, synced
+  image binding, repository push answers unchanged), engine (approval applied after a direct
+  publish), UI guard narrowed to this one approval route.
+- VERIFIED: pending deploy; production verification without publishing a real post.
+- REVIEW FIXES (PR #133, not merged, not deployed):
+  - F1 image integrity: content-addressed image route; the dialog hashes the bytes it displays; the
+    Worker requires the synced preview bytes to hash to the shown sha; the generic image route no
+    longer serves a WITHDRAWN post's stale approved image.
+  - F2 text integrity: the browser hashes the exact displayed text and sends that hash; the Worker
+    recomputes the hash of the text it will publish.
+  - F4 concurrency: per-request token in one D1 batch; row counts checked (posts, image, audit); a
+    lost race sends nothing. Tests: deterministic simulated stale-read race, simulated row-count
+    mismatch, local miniflare D1 parallel requests. Not tested: production D1 concurrency.
+  - F3 repository/cloud reconciliation: UNRESOLVED, owner decision needed. Options:
+    (a) the engine adopts the publication from durable cloud evidence (published state, LinkedIn
+        URN, commentary hash = decision hash); the newer local text is kept as a version
+        (no overwrite), idempotent per decision, refused when the evidence is ambiguous;
+    (b) the Worker refuses when the repository moved on (needs repository HEAD knowledge in the
+        Worker, which means a new credential: a human gate);
+    (c) show the disagreement in the dashboard and reconcile by hand.

@@ -10,6 +10,7 @@ import { contentHash, sha256Bytes, visibleCredit } from "./text";
 import { IDENTITY_HTTP, linkedinIdentity } from "./identity";
 import { cancelDecision, createDecision, DecisionError, listDecisions, resolveDecision } from "./decisions";
 import { startWriter } from "./dispatch";
+import { approveAndPublish } from "./direct";
 import { localDate, publishNow } from "./runner";
 import { UI_BUILD } from "./ui";
 import { ProgressError, putProgress, refreshStatus } from "./progress";
@@ -133,6 +134,13 @@ export async function handleApi(request: Request, env: Env, now: number,
     if (request.method === "PUT" && (r = m(/^\/api\/preview-media\/([^/]+)$/))) {
       if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "preview media is uploaded by lce cloud sync");
       return json(200, await putPreviewMedia(env, now, actor, r[1], await body(request)));
+    }
+    if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/approve-and-publish$/))) {
+      // LCE-058: one owner-confirmed request: record the approval, place the exact text, publish now
+      human();
+      const id = requirePostId(r[1]);
+      const rep = await approveAndPublish(env, now, who, id, await body(request), fetchImpl);
+      return json(rep.http, rep);
     }
     if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/publish-now$/))) {
       human();
@@ -587,11 +595,31 @@ async function versionImage(env: Env, rawId: string, version: number, request?: 
 // Image of a pushed post (D1), for the Control Center preview. Access-protected like every API route.
 async function postImage(env: Env, rawId: string, request?: Request): Promise<Response> {
   const id = requirePostId(rawId);
+  const want = request ? new URL(request.url).searchParams.get("sha") : null;
+  if (want !== null) return pinnedImage(env, id, want, request);
   // The approved image in the publish queue wins; otherwise the pipeline's preview copy (LCE-037).
-  const row = await env.DB.prepare("SELECT data, sha256 FROM post_images WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer; sha256: string }>()
-    ?? await env.DB.prepare("SELECT data, sha256 FROM preview_media WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer; sha256: string }>();
+  // LCE-058: a withdrawn (or never delegated) post's old approved image is stale: the current candidate's preview wins.
+  const cloud = await env.DB.prepare("SELECT state FROM posts WHERE post_id = ?").bind(id).first<{ state: string }>();
+  const approvedFirst = Boolean(cloud && cloud.state !== "WITHDRAWN");
+  const approved = () => env.DB.prepare("SELECT data, sha256 FROM post_images WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer; sha256: string }>();
+  const preview = () => env.DB.prepare("SELECT data, sha256 FROM preview_media WHERE post_id = ?").bind(id).first<{ data: ArrayBuffer; sha256: string }>();
+  const row = approvedFirst ? (await approved()) ?? (await preview()) : (await preview()) ?? (await approved());
   if (!row) return json(404, { error: "no image in the cloud for this post" });
   return imageResponse(row, request);
+}
+
+// LCE-058: content-addressed image: served only when the stored bytes hash (recomputed now) to exactly `sha`.
+// The Approve & publish confirmation shows this URL, and the server publishes bytes bound to the same hash.
+async function pinnedImage(env: Env, id: string, sha: string, request?: Request): Promise<Response> {
+  if (!HEX64.test(sha)) return json(400, { error: "sha must be 64 hex characters" });
+  for (const table of ["preview_media", "post_images"]) {
+    const row = await env.DB.prepare(`SELECT data, sha256 FROM ${table} WHERE post_id = ? AND sha256 = ?`).bind(id, sha)
+      .first<{ data: ArrayBuffer | number[]; sha256: string }>();
+    if (!row) continue;
+    const data = new Uint8Array(row.data as ArrayBuffer);
+    if ((await sha256Bytes(data)) === sha) return imageResponse({ data: data.buffer as ArrayBuffer, sha256: sha }, request);
+  }
+  return json(404, { error: "no image with exactly this hash" });
 }
 
 function imageResponse(row: { data: ArrayBuffer; sha256: string }, request?: Request): Response {
