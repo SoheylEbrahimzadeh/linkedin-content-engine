@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { handleApi } from "../src/api";
 import { resetCertsCache } from "../src/auth";
 import { runScheduled } from "../src/runner";
-import { contentHash } from "../src/text";
+import { contentHash, sha256Bytes } from "../src/text";
 import { created, enableAll, fakeFetch, insertConsent, insertPost, reset, rows, setSettings, status, TEXT, testEnv } from "./helpers";
 
 const TEAM = "test-team.cloudflareaccess.com";
@@ -359,6 +359,105 @@ describe("publish now (LCE-055)", () => {
     const r = await go(h, f);
     expect(r.status).toBe(409);
     expect(f.calls.filter((c) => c.url.endsWith("/rest/posts"))).toHaveLength(0);
+  });
+});
+
+// LCE-058: Approve & publish now in one owner-confirmed request (no hourly wait, no new credential).
+describe("approve and publish now (LCE-058)", () => {
+  const ID = AWAITING;
+  const go = (h: string, extra: Record<string, unknown> = {}, who: Record<string, unknown> = OWNER, f = fakeFetch()) =>
+    call("POST", `/posts/${ID}/approve-and-publish`, { content_hash: h, image_sha256: null, confirm: `APPROVE AND PUBLISH ${ID}`, ...extra }, who, f);
+  async function setup(extra: Record<string, unknown> = {}) {
+    await enableAll(e);
+    await setSettings(e, { auto_publish: "false" });          // manual path: auto-publish is never needed or changed
+    return awaitingMirror(extra);
+  }
+  const count = async (sql: string) => (await rows(e, sql)).length;
+
+  it("records the approval, places the exact text and publishes now; auto-publish untouched", async () => {
+    const h = await setup();
+    const r = await go(h, {}, OWNER, fakeFetch(userinfo(), created("urn:li:share:8101")));
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ outcome: "published", publication: { state: "published", remote_id: "urn:li:share:8101" } });
+    const [d] = await rows<{ action: string; status: string; content_hash: string }>(e, "SELECT action, status, content_hash FROM decisions");
+    expect(d).toMatchObject({ action: "approve", status: "pending", content_hash: h });      // the repo applies it later
+    const [post] = await rows<{ state: string; approved_hash: string }>(e, `SELECT state, approved_hash FROM posts WHERE post_id = '${ID}'`);
+    expect(post).toMatchObject({ state: "PUBLISHED", approved_hash: h });
+    const evs = (await rows<{ event: string }>(e, "SELECT event FROM events ORDER BY id")).map((x) => x.event);
+    expect(evs).toEqual(expect.arrayContaining(["decision.approve", "post.approved_direct", "publish.manual_requested", "publish.published"]));
+    const [s] = await rows<{ value: string }>(e, "SELECT value FROM settings WHERE key = 'auto_publish'");
+    expect(s.value).toBe("false");
+    // the repository later pushes the same approval: the Worker answers "unchanged"
+    const push = await call("PUT", `/posts/${ID}`, { text: TEXT, approved_hash: h, approved_at: "2026-10-05T12:00:00+00:00" }, SERVICE, fakeFetch(), "cli");
+    expect(push.body).toMatchObject({ unchanged: true });
+  });
+  it("needs a signed-in person and the typed phrase", async () => {
+    const h = await setup();
+    expect((await go(h, {}, SERVICE)).status).toBe(403);
+    expect((await go(h, { confirm: `PUBLISH NOW ${ID}` })).status).toBe(428);
+    expect(await count("SELECT * FROM decisions")).toBe(0);
+    expect(await count("SELECT * FROM posts")).toBe(0);
+  });
+  it("refuses a post that is not awaiting approval, or a text/image other than the one reviewed", async () => {
+    let h = await setup({ state: "NEEDS_REVISION" });
+    expect((await go(h)).status).toBe(409);
+    h = await setup();
+    expect((await go("0".repeat(64))).status).toBe(409);                     // invalid approval hash
+    expect((await go(h, { image_sha256: "a".repeat(64) })).status).toBe(409);  // image differs from the one shown
+    expect(await count("SELECT * FROM decisions")).toBe(0);
+    expect(await count("SELECT * FROM posts")).toBe(0);
+  });
+  it("refuses a text with an image/source label and an archived post", async () => {
+    const labelled = "A fictional post.\n\nImage: Example News\n\n#Demo\n";
+    await setup();
+    const h = await contentHash(labelled);
+    await mirror([{ post_id: ID, state: "AWAITING_APPROVAL", text: labelled, actual_hash: h, plan_date: "2026-10-06", image: null }]);
+    expect(String((await go(h)).body!.detail)).toContain("image/source label");
+    const h2 = await awaitingMirror({ archived: { at: "2026-10-06T00:00:00+00:00" } });
+    expect((await go(h2)).status).toBe(409);
+    expect(await count("SELECT * FROM posts")).toBe(0);
+  });
+  it("the emergency stop blocks it before anything is recorded or sent", async () => {
+    const h = await setup();
+    await setSettings(e, { emergency_stop: "true" });
+    const f = fakeFetch(userinfo(), created());
+    const r = await go(h, {}, OWNER, f);
+    expect(r.status).toBe(409);
+    expect(String(r.body!.detail)).toContain("emergency stop");
+    expect(f.calls).toHaveLength(0);
+    expect(await count("SELECT * FROM decisions")).toBe(0);
+    expect(await count("SELECT * FROM posts")).toBe(0);
+  });
+  it("a second request never publishes twice", async () => {
+    const h = await setup();
+    expect((await go(h, {}, OWNER, fakeFetch(userinfo(), created("urn:li:share:8102")))).status).toBe(200);
+    const f = fakeFetch(userinfo(), created("urn:li:share:8103"));
+    const r = await go(h, {}, OWNER, f);
+    expect(r.status).toBe(409);
+    expect(f.calls.filter((c) => c.url.endsWith("/rest/posts"))).toHaveLength(0);
+    expect((await rows<{ state: string }>(e, "SELECT state FROM publications")).map((x) => x.state)).toEqual(["published"]);
+  });
+  it("a LinkedIn failure is Publish failed with the real status; the approval stays recorded", async () => {
+    const h = await setup();
+    const r = await go(h, {}, OWNER, fakeFetch(userinfo(), status(422)));
+    expect(r.status).toBe(502);
+    expect(r.body!.outcome).not.toBe("published");
+    expect((await rows<{ state: string }>(e, `SELECT state FROM posts WHERE post_id = '${ID}'`))[0].state).toBe("PUBLISH_FAILED");
+    expect(await count("SELECT * FROM decisions WHERE action = 'approve'")).toBe(1);
+  });
+  it("uses the synced image only when its bytes hash to the image the owner saw", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]);
+    const sha = await sha256Bytes(bytes);
+    const h = await setup({ image: { sha256: sha, alt_text: "alt" } });
+    await e.DB.prepare("INSERT INTO preview_media (post_id, data, sha256, bytes, mime, alt_text, updated_at) VALUES (?, ?, ?, ?, 'image/png', 'alt', ?)")
+      .bind(ID, bytes, "f".repeat(64), bytes.length, "2026-10-05T00:00:00+00:00").run();
+    let r = await go(h, { image_sha256: sha });
+    expect(String(r.body!.detail)).toContain("not synced");                   // preview is not that image
+    expect(await count("SELECT * FROM decisions")).toBe(0);
+    await e.DB.prepare("UPDATE preview_media SET sha256 = ? WHERE post_id = ?").bind(sha, ID).run();
+    r = await go(h, { image_sha256: sha }, OWNER, fakeFetch(userinfo()));       // stops at the identity check
+    const [img] = await rows<{ sha256: string }>(e, `SELECT sha256 FROM post_images WHERE post_id = '${ID}'`);
+    expect(img.sha256).toBe(sha);
   });
 });
 

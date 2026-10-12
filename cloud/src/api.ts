@@ -10,6 +10,7 @@ import { contentHash, sha256Bytes, visibleCredit } from "./text";
 import { IDENTITY_HTTP, linkedinIdentity } from "./identity";
 import { cancelDecision, createDecision, DecisionError, listDecisions, resolveDecision } from "./decisions";
 import { startWriter } from "./dispatch";
+import { approveAndPublish } from "./direct";
 import { localDate, publishNow } from "./runner";
 import { UI_BUILD } from "./ui";
 import { ProgressError, putProgress, refreshStatus } from "./progress";
@@ -133,6 +134,13 @@ export async function handleApi(request: Request, env: Env, now: number,
     if (request.method === "PUT" && (r = m(/^\/api\/preview-media\/([^/]+)$/))) {
       if (request.headers.get("x-lce-client") !== "cli") throw new HttpError(403, "preview media is uploaded by lce cloud sync");
       return json(200, await putPreviewMedia(env, now, actor, r[1], await body(request)));
+    }
+    if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/approve-and-publish$/))) {
+      // LCE-058: one owner-confirmed request: record the approval, place the exact text, publish now
+      human();
+      const id = requirePostId(r[1]);
+      const rep = await approveAndPublish(env, now, who, id, await body(request), fetchImpl);
+      return json(rep.http, rep);
     }
     if (request.method === "POST" && (r = m(/^\/api\/posts\/([^/]+)\/publish-now$/))) {
       human();

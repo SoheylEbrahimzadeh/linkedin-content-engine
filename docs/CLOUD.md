@@ -140,6 +140,21 @@ identity check whose member equals `person_urn` — otherwise nothing is sent.
 It does not need or change auto-publish; it reuses the scheduled publisher's
 claim transaction and records the LinkedIn post URN.
 
+Approve & publish now (LCE-058, `POST /api/posts/:id/approve-and-publish`): for a post awaiting
+approval, one owner-confirmed request instead of waiting for the hourly private run. It needs a
+signed-in person, the phrase `APPROVE AND PUBLISH <post>`, the hash of the exact text shown and the
+hash of the image shown. In order: emergency stop (refused before anything is recorded); the mirror
+post must be AWAITING_APPROVAL (QA, writing gate and duplicate check passed in the repository), not
+archived, with the shown text hash and no image/source label line; the image is copied from the
+synced preview only when its bytes hash to the image hash shown. Then the normal `approve` decision
+is recorded (the repository applies it later, hash-checked against its files, and the Worker answers
+"unchanged" to the push), the exact text is placed in the publisher, and `publishNow` runs at once
+(LinkedIn identity, label gate, approved-hash gate, idempotency, audit). The answer is LinkedIn's
+result. No GitHub credential, no polling; auto-publish is neither read nor changed. Known edge: if
+the repository changed the text after the last mirror sync, the dashboard text (what the owner
+approved) is what gets published, and the repository then refuses the stale approval; the
+cloud record still shows exactly what was published.
+
 Emergency stop (`emergency_stop` setting): blocks every publication,
 scheduled and manual. Turning it on needs nothing; releasing it, like enabling
 auto-publish, needs a person and a typed phrase (`RELEASE EMERGENCY STOP`,

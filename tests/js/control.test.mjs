@@ -615,7 +615,7 @@ test("Publish now hint explains approval, the next private run and real blocks",
   const base = { nowIso, tz: "UTC", settings: {} };
   assert.equal(nextDecisionsRun("2026-10-12T13:50:00Z", "UTC"), "14:17");
   assert.equal(nextDecisionsRun("2026-10-12T14:05:00Z", "UTC"), "14:17");
-  assert.match(publishNowHint({ ...base, post: { state: "AWAITING_APPROVAL" } }), /approve this post first/);
+  assert.match(publishNowHint({ ...base, post: { state: "AWAITING_APPROVAL" } }), /Approve & publish now/);
   assert.match(publishNowHint({ ...base, post: { state: "AWAITING_APPROVAL" }, pending: { action: "approve", status: "pending" } }),
     /approval is recorded.*next private run at 14:17/);
   const ready = { state: "READY_TO_PUBLISH", text: "Clean.\n\n#Demo" };

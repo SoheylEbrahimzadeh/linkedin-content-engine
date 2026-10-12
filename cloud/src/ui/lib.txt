@@ -773,7 +773,7 @@ export function publishNowHint({ post, cloudPost, consent, settings = {}, pendin
   if (pending?.action === "approve" && pending.status === "pending") {
     return `your approval is recorded; Publish now becomes available once it reaches the publisher (next private run at ${nextDecisionsRun(nowIso, tz)})`;
   }
-  if (post?.state === "AWAITING_APPROVAL") return "approve this post first; Publish now becomes available after the approval is applied";
+  if (post?.state === "AWAITING_APPROVAL") return "use Approve & publish now to publish it immediately, or Approve to publish later";
   if (post && post.state !== "READY_TO_PUBLISH" && post.state !== "APPROVED" && !cloudPost) return "the post is still being written or revised";
   const r = canPublishNow(cloudPost, consent, settings);
   if (r.ok) return null;

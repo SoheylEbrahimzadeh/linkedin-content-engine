@@ -81,7 +81,9 @@ describe("remote dashboard", () => {
       expect(js).not.toContain(bad);
     }
     expect(js).toContain('"x-lce-client": "dashboard"');
-    expect(js).not.toContain("/approve");                 // no approval path exists
+    // no approval path exists except LCE-058's owner-confirmed approve-and-publish (person + typed phrase + the exact
+    // text and image hashes; it records the normal approve decision); any other approval route still fails this
+    expect(js.split("/approve-and-publish").join("")).not.toContain("/approve");
   });
 
   it("stamps the served script with the UI build the snapshot reports (LCE-045)", async () => {

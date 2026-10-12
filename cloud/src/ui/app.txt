@@ -322,6 +322,36 @@ const A = {
       "It does not re-enter writing, refresh, approval or publishing; for a new attempt use Duplicate.", "Restore");
     if (ok) decide({ action: "restore", post_id: p.post_id }, "Restore recorded. The post is back in the views after the next private run.");
   },
+  // LCE-058: Approve & publish now: one confirmation (exact text + image), then the Worker records the approval,
+  // places the text in the publisher and publishes immediately. No hourly wait; auto-publish is not used.
+  async approveAndPublish(p) {
+    const phrase = `APPROVE AND PUBLISH ${p.post_id}`;
+    const input = h("input", { type: "text", autocomplete: "off", autocapitalize: "characters", spellcheck: "false",
+      placeholder: phrase, "aria-label": "Confirmation phrase" });
+    const err = h("p", { class: "err small" });
+    const ok = await dialog("Approve & publish now?", [
+      h("p", {}, `This approves this exact text (hash ${short(p.actual_hash)}…) and publishes it to your personal LinkedIn profile now, as ${targetName()}. ` +
+        "It does not use or change auto-publish. It cannot be undone from here."),
+      feedPreview(p, null),
+      h("p", { class: "small" }, "Type ", h("code", {}, phrase), " to confirm:"), input, err],
+      [{ label: "Approve & publish now", cls: "danger", value: () => (input.value.trim() === phrase ? true : (err.textContent = "The phrase does not match.", undefined)) }]);
+    if (!ok) return;
+    S.publishResult = S.publishResult ?? {};
+    S.publishResult[p.post_id] = { ok: null, text: "Publishing…" };
+    render();
+    try {
+      const r = await api("POST", `/posts/${encodeURIComponent(p.post_id)}/approve-and-publish`,
+        { content_hash: p.actual_hash, image_sha256: p.image?.sha256 ?? null, confirm: phrase, request_id: newRequestId() });
+      S.publishResult[p.post_id] = r.outcome === "published"
+        ? { ok: true, text: "Published on LinkedIn.", url: r.publication?.url ?? null }
+        : { ok: false, text: `Publish failed: ${r.detail ?? r.outcome ?? "unknown result"}` };
+    } catch (e) {
+      const d = e.data ?? {};
+      S.publishResult[p.post_id] = { ok: false, text: `Publish failed: ${d.detail ?? d.reason ?? e.message}` + (d.outcome ? ` (${d.outcome})` : "") };
+    }
+    toast(S.publishResult[p.post_id].text, S.publishResult[p.post_id].ok ? "ok" : "err");
+    await load();
+  },
   async edit(p) {
     const text = await askText("Edit post", "Post text (QA and the duplicate check run again; a new approval is needed)",
       { multiline: true, value: p.text ?? "", max: 3000 });
@@ -517,6 +547,7 @@ function planRow(i) {
       h("div", { class: "row-actions" },
         href ? link(href, "Open", "btn small") : null,
         p?.state === "AWAITING_APPROVAL" && !locked ? h("button", { type: "button", class: "small primary", onclick: () => A.approve(p) }, "Approve") : null,
+        p?.state === "AWAITING_APPROVAL" && !locked && !i.pending && !st().emergency_stop && !inCloud(p.post_id) ? h("button", { type: "button", class: "small primary", onclick: () => A.approveAndPublish(p) }, "Approve & publish now") : null,
         p && canRefresh(p, inCloud(p.post_id)) && !locked ? h("button", { type: "button", class: "small", onclick: () => A.refresh(p) }, "Refresh") : null,
         p && !locked && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && p.text && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.edit(p) }, "Edit") : null,
         p && !locked && !["SCHEDULED", "PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) && !inCloud(p.post_id) ? h("button", { type: "button", class: "small", onclick: () => A.reschedule(p) }, "Reschedule") : null,
@@ -854,6 +885,7 @@ function viewPost(id) {
   // three tiers: the decision, the common changes, then the rarer ones as quiet text actions
   const lead = [
     state === "AWAITING_APPROVAL" && !queued && !locked ? B("Approve", () => A.approve(p), "primary") : null,
+    state === "AWAITING_APPROVAL" && !queued && !locked && !d && !st().emergency_stop ? B("Approve & publish now", () => A.approveAndPublish(p), "primary") : null,
     p && canRefresh(p, queued) && !locked ? B("Refresh", () => A.refresh(p)) : null,
     editable && p.text ? B("Edit", () => A.edit(p)) : null,
     editable ? B("Reschedule", () => A.reschedule(p)) : null,
@@ -885,6 +917,8 @@ function viewPost(id) {
       h("h1", { class: "post-h1" }, hook(p?.text ?? c?.text, 90) ?? p?.topic ?? id),
       h("div", { class: "post-sub" }, statusPill(code), item?.date ? h("span", {}, fmtLong(item.plan_date ?? item.date)) : null,
         p?.objective ? h("span", {}, objectiveLabel(p.objective)) : null))),
+    S.publishResult?.[id] ? h("div", { class: "notice " + (S.publishResult[id].ok === true ? "ok" : S.publishResult[id].ok === false ? "err" : "info") },
+      S.publishResult[id].text, S.publishResult[id].url ? [" ", ext(S.publishResult[id].url, "Open on LinkedIn")] : null) : null,
     isArchived(p) ? h("div", { class: "notice info archived-note" }, `Archived ${fmtWhen(p.archived.at)}` +
       (p.archived.reason ? `: ${p.archived.reason}` : "") + `. Not shown in Overview or Upcoming; kept in History with its state (${p.state.toLowerCase()}), ` +
       "versions and every record. Nothing can be approved, scheduled or published from here.") : null,
