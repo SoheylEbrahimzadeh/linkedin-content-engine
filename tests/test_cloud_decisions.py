@@ -239,8 +239,9 @@ def test_approval_applied_after_a_direct_publish_from_the_dashboard(store):
     class Published(Inbox):
         def request(self, method, url, headers, body):
             if method == "PUT" and "/api/posts/" in url:
-                self.pushed[url.split("/")[-1]] = json.loads(body)
-                return CloudResponse(200, {"post_id": url.split("/")[-1], "state": "PUBLISHED", "unchanged": True})
+                pid_ = url.split("/")[-1]
+                self.pushed[pid_] = json.loads(body)
+                return CloudResponse(200, {"post_id": pid_, "state": "PUBLISHED", "unchanged": True})
             return super().request(method, url, headers, body)
 
     pid = awaiting_post(store)
