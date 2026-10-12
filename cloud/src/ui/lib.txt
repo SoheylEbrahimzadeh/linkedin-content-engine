@@ -797,7 +797,7 @@ export function publishStatus({ post, cloudPost, consent, settings = {}, quality
     : post.state === "AWAITING_APPROVAL" ? "awaiting your approval" : post.state.toLowerCase().replace(/_/g, " ");
   const pub = !cloudPost ? "not in the publisher"
     : cloudPost.state === "WITHDRAWN" ? "withdrawn (will not be published)"
-    : cloudPost.state === "READY_TO_PUBLISH" ? (consent ? "in the publisher, scheduled" : "in the publisher, not scheduled")
+    : cloudPost.state === "READY_TO_PUBLISH" ? (consent ? `in the publisher, scheduled for ${consent.slot_utc ?? "a time slot"}` : "in the publisher, not scheduled")
     : cloudPost.state.toLowerCase().replace(/_/g, " ");
   const q = !cloudPost || cloudPost.state === "WITHDRAWN" ? (quality?.ok ? "passes" : "not checked against a publisher text")
     : quality?.ok ? "Humanity PASS, Voice Gate PASS" : quality?.why ?? "no quality result";
@@ -836,12 +836,13 @@ export function canPublishNow(cloudPost, consent, settings = {}, quality = null)
   if (cloudPost.state === "PUBLISHED") return { ok: false, why: "already published" };
   if (cloudPost.state === "PUBLISHING" || cloudPost.state === "NEEDS_RECONCILE") return { ok: false, why: "a publication is in progress or needs reconciling" };
   if (cloudPost.state !== "READY_TO_PUBLISH") return { ok: false, why: `post is ${cloudPost.state}` };
-  if (consent) return { ok: false, why: "scheduled: unschedule it first to publish now" };
+  // LCE-060: a scheduled post can be published now; the confirmation says the schedule is replaced
+  const replacesSchedule = Boolean(consent);
   if (settings.emergency_stop) return { ok: false, why: "the emergency stop is on" };
   if (VISIBLE_CREDIT_RE.test(cloudPost.text ?? "")) return { ok: false, why: "the approved text shows an image/source label; refresh and approve the clean text" };
   // LCE-059: fail closed; a caller that passes no quality result never gets a publishable answer
   if (!quality?.ok) return { ok: false, why: "quality: " + (quality?.why ?? "no quality result for the approved text") };
-  return { ok: true, why: null };
+  return { ok: true, why: null, replacesSchedule };
 }
 
 /** LCE-056: lifetime publishing and the future pipeline, derived only from recorded facts.

@@ -152,6 +152,12 @@ every publication until the private repository's engine pin includes LCE-059. Th
 Repository, Publisher, Quality and Publish now as separate facts on each post, and an approved post
 that cannot be published reads "Approved · not publishable".
 
+Publish now on a scheduled post (LCE-060): the confirmation page says the post is scheduled and that
+publishing now cancels the schedule; the request carries `replace_schedule: true`, and the Worker revokes
+the scheduled consent and creates the one-off manual consent in one transaction (reason
+`replaced_by_publish_now`). If the schedule changed in between, the manual consent is withdrawn and
+nothing is sent. Without the flag a scheduled post is still refused.
+
 Emergency stop (`emergency_stop` setting): blocks every publication,
 scheduled and manual. Turning it on needs nothing; releasing it, like enabling
 auto-publish, needs a person and a typed phrase (`RELEASE EMERGENCY STOP`,

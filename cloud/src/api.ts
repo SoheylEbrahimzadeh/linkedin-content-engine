@@ -140,7 +140,7 @@ export async function handleApi(request: Request, env: Env, now: number,
       const b = await body(request);
       requirePhrase(b, `PUBLISH NOW ${id}`);
       if (!HEX64.test(String(b.approved_hash ?? ""))) throw new HttpError(400, "approved_hash is required");
-      const rep = await publishNow(env, now, actor, id, String(b.approved_hash), fetchImpl);
+      const rep = await publishNow(env, now, actor, id, String(b.approved_hash), fetchImpl, { replaceSchedule: b.replace_schedule === true });
       return json(rep.http, rep);
     }
     if (request.method === "GET" && url.pathname === "/api/migrations") return json(200, await migrationStatus(env.DB));

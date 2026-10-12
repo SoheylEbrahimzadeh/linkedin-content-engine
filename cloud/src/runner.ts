@@ -224,7 +224,7 @@ async function record(env: Env, now: number, postId: string, slotId: string, r: 
 export type ManualReport = RunReport & { http: number; publication?: Record<string, unknown> | null };
 
 export async function publishNow(env: Env, now: number, actor: string, postId: string, approvedHash: string,
-                                 fetchImpl: FetchLike): Promise<ManualReport> {
+                                 fetchImpl: FetchLike, opts: { replaceSchedule?: boolean } = {}): Promise<ManualReport> {
   const settings = await loadSettings(env.DB);
   const refuse = (http: number, detail: string): ManualReport => ({ status: "refused", http, post_id: postId, detail });
   if (settings.emergency_stop) return refuse(409, "the emergency stop is on; release it first");
@@ -235,9 +235,12 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
   if (!post) return refuse(404, "post not found in the cloud (push it first)");
   if (post.state !== "READY_TO_PUBLISH") return refuse(409, `post is ${post.state}, not READY_TO_PUBLISH`);
   if (post.approved_hash !== approvedHash) return refuse(409, "the text you confirmed is not the approved text");
-  const busy = await env.DB.prepare("SELECT consent_id FROM consents WHERE post_id = ? AND status = 'active'")
-    .bind(postId).first<{ consent_id: string }>();
-  if (busy) return refuse(409, "this post is already scheduled; revoke that consent first");
+  const busy = await env.DB.prepare("SELECT consent_id, slot_id FROM consents WHERE post_id = ? AND status = 'active'")
+    .bind(postId).first<{ consent_id: string; slot_id: string }>();
+  // LCE-060: a scheduled post can be published now when the owner says so explicitly (replace_schedule);
+  // its scheduled consent is revoked in the same transaction that creates the manual one, so the post is
+  // never scheduled twice and the schedule is never dropped without a publication attempt.
+  if (busy && !opts.replaceSchedule) return refuse(409, "this post is already scheduled; revoke that consent first");
   // LCE-059: refused before anything is written (publishOne checks it again)
   const quality = await qualityFor(env, postId, approvedHash);
   if (!quality.ok) return refuse(409, `quality gate: ${quality.why}; nothing was sent`);
@@ -250,8 +253,16 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
   const id = `manual-${crypto.randomUUID()}`;
   const c: ConsentRow = { consent_id: id, post_id: postId, slot_id: id, slot_utc: at, approved_hash: approvedHash,
     status: "active", created_at: at, created_by: actor, resolved_at: null, reason: null };
+  let res: D1Result[];
   try {
-    await env.DB.batch([
+    res = await env.DB.batch([
+    ...(busy ? [
+      env.DB.prepare("UPDATE consents SET status = 'revoked', resolved_at = ?, reason = 'replaced_by_publish_now' WHERE consent_id = ? AND status = 'active'")
+        .bind(at, busy.consent_id),
+      env.DB.prepare("UPDATE jobs SET state = 'SKIPPED', reason = 'replaced_by_publish_now', updated_at = ? WHERE slot_id = ? AND state = 'SCHEDULED'")
+        .bind(at, busy.slot_id),
+      event(env.DB, now, "consent.revoked", actor, postId, { consent_id: busy.consent_id, reason: "replaced_by_publish_now" }),
+    ] : []),
     env.DB.prepare(`INSERT INTO consents (consent_id, post_id, slot_id, slot_utc, approved_hash, status, created_at, created_by)
       VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`).bind(id, postId, id, at, approvedHash, at, actor),
     env.DB.prepare(`INSERT INTO jobs (job_id, slot_id, slot_utc, state, post_id, consent_id, updated_at)
@@ -261,6 +272,12 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
   } catch (err) {
     if (String((err as Error).message).includes("UNIQUE")) return refuse(409, "another publication of this post is in progress");
     throw err;
+  }
+  if (busy && res[0].meta.changes !== 1) {
+    // the scheduled consent was used or changed between the check and the batch: withdraw the manual one
+    await invalidateAs(env, now, { consent_id: id, post_id: postId, slot_id: id, slot_utc: at, approved_hash: approvedHash,
+      status: "active", created_at: at, created_by: actor, resolved_at: null, reason: null }, "schedule_changed_concurrently", "SKIPPED", actor);
+    return refuse(409, "the scheduled publication changed while this request ran; nothing was sent by this one");
   }
   const report = await publishOne(env, now, c, settings, fetchImpl, actor);
   const publication = await env.DB.prepare("SELECT state, remote_id, url, published_at, idempotency_key FROM publications WHERE post_id = ?")

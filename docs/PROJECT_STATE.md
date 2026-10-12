@@ -769,3 +769,19 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
   carries the hash. Until then every publication is blocked (fail closed). Current production posts:
   10 Oct (Humanity FAIL) and 13 Oct (Voice Gate SOURCE_HEAVY) would both be blocked.
 - VERIFIED: local tests only (Worker, engine, browser lib); no production verification.
+
+## LCE-060 (12 Oct): daily preparation without a language model; Publish now on a scheduled post
+
+- PLANNED/STARTED: owner model: research and preparation run daily on GitHub Actions without paid model
+  calls; nothing publishes without the owner; Publish now works on any eligible future post.
+- EXECUTED (branch `feat/lce-060-daily-prep-and-publish-now`, stacked on LCE-059; not merged, not deployed):
+  `lce daily prepare [--days N] [--write]` (dry run by default): one brief per open calendar slot from the
+  radar packet (ranked, sourced, unused evidence), the owner's confirmed views that may fit (candidates
+  only), and the questions the owner answers. Status NEEDS_INPUT or NO_EVIDENCE; never post copy, never
+  AWAITING_APPROVAL, never a schedule. Idempotent per slot and evidence. Worker `publishNow` takes
+  `replace_schedule: true`: the scheduled consent is revoked in the same transaction as the manual one;
+  every gate (emergency stop, approved hash, quality LCE-059, identity, label) applies first.
+- NOT DONE (needs the owner's separate approval in lce-data): a `lce daily prepare --write` step in
+  `.github/workflows/freshness.yml` and the engine pin bump. Until then nothing runs in production.
+- LIMIT: publishable copy needs the owner's own words (Voice Gate); without a model, the daily output is
+  evidence and questions, not posts.

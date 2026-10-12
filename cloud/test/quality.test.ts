@@ -152,3 +152,95 @@ describe("quality rule (pure)", () => {
     expect(qualityVerdict({ content_hash: "", verdict: "PASS", voice_gate: { verdict: "PASS" } }, "").ok).toBe(false);
   });
 });
+
+// LCE-060: Publish now on a post that already has a scheduled time (owner's explicit replace_schedule).
+describe("Publish now on a scheduled post", () => {
+  async function scheduledPost() {
+    await enableAll(e);
+    await setSettings(e, { auto_publish: "false" });
+    const h = await insertPost(e, ID);
+    await insertConsent(e, ID, SLOT, SLOT_UTC, h, "consent-sched");
+    return h;
+  }
+  const consents = () => rows<{ consent_id: string; status: string; reason: string | null }>(e, "SELECT consent_id, status, reason FROM consents ORDER BY created_at, consent_id");
+
+  it("without replace_schedule it is refused and nothing changes", async () => {
+    const h = await scheduledPost();
+    await qualityPass(e, ID);
+    const f = fakeFetch(userinfo(), created());
+    const r = await publishNow(e, AT - 86_400_000, "owner@example.com", ID, h, f.fn);
+    expect([r.http, r.detail]).toEqual([409, "this post is already scheduled; revoke that consent first"]);
+    expect(f.calls).toHaveLength(0);
+    expect((await consents()).map((c) => c.status)).toEqual(["active"]);
+  });
+
+  it("with replace_schedule it publishes once now, the schedule is revoked, and the slot later sends nothing", async () => {
+    const h = await scheduledPost();
+    await qualityPass(e, ID);
+    const f = fakeFetch(userinfo(), created("urn:li:share:6001"));
+    const r = await publishNow(e, AT - 86_400_000, "owner@example.com", ID, h, f.fn, { replaceSchedule: true });   // a day early
+    expect(r).toMatchObject({ status: "done", outcome: "published", http: 200 });
+    expect(posts(f)).toBe(1);
+    const cs = await consents();
+    expect(cs.find((c) => c.consent_id === "consent-sched")).toMatchObject({ status: "revoked", reason: "replaced_by_publish_now" });
+    expect(cs.filter((c) => c.status === "active")).toHaveLength(0);
+    await setSettings(e, { auto_publish: "true" });                       // even if auto-publish were on at the slot
+    const later = fakeFetch(created());
+    expect((await runScheduled(e, AT, later.fn)).status).toBe("idle");
+    expect(later.calls).toHaveLength(0);
+    expect((await rows<{ state: string }>(e, "SELECT state FROM publications")).map((x) => x.state)).toEqual(["published"]);
+  });
+
+  it.each([
+    ["SOURCE_HEAVY", () => qualityPass(e, ID, TEXT, { voice: "SOURCE_HEAVY" })],
+    ["no quality result", async () => undefined],
+  ])("quality gate (%s) still refuses, and the schedule is left untouched", async (_n, seed) => {
+    const h = await scheduledPost();
+    await seed();
+    const f = fakeFetch(userinfo(), created());
+    const r = await publishNow(e, AT - 86_400_000, "owner@example.com", ID, h, f.fn, { replaceSchedule: true });
+    expect(r.http).toBe(409);
+    expect(r.detail).toMatch(/quality gate/);
+    expect(f.calls).toHaveLength(0);
+    expect((await consents()).map((c) => [c.consent_id, c.status])).toEqual([["consent-sched", "active"]]);
+  });
+
+  it("the emergency stop still refuses, and the schedule is left untouched", async () => {
+    const h = await scheduledPost();
+    await qualityPass(e, ID);
+    await setSettings(e, { emergency_stop: "true" });
+    const f = fakeFetch(userinfo(), created());
+    const r = await publishNow(e, AT - 86_400_000, "owner@example.com", ID, h, f.fn, { replaceSchedule: true });
+    expect(r.http).toBe(409);
+    expect(f.calls).toHaveLength(0);
+    expect((await consents()).map((c) => c.status)).toEqual(["active"]);
+  });
+
+  it("a wrong approved hash is refused even with replace_schedule", async () => {
+    await scheduledPost();
+    await qualityPass(e, ID);
+    const r = await publishNow(e, AT - 86_400_000, "owner@example.com", ID, await contentHash(OTHER), fakeFetch().fn, { replaceSchedule: true });
+    expect(r.http).toBe(409);
+    expect((await consents()).map((c) => c.status)).toEqual(["active"]);
+  });
+
+  it("SIMULATED race: the schedule changed between the check and the batch; the manual consent is withdrawn, nothing is sent", async () => {
+    const h = await scheduledPost();
+    await qualityPass(e, ID);
+    const db = e.DB;
+    const lying = new Proxy(db, { get(t, k) {
+      if (k === "batch") return async (stmts: D1PreparedStatement[]) => {
+        const res = await db.batch(stmts);
+        return stmts.length > 3 ? res.map((x, i) => (i === 0 ? { ...x, meta: { ...x.meta, changes: 0 } } : x)) : res;
+      };
+      const v = (t as never)[k]; return typeof v === "function" ? (v as Function).bind(t) : v;
+    } });
+    const f = fakeFetch(userinfo(), created());
+    const r = await publishNow({ ...e, DB: lying as typeof db }, AT - 86_400_000, "owner@example.com", ID, h, f.fn, { replaceSchedule: true });
+    expect(r.http).toBe(409);
+    expect(r.detail).toContain("changed while this request ran");
+    expect(posts(f)).toBe(0);
+    expect((await consents()).filter((c) => c.status === "active")).toHaveLength(0);
+    expect(await rows(e, "SELECT * FROM publications")).toHaveLength(0);
+  });
+});

@@ -1267,6 +1267,9 @@ function viewTest(id) {
   if (c && !pn.ok && !last) parts.push(h("div", { class: "notice info" }, "Publish now unavailable: " + pn.why));
   if (c && pn.ok) {
     const type = media(pipePost(c.post_id) ?? c, S.snap).type;
+    // LCE-060: publishing a scheduled post now replaces its schedule, in the same request (said before confirming)
+    const slot = activeConsent(c.post_id);
+    if (slot) parts.push(h("div", { class: "notice warn" }, `This post is scheduled for ${slot.slot_utc}. Publishing now cancels that schedule; it is published once.`));
     const input = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: `PUBLISH NOW ${c.post_id}`, "aria-label": "Confirmation phrase" });
     const go = h("button", { type: "button", class: "danger solid", disabled: true }, "Publish now");
     input.addEventListener("input", () => { go.disabled = !(allOk && type.implemented && input.value.trim() === `PUBLISH NOW ${c.post_id}`); });
@@ -1277,7 +1280,8 @@ function viewTest(id) {
       go.textContent = "Publishing…";
       S.publishResult = S.publishResult ?? {};
       try {
-        const r = await api("POST", `/posts/${encodeURIComponent(c.post_id)}/publish-now`, { approved_hash: c.approved_hash, confirm: input.value.trim() });
+        const r = await api("POST", `/posts/${encodeURIComponent(c.post_id)}/publish-now`, { approved_hash: c.approved_hash, confirm: input.value.trim(),
+          ...(slot ? { replace_schedule: true } : {}) });
         // success is only what LinkedIn accepted (the Worker answers 200 only for outcome "published")
         S.publishResult[c.post_id] = r.outcome === "published"
           ? { ok: true, text: "Published on LinkedIn.", publication: r.publication }
