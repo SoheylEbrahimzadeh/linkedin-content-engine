@@ -44,6 +44,15 @@ LCE_ACCESS_AUD = "2e41a088ef87997e12e9533d2c4860e95dfa8d5b329f6ac864657bef928ffe
 #   npx wrangler secret put ACCESS_AUD           # 64-hex Application Audience tag
 
 [previews]
+# LCE-062: Preview deployments (`wrangler preview`) take their bindings and variables ONLY from this block;
+# nothing from the top level is inherited. Keep it that way:
+# - never bind the production D1 database ("lce") here; a Preview gets its own database or none;
+# - never give a Preview the LinkedIn token or any production secret;
+# - LCE_PREVIEW = "true" makes the Worker refuse every publication and every LinkedIn call, whatever else is set.
+# Enforced by tests/test_wrangler_config.py.
+
+[previews.vars]
+LCE_PREVIEW = "true"
 
 # Dashboard files are bundled as text and served by the Worker (no extra service).
 [[rules]]

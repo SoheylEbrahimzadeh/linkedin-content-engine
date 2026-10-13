@@ -9,9 +9,10 @@
 // concurrent run cannot win the same claim. Ambiguous results become
 // NEEDS_RECONCILE and are never retried.
 
-import { event, isSchemaMissing, loadSettings, type ConsentRow, type Env, type PostRow, type Settings } from "./db";
+import { event, isPreview, isSchemaMissing, loadSettings, type ConsentRow, type Env, type PostRow, type Settings } from "./db";
 import { configProblems, publish, type FetchLike, type ImageInput, type LinkedInConfig, type PublishResult } from "./linkedin";
 import { isoUtc, parseIsoUtc } from "./schedule";
+import { qualityFor } from "./quality";
 import { contentHash, sha256Bytes, sha256Hex, stripText, toLittle, visibleCredit } from "./text";
 import { linkedinIdentity } from "./identity";
 
@@ -37,6 +38,8 @@ async function invalidate(env: Env, now: number, c: ConsentRow, reason: string, 
 }
 
 export async function runScheduled(env: Env, now: number, fetchImpl: FetchLike): Promise<RunReport> {
+  // LCE-062: first, before any read or write: a Preview deployment never publishes
+  if (isPreview(env)) return { status: "preview", detail: "Preview deployment: nothing is published" };
   let due: ConsentRow[];
   try {
     due = (await env.DB.prepare(
@@ -95,38 +98,63 @@ export async function freshFor(env: Env, c: ConsentRow, settings: Settings): Pro
   return { ok: true, why: "" };
 }
 
-async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settings,
-                          fetchImpl: FetchLike, actor = ACTOR): Promise<RunReport> {
-  const invalidate = (e: Env, n: number, cr: ConsentRow, reason: string, jobState = "FAILED") =>
-    invalidateAs(e, n, cr, reason, jobState, actor);
-  if (settings.provider !== "linkedin_api") return invalidate(env, now, c, "provider_not_enabled");
+// LCE-061: the switches are re-read inside the very statement that claims (D1 runs a batch as one SQLite
+// transaction and serializes writers): a stop committed before the claim makes it change nothing. A stop
+// committed after the claim cannot recall a request already sent to LinkedIn.
+const STOP_OFF = "NOT EXISTS (SELECT 1 FROM settings WHERE key = 'emergency_stop' AND value = 'true')";
+const AUTO_ON = "EXISTS (SELECT 1 FROM settings WHERE key = 'auto_publish' AND value = 'true')";
+
+async function switchesNow(env: Env): Promise<{ stop: boolean; auto: boolean }> {
+  const rows = (await env.DB.prepare("SELECT key, value FROM settings WHERE key IN ('emergency_stop', 'auto_publish')")
+    .all<{ key: string; value: string }>()).results;
+  const v = (k: string) => rows.find((r) => r.key === k)?.value === "true";
+  return { stop: v("emergency_stop"), auto: v("auto_publish") };
+}
+
+// LCE-060: every check that can reject a publication, in one place, with no writes. publishNow runs it
+// before anything is written (so a rejection leaves an existing schedule untouched); publishOne runs it
+// again right before the claim (the state may have changed in between).
+type Preflight = { ok: true; post: PostRow; image?: ImageInput; cfg: LinkedInConfig; token: string } | { ok: false; reason: string };
+
+async function preflight(env: Env, now: number, postId: string, approvedHash: string, settings: Settings): Promise<Preflight> {
+  const no = (reason: string): Preflight => ({ ok: false, reason });
+  if (settings.provider !== "linkedin_api") return no("provider_not_enabled");
   const cfg = linkedinConfig(settings);
   const problems = configProblems(cfg);
-  if (problems.length) return invalidate(env, now, c, `config: ${problems.join("; ")}`);
+  if (problems.length) return no(`config: ${problems.join("; ")}`);
   const token = env.LINKEDIN_TOKEN;
-  if (!token) return invalidate(env, now, c, "token_missing");
-  if (settings.token_expires_at && parseIsoUtc(settings.token_expires_at) <= now) {
-    return invalidate(env, now, c, "token_expired");
-  }
-  const post = await env.DB.prepare("SELECT * FROM posts WHERE post_id = ?").bind(c.post_id).first<PostRow>();
-  if (!post) return invalidate(env, now, c, "post_missing");
-  if (post.state !== "READY_TO_PUBLISH") return invalidate(env, now, c, `post_is_${post.state}`);
+  if (!token) return no("token_missing");
+  if (settings.token_expires_at && parseIsoUtc(settings.token_expires_at) <= now) return no("token_expired");
+  const post = await env.DB.prepare("SELECT * FROM posts WHERE post_id = ?").bind(postId).first<PostRow>();
+  if (!post) return no("post_missing");
+  if (post.state !== "READY_TO_PUBLISH") return no(`post_is_${post.state}`);
   const h = await contentHash(post.text);
-  if (h !== post.approved_hash || h !== post.content_hash || h !== c.approved_hash) {
-    return invalidate(env, now, c, "hash_mismatch");
-  }
-  if (stripText(post.text).length > cfg.maxChars) return invalidate(env, now, c, "text_too_long");
+  if (h !== post.approved_hash || h !== post.content_hash || h !== approvedHash) return no("hash_mismatch");
+  if (stripText(post.text).length > cfg.maxChars) return no("text_too_long");
   // LCE-053: the approved text is published unchanged, so a text that still shows an image/source label
   // (approved before the rule) is not published at all; the owner refreshes it and approves the clean text.
-  if (visibleCredit(post.text)) return invalidate(env, now, c, "visible_image_credit");
+  if (visibleCredit(post.text)) return no("visible_image_credit");
+  // LCE-059: Humanity PASS and Voice Gate PASS for exactly the approved text, or nothing is published.
+  const quality = await qualityFor(env, post.post_id, post.approved_hash);
+  if (!quality.ok) return no(`quality: ${quality.why}`);
   const img = await env.DB.prepare("SELECT data, sha256, alt_text FROM post_images WHERE post_id = ?")
     .bind(post.post_id).first<{ data: ArrayBuffer; sha256: string; alt_text: string }>();
   let image: ImageInput | undefined;
   if (img) {
     const data = new Uint8Array(img.data);
-    if ((await sha256Bytes(data)) !== img.sha256) return invalidate(env, now, c, "image_hash_mismatch");
+    if ((await sha256Bytes(data)) !== img.sha256) return no("image_hash_mismatch");
     image = { data, alt: img.alt_text };
   }
+  return { ok: true, post, image, cfg, token };
+}
+
+async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settings,
+                          fetchImpl: FetchLike, actor = ACTOR, manual = false): Promise<RunReport> {
+  if (isPreview(env)) return { status: "preview", consent_id: c.consent_id, post_id: c.post_id, detail: "Preview deployment" };
+  const pf = await preflight(env, now, c.post_id, c.approved_hash, settings);
+  if (!pf.ok) return invalidateAs(env, now, c, pf.reason, "FAILED", actor);
+  const { post, image, cfg, token } = pf;
+  const h = post.approved_hash;                      // preflight proved it equals the hash of post.text
 
   const at = isoUtc(now);
   const commentary = toLittle(stripText(post.text));
@@ -135,7 +163,8 @@ async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settin
     env.DB.prepare(
       `UPDATE posts SET state = 'PUBLISHING', updated_at = ?
        WHERE post_id = ? AND state = 'READY_TO_PUBLISH' AND approved_hash = ?
-         AND EXISTS (SELECT 1 FROM consents WHERE consent_id = ? AND status = 'active' AND approved_hash = ?)`,
+         AND EXISTS (SELECT 1 FROM consents WHERE consent_id = ? AND status = 'active' AND approved_hash = ?)
+         AND ${STOP_OFF}${manual ? "" : ` AND ${AUTO_ON}`}`,
     ).bind(at, post.post_id, h, c.consent_id, h),
     env.DB.prepare(
       `UPDATE consents SET status = 'consumed', resolved_at = ?
@@ -161,6 +190,14 @@ async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settin
     event(env.DB, now, "publish.intent", actor, post.post_id, { consent_id: c.consent_id, slot_id: c.slot_id }),
   ]);
   if (claim[0].meta.changes !== 1 || claim[1].meta.changes !== 1) {
+    // LCE-061: a switch changed after the first check: nothing was claimed and nothing is sent. A scheduled
+    // consent stays as it was (it waits, like any emergency stop); a one-off manual consent is withdrawn.
+    const sw = await switchesNow(env);
+    const why = sw.stop ? "emergency_stop" : !manual && !sw.auto ? "kill_switch_off" : null;
+    if (why) {
+      if (manual) await invalidateAs(env, now, c, `${why}_at_claim`, "SKIPPED", actor);
+      return { status: why, consent_id: c.consent_id, post_id: post.post_id, detail: "changed before the claim; nothing was sent" };
+    }
     return { status: "claim_lost", consent_id: c.consent_id, post_id: post.post_id };
   }
 
@@ -220,9 +257,11 @@ async function record(env: Env, now: number, postId: string, slotId: string, r: 
 export type ManualReport = RunReport & { http: number; publication?: Record<string, unknown> | null };
 
 export async function publishNow(env: Env, now: number, actor: string, postId: string, approvedHash: string,
-                                 fetchImpl: FetchLike): Promise<ManualReport> {
+                                 fetchImpl: FetchLike, opts: { replaceSchedule?: boolean } = {}): Promise<ManualReport> {
   const settings = await loadSettings(env.DB);
   const refuse = (http: number, detail: string): ManualReport => ({ status: "refused", http, post_id: postId, detail });
+  // LCE-062: first of all, before any write or LinkedIn request
+  if (isPreview(env)) return refuse(403, "this is a Preview deployment; it never publishes; nothing was changed or sent");
   if (settings.emergency_stop) return refuse(409, "the emergency stop is on; release it first");
   if (settings.provider !== "linkedin_api") return refuse(409, "provider is not linkedin_api");
   const problems = configProblems(linkedinConfig(settings));
@@ -231,9 +270,21 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
   if (!post) return refuse(404, "post not found in the cloud (push it first)");
   if (post.state !== "READY_TO_PUBLISH") return refuse(409, `post is ${post.state}, not READY_TO_PUBLISH`);
   if (post.approved_hash !== approvedHash) return refuse(409, "the text you confirmed is not the approved text");
-  const busy = await env.DB.prepare("SELECT consent_id FROM consents WHERE post_id = ? AND status = 'active'")
-    .bind(postId).first<{ consent_id: string }>();
-  if (busy) return refuse(409, "this post is already scheduled; revoke that consent first");
+  const busy = await env.DB.prepare("SELECT consent_id, slot_id FROM consents WHERE post_id = ? AND status = 'active'")
+    .bind(postId).first<{ consent_id: string; slot_id: string }>();
+  const busyJob = busy ? await env.DB.prepare("SELECT state, reason, updated_at FROM jobs WHERE slot_id = ?")
+    .bind(busy.slot_id).first<{ state: string; reason: string | null; updated_at: string }>() : null;
+  // LCE-060: a scheduled post can be published now when the owner says so explicitly (replace_schedule);
+  // its scheduled consent is revoked in the same transaction that creates the manual one, so the post is
+  // never scheduled twice and the schedule is never dropped without a publication attempt.
+  if (busy && !opts.replaceSchedule) return refuse(409, "this post is already scheduled; revoke that consent first");
+  // LCE-059: refused before anything is written (publishOne checks it again)
+  const quality = await qualityFor(env, postId, approvedHash);
+  if (!quality.ok) return refuse(409, `quality gate: ${quality.why}; nothing was sent`);
+  // LCE-060: every other check that could reject it, still before anything is written, so a rejection
+  // never revokes an existing schedule
+  const pf = await preflight(env, now, postId, approvedHash, settings);
+  if (!pf.ok) return refuse(409, `refused before anything changed (${pf.reason}); nothing was sent`);
   const who = await linkedinIdentity(env.LINKEDIN_TOKEN, settings, fetchImpl);
   if (!who.ok) return refuse(409, `LinkedIn identity not verified (${who.status}); nothing was sent`);
   if (who.person_urn_matches !== true) {
@@ -243,19 +294,55 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
   const id = `manual-${crypto.randomUUID()}`;
   const c: ConsentRow = { consent_id: id, post_id: postId, slot_id: id, slot_utc: at, approved_hash: approvedHash,
     status: "active", created_at: at, created_by: actor, resolved_at: null, reason: null };
+  let res: D1Result[];
   try {
-    await env.DB.batch([
+    res = await env.DB.batch([
+    // LCE-061: every write is conditional on the emergency stop being off at this moment (one transaction):
+    // a stop that arrived after the first check changes nothing here.
+    ...(busy ? [
+      env.DB.prepare(`UPDATE consents SET status = 'revoked', resolved_at = ?, reason = 'replaced_by_publish_now'
+        WHERE consent_id = ? AND status = 'active' AND ${STOP_OFF}`).bind(at, busy.consent_id),
+      env.DB.prepare(`UPDATE jobs SET state = 'SKIPPED', reason = 'replaced_by_publish_now', updated_at = ?
+        WHERE slot_id = ? AND state = 'SCHEDULED' AND ${STOP_OFF}`).bind(at, busy.slot_id),
+    ] : []),
     env.DB.prepare(`INSERT INTO consents (consent_id, post_id, slot_id, slot_utc, approved_hash, status, created_at, created_by)
-      VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`).bind(id, postId, id, at, approvedHash, at, actor),
+      SELECT ?, ?, ?, ?, ?, 'active', ?, ? WHERE ${STOP_OFF}`).bind(id, postId, id, at, approvedHash, at, actor),
     env.DB.prepare(`INSERT INTO jobs (job_id, slot_id, slot_utc, state, post_id, consent_id, updated_at)
-      VALUES (?, ?, ?, 'SCHEDULED', ?, ?, ?)`).bind(`job-${id}`, id, at, postId, id, at),
-    event(env.DB, now, "publish.manual_requested", actor, postId, { consent_id: id }),
+      SELECT ?, ?, ?, 'SCHEDULED', ?, ?, ? WHERE EXISTS (SELECT 1 FROM consents WHERE consent_id = ?)`)
+      .bind(`job-${id}`, id, at, postId, id, at, id),
+    ...(busy ? [env.DB.prepare(`INSERT INTO events (at, event, actor, post_id, detail) SELECT ?, 'consent.revoked', ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM consents WHERE consent_id = ?)`)
+      .bind(at, actor, postId, JSON.stringify({ consent_id: busy.consent_id, reason: "replaced_by_publish_now" }), id)] : []),
+    env.DB.prepare(`INSERT INTO events (at, event, actor, post_id, detail) SELECT ?, 'publish.manual_requested', ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM consents WHERE consent_id = ?)`).bind(at, actor, postId, JSON.stringify({ consent_id: id }), id),
     ]);
   } catch (err) {
     if (String((err as Error).message).includes("UNIQUE")) return refuse(409, "another publication of this post is in progress");
     throw err;
   }
-  const report = await publishOne(env, now, c, settings, fetchImpl, actor);
+  const inserted = res[busy ? 2 : 0].meta.changes;
+  if (inserted !== 1) {
+    // the emergency stop was switched on after the first check: nothing above changed
+    return refuse(409, "the emergency stop was switched on while this request ran; nothing was changed or sent");
+  }
+  if (busy && res[0].meta.changes !== 1) {
+    // the scheduled consent was used or changed between the check and the batch: withdraw the manual one
+    await invalidateAs(env, now, { consent_id: id, post_id: postId, slot_id: id, slot_utc: at, approved_hash: approvedHash,
+      status: "active", created_at: at, created_by: actor, resolved_at: null, reason: null }, "schedule_changed_concurrently", "SKIPPED", actor);
+    return refuse(409, "the scheduled publication changed while this request ran; nothing was sent by this one");
+  }
+  const report = await publishOne(env, now, c, settings, fetchImpl, actor, true);
+  if (report.status === "emergency_stop" && busy) {
+    // LCE-061: the stop arrived between this request's writes and the claim; nothing was sent, so the schedule
+    // this request replaced is restored exactly (the manual consent is already withdrawn; events keep the trail)
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE consents SET status = 'active', resolved_at = NULL, reason = NULL
+        WHERE consent_id = ? AND status = 'revoked' AND reason = 'replaced_by_publish_now'`).bind(busy.consent_id),
+      ...(busyJob ? [env.DB.prepare(`UPDATE jobs SET state = ?, reason = ?, updated_at = ?
+        WHERE slot_id = ? AND reason = 'replaced_by_publish_now'`).bind(busyJob.state, busyJob.reason, busyJob.updated_at, busy.slot_id)] : []),
+      event(env.DB, now, "consent.restored", actor, postId, { consent_id: busy.consent_id, reason: "emergency_stop_before_claim" }),
+    ]);
+  }
   const publication = await env.DB.prepare("SELECT state, remote_id, url, published_at, idempotency_key FROM publications WHERE post_id = ?")
     .bind(postId).first<Record<string, unknown>>();
   const http = report.status === "done" ? (report.outcome === "published" ? 200 : 502) : 409;

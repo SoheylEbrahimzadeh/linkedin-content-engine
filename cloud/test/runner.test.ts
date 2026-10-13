@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { snapshot } from "../src/api";
 import { runScheduled } from "../src/runner";
-import { created, enableAll, fakeFetch, insertConsent, insertPost, reset, rows, setSettings, status, testEnv } from "./helpers";
+import { created, enableAll, fakeFetch, insertConsent, insertPost, qualityPass, reset, rows, setSettings, status, testEnv } from "./helpers";
 
 // Wed 2026-10-07 00:30 America/Denver (MDT, -06:00) = 06:30 UTC.
 const SLOT = "2026-10-07-wed-0030";
@@ -12,6 +12,7 @@ const e = testEnv();
 async function armed(fetches: (Response | Error)[]) {
   await enableAll(e);
   const h = await insertPost(e);
+  await qualityPass(e);
   await insertConsent(e, "20261006-demo-post", SLOT, SLOT_UTC, h);
   return fakeFetch(...fetches);
 }

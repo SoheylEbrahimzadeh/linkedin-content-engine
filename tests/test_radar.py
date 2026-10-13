@@ -141,6 +141,7 @@ def test_work_queue_order_and_dispatch_once(store, monkeypatch):
         assert units[0]["kind"] == "replacement" and units[0]["post_id"] == pid
         assert {u["kind"] for u in units[1:]} == {"slot"}  # open slots within candidate_lead_days only
         assert max(u["plan_date"] for u in units[1:]) <= "2026-10-10"
+        monkeypatch.setenv("LCE_WRITER_DISPATCH", "enabled")          # LCE-060: opt-in, off by default
         monkeypatch.delenv("LCE_ROUTINE_FIRE_URL", raising=False)
         out = work.dispatch(store)
         assert out["fired"] is False and "not configured" in out["why"]
@@ -153,6 +154,11 @@ def test_work_queue_order_and_dispatch_once(store, monkeypatch):
         def post_fn(url, token, text):
             sent.append(text)
             return 200, {"claude_code_session_url": "https://claude.ai/code/session_TEST"}
+
+        monkeypatch.delenv("LCE_WRITER_DISPATCH")                     # configured, but not enabled
+        off = work.dispatch(store, post=post_fn)
+        assert off["fired"] is False and "LCE_WRITER_DISPATCH" in off["why"] and sent == []
+        monkeypatch.setenv("LCE_WRITER_DISPATCH", "enabled")
 
         built = work.build_packets(store)
         out = work.dispatch(store, post=post_fn)
@@ -198,6 +204,7 @@ def test_dispatch_skips_a_post_whose_writer_the_worker_already_started(store, mo
     post = store.load_post(pid)
     post["plan_date"] = "2026-10-08"  # a future slot (a passed one is never written automatically)
     store.save_post(post)
+    monkeypatch.setenv("LCE_WRITER_DISPATCH", "enabled")
     monkeypatch.setenv("LCE_ROUTINE_FIRE_URL", "https://routines.example.test/v1/claude_code/routines/trig_X1/fire")
     monkeypatch.setenv("LCE_ROUTINE_FIRE_TOKEN", "test-token-not-real")
 

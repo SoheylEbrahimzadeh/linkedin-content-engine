@@ -303,6 +303,20 @@ def cmd_golden_init(args):
     return 0
 
 
+def cmd_daily(args):
+    from lce import daily
+
+    out = daily.prepare(_store(args), days=args.days, write=args.write)
+    if args.json:
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+        return 0
+    mode = "dry run" if out["dry_run"] else "written"
+    print(f"{mode}: {len(out['slots'])} open slot(s) in the next {out['days']} days")
+    for s in out["slots"]:
+        print(f"  {s['plan_date']}  {s['status']:<12} evidence={s['evidence']}  {s['action']}")
+    return 0
+
+
 def cmd_opinion_for(args):
     from lce import persona
 
@@ -1776,6 +1790,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=30)
     p = gcmd(g, "packet", cmd_radar, "build the research packet for one calendar slot")
     p.add_argument("date")
+    p.add_argument("--json", action="store_true")
+
+    g = group("daily", "LCE-060: daily preparation without a language model (briefs, never post copy)")
+    p = gcmd(g, "prepare", cmd_daily, "briefs for the open calendar slots (dry run unless --write)")
+    p.add_argument("--days", type=int, default=14)
+    p.add_argument("--write", action="store_true", help="store changed briefs in research/briefs/")
     p.add_argument("--json", action="store_true")
 
     g = group("work", "the writer's queue and the event-driven start of the writer Routine")

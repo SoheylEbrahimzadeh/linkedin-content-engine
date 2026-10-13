@@ -661,6 +661,11 @@ def score_post(store, post_id: str) -> dict:
     out = score(text, rules=rules, codes={f.code for f in found}, post=post, samples=samples,
                 voice=store.voice(), errors=errors)
     out["post_id"] = post_id
+    # LCE-059: the hash of exactly the text scored here, so a publisher can tell whether this result
+    # belongs to the approved text (a result for any other text never counts for it).
+    from lce.textutil import content_hash
+
+    out["content_hash"] = content_hash(text)
     out["errors"] = sorted(errors)
     # The owner's Voice Gate is a separate judgement: 10/10 here is never a voice pass.
     from lce.voice_gate import assess

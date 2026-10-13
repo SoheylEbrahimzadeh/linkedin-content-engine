@@ -192,6 +192,15 @@ def dispatch(store: DataStore, *, now=None, post=_post, dry_run: bool = False, c
             "unit": u,
             "why": f"already started at {done['fired_at']} ({done.get('session_url')})",
         }
+    # LCE-060: the writer Routine runs on Claude; routine daily work must not start it. It is started
+    # automatically only when the owner explicitly enables it (LCE_WRITER_DISPATCH=enabled), never by default.
+    if os.environ.get("LCE_WRITER_DISPATCH", "").strip() != "enabled":
+        return {
+            "fired": False,
+            "unit": u,
+            "why": "the Claude writer is not started automatically (LCE_WRITER_DISPATCH is not 'enabled'); "
+            "daily preparation (lce daily prepare) runs without it",
+        }
     if client is not None and u.get("post_id"):
         try:
             seen = started_in_cloud(client, u["post_id"], now)

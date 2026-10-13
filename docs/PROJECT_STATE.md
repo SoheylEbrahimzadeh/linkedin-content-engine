@@ -754,3 +754,63 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
 - Publish now is visible on every unpublished post: usable when `canPublishNow` holds, otherwise
   disabled with the reason (approve first; approval recorded and reaching the publisher at the
   next private run, hourly at :17; withdrawn; emergency stop; label line).
+
+## LCE-059 (12 Oct): publication-time quality gate and separate status facts
+
+- PLANNED/STARTED: owner model: Claude prepares content; auto-publish stays OFF; the owner edits,
+  reschedules and publishes by hand, only when every gate passes. Gap found: quality was checked only at
+  approval, so an approved text that later fails Humanity/Voice Gate stayed publishable; and "Approved"
+  (repository) was shown as if publishable.
+- EXECUTED (branch `feat/lce-059-publish-quality-gate`, not merged, not deployed): `score_post` records
+  `content_hash`; Worker `quality.ts` gate in `publishNow` (before any write) and `publishOne` (both paths);
+  UI `qualityGate` (same rule), `canPublishNow` fails closed without a quality result, `publishStatus`
+  rows, clearer hint for approved-but-withdrawn posts, "Approved · not publishable" pill.
+- ROLLOUT ORDER (owner decisions): merge + deploy; then bump the engine pin in lce-data so the mirror
+  carries the hash. Until then every publication is blocked (fail closed). Current production posts:
+  10 Oct (Humanity FAIL) and 13 Oct (Voice Gate SOURCE_HEAVY) would both be blocked.
+- VERIFIED: local tests only (Worker, engine, browser lib); no production verification.
+
+## LCE-060 (12 Oct): daily preparation without a language model; Publish now on a scheduled post
+
+- PLANNED/STARTED: owner model: research and preparation run daily on GitHub Actions without paid model
+  calls; nothing publishes without the owner; Publish now works on any eligible future post.
+- EXECUTED (branch `feat/lce-060-daily-prep-and-publish-now`, stacked on LCE-059; not merged, not deployed):
+  `lce daily prepare [--days N] [--write]` (dry run by default): one brief per open calendar slot from the
+  radar packet (ranked, sourced, unused evidence), the owner's confirmed views that may fit (candidates
+  only), and the questions the owner answers. Status NEEDS_INPUT or NO_EVIDENCE; never post copy, never
+  AWAITING_APPROVAL, never a schedule. Idempotent per slot and evidence. Worker `publishNow` takes
+  `replace_schedule: true`: the scheduled consent is revoked in the same transaction as the manual one;
+  every gate (emergency stop, approved hash, quality LCE-059, identity, label) applies first.
+- NOT DONE (needs the owner's separate approval in lce-data): a `lce daily prepare --write` step in
+  `.github/workflows/freshness.yml` and the engine pin bump. Until then nothing runs in production.
+- LIMIT: publishable copy needs the owner's own words (Voice Gate); without a model, the daily output is
+  evidence and questions, not posts.
+- LCE-060 follow-up (13 Oct, same branch): (1) one `preflight` in the Worker holds every check that can reject
+  a publication (provider, config, token missing/expired, post state, stored-text hash, length, label, quality,
+  image hash); Publish now runs it, then the identity check, before anything is written, so any rejection
+  leaves an existing schedule untouched (15 rejection paths tested); `publishOne` runs it again before the
+  claim. (2) `lce work dispatch` starts the Claude writer Routine only with `LCE_WRITER_DISPATCH=enabled`
+  (off by default); `lce daily prepare` makes no network call and starts nothing. The Worker still starts the
+  writer only when the owner clicks Refresh (owner action, unchanged). (3) briefs reach the dashboard through
+  the existing pipeline mirror (`briefs` in the snapshot); open slots show the brief note and a details list
+  (https links only).
+
+## LCE-061 (13 Oct, local branch `fix/lce-061-estop-atomic-claim`, not pushed): emergency stop at the claim
+
+- The claim statement re-reads the switches itself: no claim while `emergency_stop` is on; a scheduled
+  (non-manual) consent is claimed only while `auto_publish` is on. Publish now's writes (schedule revoke,
+  manual consent) are conditional on the stop being off in the same transaction; a stop that lands between
+  those writes and the claim withdraws the manual consent and restores the replaced schedule exactly.
+  A stop committed after the claim cannot recall a request already sent to LinkedIn.
+- Tests: switch races on both paths (simulated on local D1), HTTP boundary of `replace_schedule`, zero
+  LinkedIn calls on preflight rejection, "Scheduled · not publishable" label, dashboard script syntax/imports.
+
+## LCE-062 (13 Oct, local branch `fix/lce-061-estop-atomic-claim`, not pushed): Preview never publishes
+
+- `LCE_PREVIEW = "true"` (set only in `[previews.vars]` of cloud/wrangler.toml) makes the Worker refuse
+  every publication path first (Publish now 403, scheduled run "preview", publishOne), skip the LinkedIn
+  identity call, and never start the writer Routine. Production vars and bindings unchanged (dry run).
+- Wrangler 4.145.0 gives a Preview only the bindings of `[previews]` (nothing inherited); a config test keeps
+  that block free of the production database and credentials and keeps the flag out of production.
+- Not done (owner decision, no cost incurred): a separate Preview D1 database; dashboard checks of the
+  build command and Preview secrets.

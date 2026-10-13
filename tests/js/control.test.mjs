@@ -542,16 +542,23 @@ test("the media record shows the image provenance as internal, not as post text"
 });
 
 // LCE-055: Publish now appears only when the Worker would accept it.
-test("Publish now is offered only for an approved, unscheduled, clean post with the emergency stop off", () => {
+test("Publish now is offered only for an approved, clean, quality-passing post with the emergency stop off", () => {
   const { canPublishNow } = lib;
   const ready = { post_id: "p", state: "READY_TO_PUBLISH", text: "A clean post.\n\n#Demo" };
-  assert.equal(canPublishNow(ready, null, { auto_publish: true }).ok, true);
-  assert.equal(canPublishNow(ready, null, { auto_publish: false }).ok, true);          // independent of auto-publish
+  const Q = { ok: true, why: "pass" };                                                    // LCE-059: quality passes
+  assert.equal(canPublishNow(ready, null, { auto_publish: true }, Q).ok, true);
+  assert.equal(canPublishNow(ready, null, { auto_publish: false }, Q).ok, true);       // independent of auto-publish
+  assert.match(canPublishNow(ready, null, {}).why, /quality: no quality result/);       // no result: fail closed
+  assert.match(canPublishNow(ready, null, {}, { ok: false, why: "Voice Gate is SOURCE_HEAVY" }).why, /SOURCE_HEAVY/);
   assert.equal(canPublishNow(null, null, {}).ok, false);                                // awaiting approval: not in the publisher
   assert.equal(canPublishNow({ ...ready, state: "WITHDRAWN" }, null, {}).ok, false);
   assert.equal(canPublishNow({ ...ready, state: "PUBLISHED" }, null, {}).ok, false);
   assert.equal(canPublishNow({ ...ready, state: "PUBLISHING" }, null, {}).ok, false);   // no duplicate request
-  assert.match(canPublishNow(ready, { consent_id: "c" }, {}).why, /scheduled/);
+  // LCE-060: a scheduled post can be published now; the answer says the schedule is replaced
+  assert.deepEqual(canPublishNow(ready, { consent_id: "c" }, {}, Q), { ok: true, why: null, replacesSchedule: true });
+  assert.equal(canPublishNow(ready, null, {}, Q).replacesSchedule, false);
+  assert.match(canPublishNow(ready, { consent_id: "c" }, {}).why, /quality/);              // still every gate
+  assert.match(canPublishNow(ready, { consent_id: "c" }, { emergency_stop: true }, Q).why, /emergency stop/);
   assert.match(canPublishNow(ready, null, { emergency_stop: true }).why, /emergency stop/);
   assert.match(canPublishNow({ ...ready, text: "Body.\n\nImage: CIO.com\n" }, null, {}).why, /image\/source label/);
 });
@@ -619,9 +626,118 @@ test("Publish now hint explains approval, the next private run and real blocks",
   assert.match(publishNowHint({ ...base, post: { state: "AWAITING_APPROVAL" }, pending: { action: "approve", status: "pending" } }),
     /approval is recorded.*next private run at 14:17/);
   const ready = { state: "READY_TO_PUBLISH", text: "Clean.\n\n#Demo" };
-  assert.equal(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: ready }), null);   // usable: no hint
-  assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: { ...ready, state: "WITHDRAWN" } }), /not in the publisher/);
+  const Q = { ok: true, why: "pass" };
+  assert.equal(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: ready, quality: Q }), null);   // usable: no hint
+  assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: ready }), /quality/);         // no result: blocked
+  // LCE-059: approved in the repository is not the same as in the publisher, and the text is never changed in place
+  assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: { ...ready, state: "WITHDRAWN" } }),
+    /approved in the repository, but withdrawn from the publisher.*new version/);
+  assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: null }), /approved in the repository, but not in the publisher/);
+  assert.match(publishNowHint({ ...base, post: { state: "QA_PASSED" }, cloudPost: { ...ready, state: "WITHDRAWN" } }), /not in the publisher/);
   assert.match(publishNowHint({ ...base, post: { state: "READY_TO_PUBLISH" }, cloudPost: ready, settings: { emergency_stop: true } }), /emergency stop/);
   assert.equal(publishNowHint({ ...base, post: { state: "PUBLISHED" }, cloudPost: { ...ready, state: "PUBLISHED" } }), null);
   assert.equal(publishNowHint({ ...base, post: { state: "REJECTED" } }), null);
+});
+
+// LCE-059: the browser quality rule equals the Worker's; every unusable result fails closed.
+test("quality gate: PASS + PASS for exactly the approved hash, everything else blocked", () => {
+  const { qualityGate } = lib;
+  const H = "a".repeat(64);
+  const ok = (hq, h = H) => qualityGate({ humanity: hq }, h).ok;
+  const pass = { content_hash: H, verdict: "PASS", voice_gate: { verdict: "PASS" } };
+  assert.equal(ok(pass), true);
+  assert.equal(ok({ ...pass, voice_gate: { verdict: "SOURCE_HEAVY" } }), false);
+  assert.match(qualityGate({ humanity: { ...pass, voice_gate: { verdict: "SOURCE_HEAVY" } } }, H).why, /your own confirmed view/);
+  assert.equal(ok({ ...pass, voice_gate: { verdict: "FAIL" } }), false);
+  assert.equal(ok({ ...pass, voice_gate: { verdict: "REVIEW_NEEDED" } }), false);
+  assert.equal(ok({ ...pass, voice_gate: null }), false);
+  assert.equal(ok({ ...pass, verdict: "FAIL" }), false);
+  assert.equal(ok({ ...pass, verdict: "PARTIAL" }), false);
+  assert.equal(ok({ ...pass, content_hash: "b".repeat(64) }), false);                  // stale: scored another text
+  assert.equal(ok({ ...pass, content_hash: undefined }), false);                       // not tied to a text
+  assert.equal(ok({ ...pass, error: "boom" }), false);
+  assert.equal(ok(null), false);
+  assert.equal(qualityGate({ humanity: pass }, undefined).ok, false);                  // nothing in the publisher
+  assert.equal(qualityGate(null, H).ok, false);
+});
+
+test("publishStatus keeps repository, publisher, quality and eligibility apart", () => {
+  const { publishStatus } = lib;
+  const H = "c".repeat(64);
+  const post = { state: "READY_TO_PUBLISH", approval: { approved_hash: H } };
+  const rowsOf = (x) => Object.fromEntries(publishStatus({ nowIso: "2026-10-12T13:50:00Z", tz: "UTC", settings: {}, ...x }));
+  const w = rowsOf({ post, cloudPost: { state: "WITHDRAWN", text: "x", approved_hash: H } });
+  assert.match(w.Repository, /^approved \(hash cccccccc/);
+  assert.match(w.Publisher, /withdrawn/);
+  assert.match(w["Publish now"], /^not available: approved in the repository, but withdrawn/);
+  const sh = rowsOf({ post, cloudPost: { state: "READY_TO_PUBLISH", text: "Clean.\n", approved_hash: H },
+    quality: { ok: false, why: "Voice Gate is SOURCE_HEAVY (not enough of your own confirmed view)" } });
+  assert.match(sh.Publisher, /in the publisher, not scheduled/);
+  assert.match(sh["Quality (approved text)"], /SOURCE_HEAVY/);
+  assert.match(sh["Publish now"], /^not available: quality: Voice Gate is SOURCE_HEAVY/);
+  const ok = rowsOf({ post, cloudPost: { state: "READY_TO_PUBLISH", text: "Clean.\n", approved_hash: H }, quality: { ok: true, why: "p" } });
+  assert.match(ok["Publish now"], /^available \(needs your typed confirmation\)/);
+  const stop = rowsOf({ post, cloudPost: { state: "READY_TO_PUBLISH", text: "Clean.\n", approved_hash: H }, quality: { ok: true, why: "p" },
+    settings: { emergency_stop: true } });
+  assert.match(stop["Publish now"], /emergency stop/);
+});
+
+// LCE-060: daily briefs on open calendar slots: evidence and questions, never copy; links only for https.
+test("an open slot carries its daily brief and says the angle is the owner's", () => {
+  const { contentPlan, briefFor, briefNote, safeHttpsUrl } = lib;
+  const brief = { plan_date: "2026-10-12", status: "NEEDS_INPUT", pillar: "x",
+    evidence: [{ title: "T", url: "https://vendor.example.com/a", source: "Vendor", published_at: "2026-10-11" }],
+    owner_views_to_consider: [{ id: "op-1", kind: "opinions", text: "v" }], questions: ["Why?"] };
+  const pipeline = { posts: [], calendar: [{ date: "2026-10-12", status: "open", pillar: "x" }, { date: "2026-10-13", status: "open", pillar: "y" }],
+    briefs: [brief] };
+  const cp = contentPlan({ pipeline, cloud: { posts: [], consents: [], publications: [] }, now: "2026-10-10T10:00:00Z", tz: "UTC", days: 7 });
+  const a = cp.items.find((i) => i.date === "2026-10-12");
+  assert.equal(a.status, "OPEN_SLOT");
+  assert.equal(a.brief, brief);
+  assert.match(a.note, /1 sourced item\(s\) ready, waiting for your angle \(nothing is written for you\)/);
+  const b = cp.items.find((i) => i.date === "2026-10-13");
+  assert.equal(b.brief, null);
+  assert.match(b.note, /no daily brief yet/);
+  assert.match(briefNote({ status: "NO_EVIDENCE", evidence: [] }, "x"), /no fresh, relevant source yet/);
+  assert.equal(briefFor({ briefs: { error: "x" } }, "2026-10-12"), null);              // a snapshot error is not a brief
+  assert.equal(safeHttpsUrl("https://vendor.example.com/a?b=1"), "https://vendor.example.com/a?b=1");
+  for (const bad of ["javascript:alert(1)", "data:text/html,x", "http://vendor.example.com/", "https://u:p@x.example.com/", "", null, "not a url"]) {
+    assert.equal(safeHttpsUrl(bad), null, String(bad));
+  }
+});
+
+// LCE-061: a scheduled (or approved) post that cannot be published is never labelled as if it could be.
+test("list labels: Approved and Scheduled say 'not publishable' with the reason when a gate fails", () => {
+  const { statusLabel, canPublishNow } = lib;
+  const ready = { post_id: "p", state: "READY_TO_PUBLISH", text: "A clean post.\n" };
+  const sched = { consent_id: "c", slot_utc: "2026-10-20T08:30:00Z" };
+  const failQ = canPublishNow(ready, sched, {}, { ok: false, why: "Voice Gate is SOURCE_HEAVY" });
+  assert.deepEqual(statusLabel("SCHEDULED", failQ), { label: "Scheduled · not publishable", tone: "warn", title: "quality: Voice Gate is SOURCE_HEAVY" });
+  assert.equal(statusLabel("APPROVED", canPublishNow(ready, null, {}, null)).label, "Approved · not publishable");
+  assert.equal(statusLabel("SCHEDULED", canPublishNow(ready, sched, {}, { ok: true })).label, "Scheduled");
+  assert.equal(statusLabel("APPROVED", canPublishNow(ready, null, {}, { ok: true })).label, "Approved");
+  assert.equal(statusLabel("SCHEDULED", canPublishNow(ready, sched, { emergency_stop: true }, { ok: true })).label, "Scheduled · not publishable");
+  assert.equal(statusLabel("PUBLISHED", { ok: false, why: "x" }).label, "Published");              // other states unchanged
+  assert.equal(statusLabel("SCHEDULED").label, "Scheduled");                                      // no id: plain label
+});
+
+// LCE-061: the dashboard script is shipped as text, so nothing else parses it before production. It must be
+// valid module syntax, and every name it imports must be exported by the library.
+test("dashboard script: valid syntax and every import resolves", async () => {
+  const { readFileSync, writeFileSync, mkdtempSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const { spawnSync } = await import("node:child_process");
+  const root = new URL("../../cloud/src/ui/", import.meta.url);
+  const app = readFileSync(new URL("app.txt", root), "utf8");
+  const libSrc = readFileSync(new URL("lib.txt", root), "utf8");
+  const dir = mkdtempSync(join(tmpdir(), "lce-ui-"));
+  for (const [name, src] of [["app.mjs", app], ["lib.mjs", libSrc]]) {
+    writeFileSync(join(dir, name), src);
+    const r = spawnSync(process.execPath, ["--check", join(dir, name)], { encoding: "utf8" });
+    assert.equal(r.status, 0, `${name}: ${r.stderr}`);
+  }
+  const names = app.match(/import \{([^}]*)\} from/)[1].split(",").map((n) => n.trim()).filter(Boolean);
+  const missing = names.filter((n) => !new RegExp(`export (function|const|let|class) ${n}\\b`).test(libSrc));
+  assert.deepEqual(missing, []);
 });

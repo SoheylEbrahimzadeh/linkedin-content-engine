@@ -140,6 +140,35 @@ identity check whose member equals `person_urn` — otherwise nothing is sent.
 It does not need or change auto-publish; it reuses the scheduled publisher's
 claim transaction and records the LinkedIn post URN.
 
+Publication-time quality gate (LCE-059): scheduled and manual publishing both require a quality
+result in the pipeline mirror for exactly the approved text (`humanity.content_hash` equals the
+approved hash) with Humanity `PASS` and Voice Gate `PASS`. `SOURCE_HEAVY`, `REVIEW_NEEDED`, `PARTIAL`,
+`FAIL`, a scoring error, a result for another text, no result, no mirror: all block (fail closed).
+Publish now refuses before anything is written; `publishOne` checks again (scheduled path: the
+consent is invalidated with reason `quality: …`). It only ever blocks: the approval hash, publisher
+state, consent, identity, label and emergency-stop gates apply unchanged. The mirror gets the hash
+from `score_post`, which hashes the very text it scored; an engine without it (an older pin) blocks
+every publication until the private repository's engine pin includes LCE-059. The dashboard shows
+Repository, Publisher, Quality and Publish now as separate facts on each post, and an approved post
+that cannot be published reads "Approved · not publishable".
+
+Publish now on a scheduled post (LCE-060): the confirmation page says the post is scheduled and that
+publishing now cancels the schedule; the request carries `replace_schedule: true`, and the Worker revokes
+the scheduled consent and creates the one-off manual consent in one transaction (reason
+`replaced_by_publish_now`). If the schedule changed in between, the manual consent is withdrawn and
+nothing is sent. Without the flag a scheduled post is still refused. Every check that can reject the
+publication (one shared `preflight`, then the LinkedIn identity check) runs before anything is written, so a
+rejection never revokes the schedule; only LinkedIn's own answer after sending can leave the post
+PUBLISH_FAILED or NEEDS_RECONCILE (never retried; Rearm and reschedule by hand). LCE-061: the claim
+statement itself requires the emergency stop to be off (and, for a scheduled consent, auto-publish on), so a
+switch changed after the first check stops the publication at the claim; Publish now's own writes carry the
+same condition, and a stop between them and the claim restores the replaced schedule.
+
+Preview deployments (LCE-062): `LCE_PREVIEW = "true"`, set only in `[previews.vars]`, makes a Preview
+refuse every publication and every LinkedIn call before anything else, and never start the writer. A
+Preview gets only the bindings declared in `[previews]` (Wrangler 4.x); tests/test_wrangler_config.py keeps
+that block free of the production database and of credentials.
+
 Emergency stop (`emergency_stop` setting): blocks every publication,
 scheduled and manual. Turning it on needs nothing; releasing it, like enabling
 auto-publish, needs a person and a typed phrase (`RELEASE EMERGENCY STOP`,

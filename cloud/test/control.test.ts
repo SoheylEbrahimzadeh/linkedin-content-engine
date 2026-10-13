@@ -4,7 +4,7 @@ import { handleApi } from "../src/api";
 import { resetCertsCache } from "../src/auth";
 import { runScheduled } from "../src/runner";
 import { contentHash } from "../src/text";
-import { created, enableAll, fakeFetch, insertConsent, insertPost, reset, rows, setSettings, status, TEXT, testEnv } from "./helpers";
+import { created, enableAll, fakeFetch, insertConsent, insertPost, qualityPass, reset, rows, setSettings, status, TEXT, testEnv } from "./helpers";
 
 const TEAM = "test-team.cloudflareaccess.com";
 const NOW = Date.parse("2026-10-05T12:00:00+00:00");
@@ -256,7 +256,9 @@ describe("controlled manual publish", () => {
   async function ready() {
     await enableAll(e);
     await setSettings(e, { auto_publish: "false" });
-    return insertPost(e, READY);
+    const h = await insertPost(e, READY);
+    await qualityPass(e, READY);
+    return h;
   }
   it("publishes one approved post now with auto-publish OFF, after verifying the author", async () => {
     const h = await ready();
@@ -308,7 +310,9 @@ describe("controlled manual publish", () => {
 describe("publish now (LCE-055)", () => {
   async function ready(text?: string) {
     await enableAll(e);                                   // auto-publish ON: manual publishing ignores it
-    return insertPost(e, READY, text);
+    const h = await insertPost(e, READY, text);
+    await qualityPass(e, READY, text);
+    return h;
   }
   const go = (h: string, f = fakeFetch()) =>
     call("POST", `/posts/${READY}/publish-now`, { approved_hash: h, confirm: `PUBLISH NOW ${READY}` }, OWNER, f);
@@ -465,6 +469,7 @@ describe("same-day freshness gate (LCE-040)", () => {
   async function scheduled(fresh: boolean) {
     await enableAll(e);
     const h = await insertPost(e, READY);
+    await qualityPass(e, READY);
     await insertConsent(e, READY, "2026-10-05-mon-0500", SLOT, h, "consent-1", fresh);
     return h;
   }
@@ -591,5 +596,121 @@ describe("refresh progress (LCE-048)", () => {
     const s = await call("GET", `/refresh-status/${AWAITING}`);
     expect(s.body!.decision).toBeNull();
     expect(s.body!.events).toEqual([]);
+  });
+});
+
+// LCE-061: the HTTP boundary of Publish now with replace_schedule (authentication, human authorization,
+// exact boolean consent, confirmation phrase). Every refusal leaves the schedule exactly as it was.
+describe("Publish now replace_schedule at the HTTP boundary", () => {
+  const SLOT_ID = "2026-10-07-wed-0030";
+  const SLOT_UTC = "2026-10-07T06:30:00+00:00";
+  async function scheduled() {
+    await enableAll(e);
+    await setSettings(e, { auto_publish: "false" });
+    const h = await insertPost(e, READY);
+    await qualityPass(e, READY);
+    await insertConsent(e, READY, SLOT_ID, SLOT_UTC, h, "consent-sched");
+    return h;
+  }
+  const state = async () => ({
+    consents: await rows(e, "SELECT * FROM consents ORDER BY consent_id"),
+    jobs: await rows(e, "SELECT * FROM jobs ORDER BY slot_id"),
+    publications: await rows(e, "SELECT * FROM publications"),
+  });
+  const body = (h: string, extra: Record<string, unknown> = {}) =>
+    ({ approved_hash: h, confirm: `PUBLISH NOW ${READY}`, replace_schedule: true, ...extra });
+  const path = `/posts/${READY}/publish-now`;
+
+  it("no Access token, a forged token, or a service token: refused, schedule unchanged, nothing sent", async () => {
+    const h = await scheduled();
+    const before = await state();
+    const f = fakeFetch(userinfo(), created());
+    const raw = (headers: Record<string, string>) => handleApi(new Request(`https://lce.example/api${path}`,
+      { method: "POST", headers: { "content-type": "application/json", "x-lce-client": "dashboard", ...headers }, body: JSON.stringify(body(h)) }),
+    e, NOW, certs, f.fn);
+    expect([401, 403]).toContain((await raw({})).status);
+    // a valid signature over the owner's claims, with the payload swapped for someone else's: must not verify
+    const [hd, , sig] = (await jwt(OWNER)).split(".");
+    const otherPayload = (await jwt({ email: "attacker@example.com" })).split(".")[1];
+    const forged = `${hd}.${otherPayload}.${sig}`;
+    expect([401, 403]).toContain((await raw({ "cf-access-jwt-assertion": forged })).status);
+    expect((await call("POST", path, body(h), SERVICE, f)).status).toBe(403);           // automation is never a person
+    expect(f.calls).toHaveLength(0);
+    expect(await state()).toEqual(before);
+  });
+
+  it.each([
+    ["missing", undefined, 428], ["wrong post", `PUBLISH NOW 20261099-other`, 428], ["lower case", `publish now ${READY}`, 428],
+  ])("confirmation phrase %s: 428, schedule unchanged, nothing sent", async (_n, confirm, code) => {
+    const h = await scheduled();
+    const before = await state();
+    const f = fakeFetch(userinfo(), created());
+    const r = await call("POST", path, { ...body(h), confirm }, OWNER, f);
+    expect(r.status).toBe(code);
+    expect(f.calls).toHaveLength(0);
+    expect(await state()).toEqual(before);
+  });
+
+  it.each([["the string \"true\"", "true"], ["1", 1], ["an object", { yes: true }], ["missing", undefined]])(
+    "replace_schedule %s is not consent: refused as scheduled, schedule unchanged, nothing sent", async (_n, flag) => {
+      const h = await scheduled();
+      const before = await state();
+      const f = fakeFetch(userinfo(), created());
+      const r = await call("POST", path, body(h, { replace_schedule: flag }), OWNER, f);
+      expect(r.status).toBe(409);
+      expect(r.body!.detail).toBe("this post is already scheduled; revoke that consent first");
+      expect(f.calls).toHaveLength(0);
+      expect(await state()).toEqual(before);
+    });
+
+  it("a missing approved hash is refused before anything else", async () => {
+    await scheduled();
+    const before = await state();
+    const r = await call("POST", path, body("", {}), OWNER);
+    expect(r.status).toBe(400);
+    expect(await state()).toEqual(before);
+  });
+
+  it("a signed-in person with the phrase and replace_schedule: true publishes once; the schedule is revoked", async () => {
+    const h = await scheduled();
+    const f = fakeFetch(userinfo(), created("urn:li:share:6101"));
+    const r = await call("POST", path, body(h), OWNER, f);
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ outcome: "published" });
+    expect(f.calls.filter((c) => c.url.endsWith("/rest/posts"))).toHaveLength(1);
+    const [s] = await rows<{ status: string; reason: string }>(e, "SELECT status, reason FROM consents WHERE consent_id = 'consent-sched'");
+    expect(s).toEqual({ status: "revoked", reason: "replaced_by_publish_now" });
+  });
+});
+
+// LCE-062: the HTTP boundary in a Preview deployment: a signed-in owner with every confirmation still cannot
+// publish, and the identity check does not call LinkedIn.
+describe("Preview deployment at the HTTP boundary", () => {
+  const preview = { ...e, LCE_PREVIEW: "true" } as typeof e;
+  it("POST publish-now (with and without replace_schedule) is refused 403; zero LinkedIn requests; nothing written", async () => {
+    await enableAll(e);
+    const h = await insertPost(e, READY);
+    await qualityPass(e, READY);
+    await insertConsent(e, READY, "2026-10-07-wed-0030", "2026-10-07T06:30:00+00:00", h, "consent-sched");
+    const before = [await rows(e, "SELECT * FROM consents"), await rows(e, "SELECT * FROM jobs"), await rows(e, "SELECT * FROM publications")];
+    for (const extra of [{}, { replace_schedule: true }]) {
+      const f = fakeFetch(userinfo(), created());
+      const r = await callEnv(preview, "POST", `/posts/${READY}/publish-now`,
+        { approved_hash: h, confirm: `PUBLISH NOW ${READY}`, ...extra }, f.fn as never);
+      expect(r.status).toBe(403);
+      expect(r.body.detail).toContain("Preview deployment");
+      expect(f.calls).toHaveLength(0);
+    }
+    expect([await rows(e, "SELECT * FROM consents"), await rows(e, "SELECT * FROM jobs"), await rows(e, "SELECT * FROM publications")]).toEqual(before);
+  });
+
+  it("GET /api/linkedin/identity does not call LinkedIn in a Preview", async () => {
+    await enableAll(e);
+    const f = fakeFetch(userinfo());
+    const res = await handleApi(new Request("https://lce.example/api/linkedin/identity",
+      { headers: { "cf-access-jwt-assertion": await jwt(OWNER) } }), preview, NOW, certs, f.fn);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ ok: false, status: "preview" });
+    expect(f.calls).toHaveLength(0);
   });
 });
