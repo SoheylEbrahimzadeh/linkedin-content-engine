@@ -156,7 +156,10 @@ Publish now on a scheduled post (LCE-060): the confirmation page says the post i
 publishing now cancels the schedule; the request carries `replace_schedule: true`, and the Worker revokes
 the scheduled consent and creates the one-off manual consent in one transaction (reason
 `replaced_by_publish_now`). If the schedule changed in between, the manual consent is withdrawn and
-nothing is sent. Without the flag a scheduled post is still refused.
+nothing is sent. Without the flag a scheduled post is still refused. Every check that can reject the
+publication (one shared `preflight`, then the LinkedIn identity check) runs before anything is written, so a
+rejection never revokes the schedule; only LinkedIn's own answer after sending can leave the post
+PUBLISH_FAILED or NEEDS_RECONCILE (never retried; Rearm and reschedule by hand).
 
 Emergency stop (`emergency_stop` setting): blocks every publication,
 scheduled and manual. Turning it on needs nothing; releasing it, like enabling

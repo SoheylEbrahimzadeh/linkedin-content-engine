@@ -9,7 +9,7 @@
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
   REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, PROGRESS_STEPS, fmtElapsed, refreshProgress, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
-  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats, publishNowHint, qualityGate, publishStatus,
+  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats, publishNowHint, qualityGate, publishStatus, safeHttpsUrl,
 } from "./lib.js";
 
 const main = document.getElementById("main");
@@ -283,6 +283,17 @@ async function act(req, ok = "Done.", label = "change", key = null) {
   return mutate(req, { label, key, ok });
 }
 
+// LCE-060: a daily brief, shown as evidence and questions (links open the original source; no copy)
+function briefDetails(b) {
+  if (!b.evidence?.length) return null;
+  return h("details", { class: "brief" }, h("summary", {}, `Daily brief (${b.evidence.length} sources)`),
+    h("ul", {}, b.evidence.map((e) => h("li", {}, safeHttpsUrl(e.url) ? ext(safeHttpsUrl(e.url), e.title || e.url) : (e.title || "source"), h("span", { class: "small muted" },
+      ` · ${e.source ?? ""}${e.published_at ? " · " + String(e.published_at).slice(0, 10) : ""}`)))),
+    b.owner_views_to_consider?.length ? h("p", { class: "small" }, "Your confirmed views that may fit (used only if you choose): " +
+      b.owner_views_to_consider.map((v) => v.id).join(", ")) : null,
+    b.questions?.length ? h("ol", { class: "small" }, b.questions.map((q) => h("li", {}, q))) : null);
+}
+
 // ── data ────────────────────────────────────────────────────────────
 const pipePost = (id) => (S.pipe?.posts ?? []).find((p) => p.post_id === id) ?? null;
 const cloudPost = (id) => (S.snap?.posts ?? []).find((p) => p.post_id === id) ?? null;
@@ -520,6 +531,7 @@ function planRow(i) {
         p && !p.image ? h("span", { class: "small muted" }, "no media decision") : null,
         i.objective ? h("span", { class: "small muted" }, objectiveLabel(i.objective)) : null,
         i.note ? h("span", { class: "small muted" }, i.note) : null,
+        i.brief ? briefDetails(i.brief) : null,
         i.status === "REPLACEMENT_PENDING" ? null : refreshPill(p)),   // design plan 02: one label per state
       outcomeLine(i.post_id ?? (i.plan_date ? "plan:" + i.plan_date : null)),
       p && !["PUBLISHED", "REJECTED", "SKIPPED"].includes(i.status) ? freshLine(freshOf(p, cloudPost(p.post_id), activeConsent(p.post_id))) : null,

@@ -95,3 +95,36 @@ def test_preparation_never_creates_posts_approvals_or_schedules(store):
     assert {p: store.load_post(p)["state"] for p in store.post_ids()} == states
     assert store.load_post(pid)["state"] == PostState.AWAITING_APPROVAL.value
     assert json.dumps(store.plan(), default=str) == plan                       # the calendar is not changed
+
+
+def test_daily_preparation_never_starts_the_claude_writer(store, monkeypatch):
+    """Routine daily work is model-free: preparing briefs makes no network call and starts no Routine,
+    even when the Routine endpoint is configured; dispatch itself stays off unless explicitly enabled."""
+    from lce import work
+
+    _ready(store)
+    monkeypatch.setenv("LCE_ROUTINE_FIRE_URL", "https://routines.example.test/v1/claude_code/routines/trig_X1/fire")
+    monkeypatch.setenv("LCE_ROUTINE_FIRE_TOKEN", "test-token-not-real")
+    monkeypatch.delenv("LCE_WRITER_DISPATCH", raising=False)
+    calls = []
+    monkeypatch.setattr(work, "_post", lambda *a, **k: calls.append(a) or (200, {}))
+    monkeypatch.setattr(radar, "http_get", lambda url: calls.append(url) or (503, b""))
+    _prepare(store, write=True)
+    assert calls == []                                       # no feed fetch, no Routine start
+    with use_clock(FixedClock(NOW)):
+        out = work.dispatch(store, post=lambda *a: calls.append(a) or (200, {}))
+    assert out["fired"] is False and "LCE_WRITER_DISPATCH" in out["why"] and calls == []
+    assert not work.fired_path(store).exists()
+
+
+def test_written_briefs_reach_the_dashboard_snapshot(store):
+    from lce.dashboard.snapshot import build_snapshot
+
+    _ready(store)
+    assert build_snapshot(store, mode="real")["briefs"] == []
+    out = _prepare(store, write=True)
+    briefs = {b["plan_date"]: b for b in build_snapshot(store, mode="real")["briefs"]}
+    assert set(briefs) == {s["plan_date"] for s in out["slots"]}
+    b = next(x for x in briefs.values() if x["status"] == "NEEDS_INPUT")
+    assert b["evidence"][0]["url"].startswith("https://") and b["questions"]
+    assert set(b["evidence"][0]) == {"title", "url", "source", "published_at"}   # only what is needed

@@ -458,11 +458,13 @@ export function contentPlan({ pipeline, cloud, now, tz, days = 14 }) {
       if (slot) { time = slot.time; timeSource = "planned slot"; usedSlots.add(slot.slot_id); }
     }
     const text = post?.text ?? cp?.text ?? null;
-    items.push({ kind: "post", post_id: postId, date, time, time_source: timeSource, status,
+    // LCE-060: the daily brief (evidence and questions, never copy) for an open calendar slot
+    const brief = status === "OPEN_SLOT" ? briefFor(pipeline, entry?.date) : null;
+    items.push({ kind: "post", post_id: postId, date, time, time_source: timeSource, status, brief,
       title: hook(text) ?? entry?.topic ?? post?.topic ?? postId ?? UNKNOWN, topic: entry?.topic ?? post?.topic ?? null,
       objective: post?.objective ?? entry?.objective ?? null, media: media(post ?? cp ?? { post_id: postId, format: entry?.format }, cloud),
       note: closedBy(pending) ? "recorded; the repository is updated at the next private run"
-        : status === "OPEN_SLOT" ? `Reserved by the rolling calendar (pillar ${entry?.pillar ?? "?"}); the writing Routine prepares a candidate, which then needs your approval`
+        : status === "OPEN_SLOT" ? briefNote(brief, entry?.pillar)
           : draftingNote(post ?? (cp ? { state: "APPROVED" } : null)),
       pending: pending ? { decision_id: pending.decision_id, action: pending.action, created_at: pending.created_at, post_id: pending.post_id ?? null, plan_date: pending.plan_date ?? null } : null, consent_id: consent?.consent_id ?? null,
       plan_date: entry?.date ?? post?.plan_date ?? null, sources: post?.sources ?? (entry?.sources ?? []).map((u) => ({ url: u })) });
@@ -829,6 +831,33 @@ export function qualityGate(pipePost, approvedHash) {
       : `Voice Gate is ${vg ?? "missing"}, not PASS` };
   }
   return { ok: true, why: "Humanity PASS and Voice Gate PASS for the approved text" };
+}
+
+/** LCE-060: feed links are untrusted data: only a plain https URL becomes a link (never javascript:, data:, ...). */
+export function safeHttpsUrl(u) {
+  try {
+    const url = new URL(String(u ?? ""));
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** LCE-060: the daily brief stored for one calendar date (from the pipeline mirror), or null. */
+export function briefFor(pipeline, planDate) {
+  if (!planDate || !Array.isArray(pipeline?.briefs)) return null;
+  return pipeline.briefs.find((b) => b && b.plan_date === String(planDate)) ?? null;
+}
+
+/** What an open slot says: whether evidence is ready, and that the angle is the owner's. Never copy. */
+export function briefNote(brief, pillar) {
+  const base = `Reserved by the rolling calendar (pillar ${pillar ?? "?"})`;
+  if (!brief) return `${base}; no daily brief yet`;
+  if (brief.status === "NEEDS_INPUT") {
+    return `${base}; daily brief: ${brief.evidence?.length ?? 0} sourced item(s) ready, waiting for your angle (nothing is written for you)`;
+  }
+  if (brief.status === "NO_EVIDENCE") return `${base}; daily brief: no fresh, relevant source yet`;
+  return `${base}; daily brief: ${brief.status ?? "unknown"}`;
 }
 
 export function canPublishNow(cloudPost, consent, settings = {}, quality = null) {

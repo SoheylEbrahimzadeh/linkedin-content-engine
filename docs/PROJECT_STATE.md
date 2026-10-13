@@ -785,3 +785,12 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
   `.github/workflows/freshness.yml` and the engine pin bump. Until then nothing runs in production.
 - LIMIT: publishable copy needs the owner's own words (Voice Gate); without a model, the daily output is
   evidence and questions, not posts.
+- LCE-060 follow-up (13 Oct, same branch): (1) one `preflight` in the Worker holds every check that can reject
+  a publication (provider, config, token missing/expired, post state, stored-text hash, length, label, quality,
+  image hash); Publish now runs it, then the identity check, before anything is written, so any rejection
+  leaves an existing schedule untouched (15 rejection paths tested); `publishOne` runs it again before the
+  claim. (2) `lce work dispatch` starts the Claude writer Routine only with `LCE_WRITER_DISPATCH=enabled`
+  (off by default); `lce daily prepare` makes no network call and starts nothing. The Worker still starts the
+  writer only when the owner clicks Refresh (owner action, unchanged). (3) briefs reach the dashboard through
+  the existing pipeline mirror (`briefs` in the snapshot); open slots show the brief note and a details list
+  (https links only).

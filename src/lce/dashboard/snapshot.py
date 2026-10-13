@@ -795,6 +795,7 @@ def build_snapshot(store: DataStore, *, mode: str, data_label: str | None = None
         "latest_run": latest_run(posts),
         "posts": posts,
         "research": research,
+        "briefs": _safe(lambda: __import__("lce.daily", fromlist=["briefs_view"]).briefs_view(store)),
         "calendar": calendar,
         "runs": events,
         "issues": issues,

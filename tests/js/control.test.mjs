@@ -681,3 +681,27 @@ test("publishStatus keeps repository, publisher, quality and eligibility apart",
     settings: { emergency_stop: true } });
   assert.match(stop["Publish now"], /emergency stop/);
 });
+
+// LCE-060: daily briefs on open calendar slots: evidence and questions, never copy; links only for https.
+test("an open slot carries its daily brief and says the angle is the owner's", () => {
+  const { contentPlan, briefFor, briefNote, safeHttpsUrl } = lib;
+  const brief = { plan_date: "2026-10-12", status: "NEEDS_INPUT", pillar: "x",
+    evidence: [{ title: "T", url: "https://vendor.example.com/a", source: "Vendor", published_at: "2026-10-11" }],
+    owner_views_to_consider: [{ id: "op-1", kind: "opinions", text: "v" }], questions: ["Why?"] };
+  const pipeline = { posts: [], calendar: [{ date: "2026-10-12", status: "open", pillar: "x" }, { date: "2026-10-13", status: "open", pillar: "y" }],
+    briefs: [brief] };
+  const cp = contentPlan({ pipeline, cloud: { posts: [], consents: [], publications: [] }, now: "2026-10-10T10:00:00Z", tz: "UTC", days: 7 });
+  const a = cp.items.find((i) => i.date === "2026-10-12");
+  assert.equal(a.status, "OPEN_SLOT");
+  assert.equal(a.brief, brief);
+  assert.match(a.note, /1 sourced item\(s\) ready, waiting for your angle \(nothing is written for you\)/);
+  const b = cp.items.find((i) => i.date === "2026-10-13");
+  assert.equal(b.brief, null);
+  assert.match(b.note, /no daily brief yet/);
+  assert.match(briefNote({ status: "NO_EVIDENCE", evidence: [] }, "x"), /no fresh, relevant source yet/);
+  assert.equal(briefFor({ briefs: { error: "x" } }, "2026-10-12"), null);              // a snapshot error is not a brief
+  assert.equal(safeHttpsUrl("https://vendor.example.com/a?b=1"), "https://vendor.example.com/a?b=1");
+  for (const bad of ["javascript:alert(1)", "data:text/html,x", "http://vendor.example.com/", "https://u:p@x.example.com/", "", null, "not a url"]) {
+    assert.equal(safeHttpsUrl(bad), null, String(bad));
+  }
+});

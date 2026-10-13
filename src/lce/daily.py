@@ -108,3 +108,25 @@ def prepare(
     if write and any(r["action"] == "written" for r in results):
         store.log_event("daily.prepared", slots=len(results))
     return {"dry_run": not write, "today": today.isoformat(), "days": days, "slots": results}
+
+
+def briefs_view(store: DataStore) -> list[dict]:
+    """The stored briefs, for the dashboard (read-only; only the fields the owner needs to act)."""
+    out = []
+    folder = store.root / "research" / "briefs"
+    for path in sorted(folder.glob("*.yaml")) if folder.exists() else []:
+        b = yaml.safe_load(path.read_text("utf-8")) or {}
+        out.append({
+            "plan_date": str(b.get("plan_date", path.stem)),
+            "pillar": b.get("pillar"),
+            "status": b.get("status"),
+            "why": b.get("why"),
+            "prepared_at": b.get("prepared_at"),
+            "evidence": [
+                {k: e.get(k) for k in ("title", "url", "source", "published_at")}
+                for e in b.get("evidence") or []
+            ],
+            "owner_views_to_consider": b.get("owner_views_to_consider") or [],
+            "questions": b.get("questions") or [],
+        })
+    return out

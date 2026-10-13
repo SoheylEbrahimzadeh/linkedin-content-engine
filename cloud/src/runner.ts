@@ -96,41 +96,49 @@ export async function freshFor(env: Env, c: ConsentRow, settings: Settings): Pro
   return { ok: true, why: "" };
 }
 
-async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settings,
-                          fetchImpl: FetchLike, actor = ACTOR): Promise<RunReport> {
-  const invalidate = (e: Env, n: number, cr: ConsentRow, reason: string, jobState = "FAILED") =>
-    invalidateAs(e, n, cr, reason, jobState, actor);
-  if (settings.provider !== "linkedin_api") return invalidate(env, now, c, "provider_not_enabled");
+// LCE-060: every check that can reject a publication, in one place, with no writes. publishNow runs it
+// before anything is written (so a rejection leaves an existing schedule untouched); publishOne runs it
+// again right before the claim (the state may have changed in between).
+type Preflight = { ok: true; post: PostRow; image?: ImageInput; cfg: LinkedInConfig; token: string } | { ok: false; reason: string };
+
+async function preflight(env: Env, now: number, postId: string, approvedHash: string, settings: Settings): Promise<Preflight> {
+  const no = (reason: string): Preflight => ({ ok: false, reason });
+  if (settings.provider !== "linkedin_api") return no("provider_not_enabled");
   const cfg = linkedinConfig(settings);
   const problems = configProblems(cfg);
-  if (problems.length) return invalidate(env, now, c, `config: ${problems.join("; ")}`);
+  if (problems.length) return no(`config: ${problems.join("; ")}`);
   const token = env.LINKEDIN_TOKEN;
-  if (!token) return invalidate(env, now, c, "token_missing");
-  if (settings.token_expires_at && parseIsoUtc(settings.token_expires_at) <= now) {
-    return invalidate(env, now, c, "token_expired");
-  }
-  const post = await env.DB.prepare("SELECT * FROM posts WHERE post_id = ?").bind(c.post_id).first<PostRow>();
-  if (!post) return invalidate(env, now, c, "post_missing");
-  if (post.state !== "READY_TO_PUBLISH") return invalidate(env, now, c, `post_is_${post.state}`);
+  if (!token) return no("token_missing");
+  if (settings.token_expires_at && parseIsoUtc(settings.token_expires_at) <= now) return no("token_expired");
+  const post = await env.DB.prepare("SELECT * FROM posts WHERE post_id = ?").bind(postId).first<PostRow>();
+  if (!post) return no("post_missing");
+  if (post.state !== "READY_TO_PUBLISH") return no(`post_is_${post.state}`);
   const h = await contentHash(post.text);
-  if (h !== post.approved_hash || h !== post.content_hash || h !== c.approved_hash) {
-    return invalidate(env, now, c, "hash_mismatch");
-  }
-  if (stripText(post.text).length > cfg.maxChars) return invalidate(env, now, c, "text_too_long");
+  if (h !== post.approved_hash || h !== post.content_hash || h !== approvedHash) return no("hash_mismatch");
+  if (stripText(post.text).length > cfg.maxChars) return no("text_too_long");
   // LCE-053: the approved text is published unchanged, so a text that still shows an image/source label
   // (approved before the rule) is not published at all; the owner refreshes it and approves the clean text.
-  if (visibleCredit(post.text)) return invalidate(env, now, c, "visible_image_credit");
+  if (visibleCredit(post.text)) return no("visible_image_credit");
   // LCE-059: Humanity PASS and Voice Gate PASS for exactly the approved text, or nothing is published.
   const quality = await qualityFor(env, post.post_id, post.approved_hash);
-  if (!quality.ok) return invalidate(env, now, c, `quality: ${quality.why}`);
+  if (!quality.ok) return no(`quality: ${quality.why}`);
   const img = await env.DB.prepare("SELECT data, sha256, alt_text FROM post_images WHERE post_id = ?")
     .bind(post.post_id).first<{ data: ArrayBuffer; sha256: string; alt_text: string }>();
   let image: ImageInput | undefined;
   if (img) {
     const data = new Uint8Array(img.data);
-    if ((await sha256Bytes(data)) !== img.sha256) return invalidate(env, now, c, "image_hash_mismatch");
+    if ((await sha256Bytes(data)) !== img.sha256) return no("image_hash_mismatch");
     image = { data, alt: img.alt_text };
   }
+  return { ok: true, post, image, cfg, token };
+}
+
+async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settings,
+                          fetchImpl: FetchLike, actor = ACTOR): Promise<RunReport> {
+  const pf = await preflight(env, now, c.post_id, c.approved_hash, settings);
+  if (!pf.ok) return invalidateAs(env, now, c, pf.reason, "FAILED", actor);
+  const { post, image, cfg, token } = pf;
+  const h = post.approved_hash;                      // preflight proved it equals the hash of post.text
 
   const at = isoUtc(now);
   const commentary = toLittle(stripText(post.text));
@@ -244,6 +252,10 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
   // LCE-059: refused before anything is written (publishOne checks it again)
   const quality = await qualityFor(env, postId, approvedHash);
   if (!quality.ok) return refuse(409, `quality gate: ${quality.why}; nothing was sent`);
+  // LCE-060: every other check that could reject it, still before anything is written, so a rejection
+  // never revokes an existing schedule
+  const pf = await preflight(env, now, postId, approvedHash, settings);
+  if (!pf.ok) return refuse(409, `refused before anything changed (${pf.reason}); nothing was sent`);
   const who = await linkedinIdentity(env.LINKEDIN_TOKEN, settings, fetchImpl);
   if (!who.ok) return refuse(409, `LinkedIn identity not verified (${who.status}); nothing was sent`);
   if (who.person_urn_matches !== true) {
