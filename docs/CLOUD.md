@@ -164,6 +164,11 @@ statement itself requires the emergency stop to be off (and, for a scheduled con
 switch changed after the first check stops the publication at the claim; Publish now's own writes carry the
 same condition, and a stop between them and the claim restores the replaced schedule.
 
+Preview deployments (LCE-062): `LCE_PREVIEW = "true"`, set only in `[previews.vars]`, makes a Preview
+refuse every publication and every LinkedIn call before anything else, and never start the writer. A
+Preview gets only the bindings declared in `[previews]` (Wrangler 4.x); tests/test_wrangler_config.py keeps
+that block free of the production database and of credentials.
+
 Emergency stop (`emergency_stop` setting): blocks every publication,
 scheduled and manual. Turning it on needs nothing; releasing it, like enabling
 auto-publish, needs a person and a typed phrase (`RELEASE EMERGENCY STOP`,

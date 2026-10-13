@@ -5,7 +5,7 @@
 // trigger configured, nothing is sent and the reason is recorded where the progress panel shows it.
 // No inference call is ever made here: the endpoint only starts that one Claude Code routine.
 
-import type { Env } from "./db";
+import { isPreview, type Env } from "./db";
 import type { FetchLike } from "./linkedin";
 import { isoUtc } from "./schedule";
 
@@ -19,7 +19,9 @@ export async function startWriter(env: Env, now: number, fetchImpl: FetchLike,
   const url = (env.LCE_ROUTINE_FIRE_URL ?? "").trim();
   const token = (env.LCE_ROUTINE_FIRE_TOKEN ?? "").trim();
   let out: StartResult;
-  if (!url || !token) {
+  if (isPreview(env)) {
+    out = { started: false, why: "Preview deployment: the writer is never started from a Preview" };   // LCE-062
+  } else if (!url || !token) {
     out = { started: false, why: "instant start is unavailable; the hourly writer run (at :27) picks it up" };
   } else if (!ROUTINE_FIRE.test(url)) {
     out = { started: false, why: "LCE_ROUTINE_FIRE_URL is not a routine /fire endpoint" };

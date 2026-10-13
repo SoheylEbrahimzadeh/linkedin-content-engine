@@ -3,7 +3,7 @@
 // only a separate, explicit consent schedules one post for one slot.
 
 import { AuthError, verifyAccess, type CertsFetcher } from "./auth";
-import { event, isSchemaMissing, loadSettings, SETTING_KEYS, type ConsentRow, type Env, type PostRow } from "./db";
+import { event, isPreview, isSchemaMissing, loadSettings, SETTING_KEYS, type ConsentRow, type Env, type PostRow } from "./db";
 import { isoUtc, loadSchedule, parseIsoUtc, ScheduleError, slotById, slotsBetween } from "./schedule";
 import { applyMigrations, MigrationConflict, migrationStatus } from "./migrations";
 import { contentHash, sha256Bytes, visibleCredit } from "./text";
@@ -89,6 +89,8 @@ export async function handleApi(request: Request, env: Env, now: number,
     }
     if (request.method === "GET" && url.pathname === "/api/pipeline") return await getPipeline(env);
     if (request.method === "GET" && url.pathname === "/api/linkedin/identity") {
+      // LCE-062: a Preview deployment never calls LinkedIn
+      if (isPreview(env)) return json(409, { ok: false, status: "preview", detail: "Preview deployment: LinkedIn is never called" });
       const report = await linkedinIdentity(env.LINKEDIN_TOKEN, await loadSettings(env.DB), fetchImpl);
       return json(IDENTITY_HTTP[report.status], report);
     }

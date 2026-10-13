@@ -804,3 +804,13 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
   A stop committed after the claim cannot recall a request already sent to LinkedIn.
 - Tests: switch races on both paths (simulated on local D1), HTTP boundary of `replace_schedule`, zero
   LinkedIn calls on preflight rejection, "Scheduled · not publishable" label, dashboard script syntax/imports.
+
+## LCE-062 (13 Oct, local branch `fix/lce-061-estop-atomic-claim`, not pushed): Preview never publishes
+
+- `LCE_PREVIEW = "true"` (set only in `[previews.vars]` of cloud/wrangler.toml) makes the Worker refuse
+  every publication path first (Publish now 403, scheduled run "preview", publishOne), skip the LinkedIn
+  identity call, and never start the writer Routine. Production vars and bindings unchanged (dry run).
+- Wrangler 4.145.0 gives a Preview only the bindings of `[previews]` (nothing inherited); a config test keeps
+  that block free of the production database and credentials and keeps the flag out of production.
+- Not done (owner decision, no cost incurred): a separate Preview D1 database; dashboard checks of the
+  build command and Preview secrets.

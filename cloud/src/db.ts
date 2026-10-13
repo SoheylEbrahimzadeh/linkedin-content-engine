@@ -12,7 +12,14 @@ export type Env = {
   // LCE-050: the writer routine's API trigger (secrets set by the owner; optional)
   LCE_ROUTINE_FIRE_URL?: string;
   LCE_ROUTINE_FIRE_TOKEN?: string;
+  // LCE-062: "true" only in a Preview deployment ([previews.vars] in wrangler.toml): nothing is ever published
+  LCE_PREVIEW?: string;
 };
+
+/** LCE-062: a Preview deployment never publishes and never calls LinkedIn, whatever its bindings or secrets. */
+export function isPreview(env: Env): boolean {
+  return String(env.LCE_PREVIEW ?? "").trim().toLowerCase() === "true";
+}
 
 export const SETTING_KEYS = ["auto_publish", "provider", "timezone", "cadence", "api_version",
   "person_urn", "visibility", "token_expires_at", "max_lateness_minutes",

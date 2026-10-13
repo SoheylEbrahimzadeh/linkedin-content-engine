@@ -682,3 +682,35 @@ describe("Publish now replace_schedule at the HTTP boundary", () => {
     expect(s).toEqual({ status: "revoked", reason: "replaced_by_publish_now" });
   });
 });
+
+// LCE-062: the HTTP boundary in a Preview deployment: a signed-in owner with every confirmation still cannot
+// publish, and the identity check does not call LinkedIn.
+describe("Preview deployment at the HTTP boundary", () => {
+  const preview = { ...e, LCE_PREVIEW: "true" } as typeof e;
+  it("POST publish-now (with and without replace_schedule) is refused 403; zero LinkedIn requests; nothing written", async () => {
+    await enableAll(e);
+    const h = await insertPost(e, READY);
+    await qualityPass(e, READY);
+    await insertConsent(e, READY, "2026-10-07-wed-0030", "2026-10-07T06:30:00+00:00", h, "consent-sched");
+    const before = [await rows(e, "SELECT * FROM consents"), await rows(e, "SELECT * FROM jobs"), await rows(e, "SELECT * FROM publications")];
+    for (const extra of [{}, { replace_schedule: true }]) {
+      const f = fakeFetch(userinfo(), created());
+      const r = await callEnv(preview, "POST", `/posts/${READY}/publish-now`,
+        { approved_hash: h, confirm: `PUBLISH NOW ${READY}`, ...extra }, f.fn as never);
+      expect(r.status).toBe(403);
+      expect(r.body.detail).toContain("Preview deployment");
+      expect(f.calls).toHaveLength(0);
+    }
+    expect([await rows(e, "SELECT * FROM consents"), await rows(e, "SELECT * FROM jobs"), await rows(e, "SELECT * FROM publications")]).toEqual(before);
+  });
+
+  it("GET /api/linkedin/identity does not call LinkedIn in a Preview", async () => {
+    await enableAll(e);
+    const f = fakeFetch(userinfo());
+    const res = await handleApi(new Request("https://lce.example/api/linkedin/identity",
+      { headers: { "cf-access-jwt-assertion": await jwt(OWNER) } }), preview, NOW, certs, f.fn);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ ok: false, status: "preview" });
+    expect(f.calls).toHaveLength(0);
+  });
+});

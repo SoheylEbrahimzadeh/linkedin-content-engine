@@ -9,7 +9,7 @@
 // concurrent run cannot win the same claim. Ambiguous results become
 // NEEDS_RECONCILE and are never retried.
 
-import { event, isSchemaMissing, loadSettings, type ConsentRow, type Env, type PostRow, type Settings } from "./db";
+import { event, isPreview, isSchemaMissing, loadSettings, type ConsentRow, type Env, type PostRow, type Settings } from "./db";
 import { configProblems, publish, type FetchLike, type ImageInput, type LinkedInConfig, type PublishResult } from "./linkedin";
 import { isoUtc, parseIsoUtc } from "./schedule";
 import { qualityFor } from "./quality";
@@ -38,6 +38,8 @@ async function invalidate(env: Env, now: number, c: ConsentRow, reason: string, 
 }
 
 export async function runScheduled(env: Env, now: number, fetchImpl: FetchLike): Promise<RunReport> {
+  // LCE-062: first, before any read or write: a Preview deployment never publishes
+  if (isPreview(env)) return { status: "preview", detail: "Preview deployment: nothing is published" };
   let due: ConsentRow[];
   try {
     due = (await env.DB.prepare(
@@ -148,6 +150,7 @@ async function preflight(env: Env, now: number, postId: string, approvedHash: st
 
 async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settings,
                           fetchImpl: FetchLike, actor = ACTOR, manual = false): Promise<RunReport> {
+  if (isPreview(env)) return { status: "preview", consent_id: c.consent_id, post_id: c.post_id, detail: "Preview deployment" };
   const pf = await preflight(env, now, c.post_id, c.approved_hash, settings);
   if (!pf.ok) return invalidateAs(env, now, c, pf.reason, "FAILED", actor);
   const { post, image, cfg, token } = pf;
@@ -257,6 +260,8 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
                                  fetchImpl: FetchLike, opts: { replaceSchedule?: boolean } = {}): Promise<ManualReport> {
   const settings = await loadSettings(env.DB);
   const refuse = (http: number, detail: string): ManualReport => ({ status: "refused", http, post_id: postId, detail });
+  // LCE-062: first of all, before any write or LinkedIn request
+  if (isPreview(env)) return refuse(403, "this is a Preview deployment; it never publishes; nothing was changed or sent");
   if (settings.emergency_stop) return refuse(409, "the emergency stop is on; release it first");
   if (settings.provider !== "linkedin_api") return refuse(409, "provider is not linkedin_api");
   const problems = configProblems(linkedinConfig(settings));
