@@ -9,7 +9,7 @@
 import {
   CONTENT_TYPES, FILTERS, PIPELINE_STEPS, STATUSES, UNKNOWN, applyFilter, attention, contentPlan, daysUntil,
   REFRESH_CONFIRM, SKIP_CONFIRM, SHORT_SESSION_ADVICE, PROGRESS_STEPS, fmtElapsed, refreshProgress, canRefresh, closedBy, displayStatus, outcomeNow, selectionRows, sessionLength, freshness, hashtags, hook, refreshState, relevanceRows, versionCompare, humanizationRows, initials, localDate, localTime, media, mediaRecord,
-  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats, publishNowHint, qualityGate, publishStatus, safeHttpsUrl,
+  mediaSourceShort, parseHash, segments, timeline, weekday, nowBoard, radarRows, fmtAge, canArchive, isArchived, canPublishNow, publishingStats, publishNowHint, qualityGate, publishStatus, safeHttpsUrl, statusLabel,
 } from "./lib.js";
 
 const main = document.getElementById("main");
@@ -41,12 +41,10 @@ const link = (href, text, cls) => h("a", { href, class: cls }, text);
 const ext = (href, text) => h("a", { href, target: "_blank", rel: "noopener noreferrer" }, text);
 const short = (x, n = 12) => (x ? String(x).slice(0, n) : "—");
 const statusPill = (code, id = null) => {
-  const s = STATUSES[code] ?? { label: code, tone: "muted" };
-  // LCE-059: "Approved" alone must not suggest the post can be published now
-  if (code === "APPROVED" && id && !canPublishNow(cloudPost(id), activeConsent(id), st(), qualityOf(id)).ok) {
-    return h("span", { class: "pill warn", title: "approved in the repository; Publish now is not available (see the post page)" }, "Approved · not publishable");
-  }
-  return h("span", { class: "pill " + s.tone }, s.label);
+  // LCE-059/061: "Approved" or "Scheduled" alone must not suggest the post can be published now
+  const elig = id && (code === "APPROVED" || code === "SCHEDULED") ? canPublishNow(cloudPost(id), activeConsent(id), st(), qualityOf(id)) : null;
+  const s = statusLabel(code, elig);
+  return h("span", { class: "pill " + s.tone, ...(s.title ? { title: s.title } : {}) }, s.label);
 };
 const typeChip = (t) => h("span", { class: "type type-" + t.key + (t.implemented ? "" : " unsupported"), title: t.note }, t.label, t.implemented ? null : " (not implemented)");
 const DECISION_TONE = { pending: "info", applied: "ok", refused: "err", superseded: "muted", cancelled: "muted" };

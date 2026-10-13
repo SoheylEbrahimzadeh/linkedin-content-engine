@@ -159,7 +159,10 @@ the scheduled consent and creates the one-off manual consent in one transaction 
 nothing is sent. Without the flag a scheduled post is still refused. Every check that can reject the
 publication (one shared `preflight`, then the LinkedIn identity check) runs before anything is written, so a
 rejection never revokes the schedule; only LinkedIn's own answer after sending can leave the post
-PUBLISH_FAILED or NEEDS_RECONCILE (never retried; Rearm and reschedule by hand).
+PUBLISH_FAILED or NEEDS_RECONCILE (never retried; Rearm and reschedule by hand). LCE-061: the claim
+statement itself requires the emergency stop to be off (and, for a scheduled consent, auto-publish on), so a
+switch changed after the first check stops the publication at the claim; Publish now's own writes carry the
+same condition, and a stop between them and the claim restores the replaced schedule.
 
 Emergency stop (`emergency_stop` setting): blocks every publication,
 scheduled and manual. Turning it on needs nothing; releasing it, like enabling

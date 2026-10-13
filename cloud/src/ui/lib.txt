@@ -833,6 +833,16 @@ export function qualityGate(pipePost, approvedHash) {
   return { ok: true, why: "Humanity PASS and Voice Gate PASS for the approved text" };
 }
 
+/** LCE-061: the list label of a post. "Approved" or "Scheduled" alone must never suggest a post can be published
+ * when it cannot (quality, label, withdrawn, ...): both then say "not publishable" with the reason as a tooltip. */
+export function statusLabel(code, eligibility = null) {
+  const s = STATUSES[code] ?? { label: code, tone: "muted" };
+  if ((code === "APPROVED" || code === "SCHEDULED") && eligibility && !eligibility.ok) {
+    return { label: `${s.label} · not publishable`, tone: "warn", title: eligibility.why ?? "not publishable" };
+  }
+  return { label: s.label, tone: s.tone, title: null };
+}
+
 /** LCE-060: feed links are untrusted data: only a plain https URL becomes a link (never javascript:, data:, ...). */
 export function safeHttpsUrl(u) {
   try {

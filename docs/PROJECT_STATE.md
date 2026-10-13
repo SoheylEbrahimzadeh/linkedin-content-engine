@@ -794,3 +794,13 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
   writer only when the owner clicks Refresh (owner action, unchanged). (3) briefs reach the dashboard through
   the existing pipeline mirror (`briefs` in the snapshot); open slots show the brief note and a details list
   (https links only).
+
+## LCE-061 (13 Oct, local branch `fix/lce-061-estop-atomic-claim`, not pushed): emergency stop at the claim
+
+- The claim statement re-reads the switches itself: no claim while `emergency_stop` is on; a scheduled
+  (non-manual) consent is claimed only while `auto_publish` is on. Publish now's writes (schedule revoke,
+  manual consent) are conditional on the stop being off in the same transaction; a stop that lands between
+  those writes and the claim withdraws the manual consent and restores the replaced schedule exactly.
+  A stop committed after the claim cannot recall a request already sent to LinkedIn.
+- Tests: switch races on both paths (simulated on local D1), HTTP boundary of `replace_schedule`, zero
+  LinkedIn calls on preflight rejection, "Scheduled · not publishable" label, dashboard script syntax/imports.

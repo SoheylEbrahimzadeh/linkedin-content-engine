@@ -96,6 +96,19 @@ export async function freshFor(env: Env, c: ConsentRow, settings: Settings): Pro
   return { ok: true, why: "" };
 }
 
+// LCE-061: the switches are re-read inside the very statement that claims (D1 runs a batch as one SQLite
+// transaction and serializes writers): a stop committed before the claim makes it change nothing. A stop
+// committed after the claim cannot recall a request already sent to LinkedIn.
+const STOP_OFF = "NOT EXISTS (SELECT 1 FROM settings WHERE key = 'emergency_stop' AND value = 'true')";
+const AUTO_ON = "EXISTS (SELECT 1 FROM settings WHERE key = 'auto_publish' AND value = 'true')";
+
+async function switchesNow(env: Env): Promise<{ stop: boolean; auto: boolean }> {
+  const rows = (await env.DB.prepare("SELECT key, value FROM settings WHERE key IN ('emergency_stop', 'auto_publish')")
+    .all<{ key: string; value: string }>()).results;
+  const v = (k: string) => rows.find((r) => r.key === k)?.value === "true";
+  return { stop: v("emergency_stop"), auto: v("auto_publish") };
+}
+
 // LCE-060: every check that can reject a publication, in one place, with no writes. publishNow runs it
 // before anything is written (so a rejection leaves an existing schedule untouched); publishOne runs it
 // again right before the claim (the state may have changed in between).
@@ -134,7 +147,7 @@ async function preflight(env: Env, now: number, postId: string, approvedHash: st
 }
 
 async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settings,
-                          fetchImpl: FetchLike, actor = ACTOR): Promise<RunReport> {
+                          fetchImpl: FetchLike, actor = ACTOR, manual = false): Promise<RunReport> {
   const pf = await preflight(env, now, c.post_id, c.approved_hash, settings);
   if (!pf.ok) return invalidateAs(env, now, c, pf.reason, "FAILED", actor);
   const { post, image, cfg, token } = pf;
@@ -147,7 +160,8 @@ async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settin
     env.DB.prepare(
       `UPDATE posts SET state = 'PUBLISHING', updated_at = ?
        WHERE post_id = ? AND state = 'READY_TO_PUBLISH' AND approved_hash = ?
-         AND EXISTS (SELECT 1 FROM consents WHERE consent_id = ? AND status = 'active' AND approved_hash = ?)`,
+         AND EXISTS (SELECT 1 FROM consents WHERE consent_id = ? AND status = 'active' AND approved_hash = ?)
+         AND ${STOP_OFF}${manual ? "" : ` AND ${AUTO_ON}`}`,
     ).bind(at, post.post_id, h, c.consent_id, h),
     env.DB.prepare(
       `UPDATE consents SET status = 'consumed', resolved_at = ?
@@ -173,6 +187,14 @@ async function publishOne(env: Env, now: number, c: ConsentRow, settings: Settin
     event(env.DB, now, "publish.intent", actor, post.post_id, { consent_id: c.consent_id, slot_id: c.slot_id }),
   ]);
   if (claim[0].meta.changes !== 1 || claim[1].meta.changes !== 1) {
+    // LCE-061: a switch changed after the first check: nothing was claimed and nothing is sent. A scheduled
+    // consent stays as it was (it waits, like any emergency stop); a one-off manual consent is withdrawn.
+    const sw = await switchesNow(env);
+    const why = sw.stop ? "emergency_stop" : !manual && !sw.auto ? "kill_switch_off" : null;
+    if (why) {
+      if (manual) await invalidateAs(env, now, c, `${why}_at_claim`, "SKIPPED", actor);
+      return { status: why, consent_id: c.consent_id, post_id: post.post_id, detail: "changed before the claim; nothing was sent" };
+    }
     return { status: "claim_lost", consent_id: c.consent_id, post_id: post.post_id };
   }
 
@@ -245,6 +267,8 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
   if (post.approved_hash !== approvedHash) return refuse(409, "the text you confirmed is not the approved text");
   const busy = await env.DB.prepare("SELECT consent_id, slot_id FROM consents WHERE post_id = ? AND status = 'active'")
     .bind(postId).first<{ consent_id: string; slot_id: string }>();
+  const busyJob = busy ? await env.DB.prepare("SELECT state, reason, updated_at FROM jobs WHERE slot_id = ?")
+    .bind(busy.slot_id).first<{ state: string; reason: string | null; updated_at: string }>() : null;
   // LCE-060: a scheduled post can be published now when the owner says so explicitly (replace_schedule);
   // its scheduled consent is revoked in the same transaction that creates the manual one, so the post is
   // never scheduled twice and the schedule is never dropped without a publication attempt.
@@ -268,22 +292,33 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
   let res: D1Result[];
   try {
     res = await env.DB.batch([
+    // LCE-061: every write is conditional on the emergency stop being off at this moment (one transaction):
+    // a stop that arrived after the first check changes nothing here.
     ...(busy ? [
-      env.DB.prepare("UPDATE consents SET status = 'revoked', resolved_at = ?, reason = 'replaced_by_publish_now' WHERE consent_id = ? AND status = 'active'")
-        .bind(at, busy.consent_id),
-      env.DB.prepare("UPDATE jobs SET state = 'SKIPPED', reason = 'replaced_by_publish_now', updated_at = ? WHERE slot_id = ? AND state = 'SCHEDULED'")
-        .bind(at, busy.slot_id),
-      event(env.DB, now, "consent.revoked", actor, postId, { consent_id: busy.consent_id, reason: "replaced_by_publish_now" }),
+      env.DB.prepare(`UPDATE consents SET status = 'revoked', resolved_at = ?, reason = 'replaced_by_publish_now'
+        WHERE consent_id = ? AND status = 'active' AND ${STOP_OFF}`).bind(at, busy.consent_id),
+      env.DB.prepare(`UPDATE jobs SET state = 'SKIPPED', reason = 'replaced_by_publish_now', updated_at = ?
+        WHERE slot_id = ? AND state = 'SCHEDULED' AND ${STOP_OFF}`).bind(at, busy.slot_id),
     ] : []),
     env.DB.prepare(`INSERT INTO consents (consent_id, post_id, slot_id, slot_utc, approved_hash, status, created_at, created_by)
-      VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`).bind(id, postId, id, at, approvedHash, at, actor),
+      SELECT ?, ?, ?, ?, ?, 'active', ?, ? WHERE ${STOP_OFF}`).bind(id, postId, id, at, approvedHash, at, actor),
     env.DB.prepare(`INSERT INTO jobs (job_id, slot_id, slot_utc, state, post_id, consent_id, updated_at)
-      VALUES (?, ?, ?, 'SCHEDULED', ?, ?, ?)`).bind(`job-${id}`, id, at, postId, id, at),
-    event(env.DB, now, "publish.manual_requested", actor, postId, { consent_id: id }),
+      SELECT ?, ?, ?, 'SCHEDULED', ?, ?, ? WHERE EXISTS (SELECT 1 FROM consents WHERE consent_id = ?)`)
+      .bind(`job-${id}`, id, at, postId, id, at, id),
+    ...(busy ? [env.DB.prepare(`INSERT INTO events (at, event, actor, post_id, detail) SELECT ?, 'consent.revoked', ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM consents WHERE consent_id = ?)`)
+      .bind(at, actor, postId, JSON.stringify({ consent_id: busy.consent_id, reason: "replaced_by_publish_now" }), id)] : []),
+    env.DB.prepare(`INSERT INTO events (at, event, actor, post_id, detail) SELECT ?, 'publish.manual_requested', ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM consents WHERE consent_id = ?)`).bind(at, actor, postId, JSON.stringify({ consent_id: id }), id),
     ]);
   } catch (err) {
     if (String((err as Error).message).includes("UNIQUE")) return refuse(409, "another publication of this post is in progress");
     throw err;
+  }
+  const inserted = res[busy ? 2 : 0].meta.changes;
+  if (inserted !== 1) {
+    // the emergency stop was switched on after the first check: nothing above changed
+    return refuse(409, "the emergency stop was switched on while this request ran; nothing was changed or sent");
   }
   if (busy && res[0].meta.changes !== 1) {
     // the scheduled consent was used or changed between the check and the batch: withdraw the manual one
@@ -291,7 +326,18 @@ export async function publishNow(env: Env, now: number, actor: string, postId: s
       status: "active", created_at: at, created_by: actor, resolved_at: null, reason: null }, "schedule_changed_concurrently", "SKIPPED", actor);
     return refuse(409, "the scheduled publication changed while this request ran; nothing was sent by this one");
   }
-  const report = await publishOne(env, now, c, settings, fetchImpl, actor);
+  const report = await publishOne(env, now, c, settings, fetchImpl, actor, true);
+  if (report.status === "emergency_stop" && busy) {
+    // LCE-061: the stop arrived between this request's writes and the claim; nothing was sent, so the schedule
+    // this request replaced is restored exactly (the manual consent is already withdrawn; events keep the trail)
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE consents SET status = 'active', resolved_at = NULL, reason = NULL
+        WHERE consent_id = ? AND status = 'revoked' AND reason = 'replaced_by_publish_now'`).bind(busy.consent_id),
+      ...(busyJob ? [env.DB.prepare(`UPDATE jobs SET state = ?, reason = ?, updated_at = ?
+        WHERE slot_id = ? AND reason = 'replaced_by_publish_now'`).bind(busyJob.state, busyJob.reason, busyJob.updated_at, busy.slot_id)] : []),
+      event(env.DB, now, "consent.restored", actor, postId, { consent_id: busy.consent_id, reason: "emergency_stop_before_claim" }),
+    ]);
+  }
   const publication = await env.DB.prepare("SELECT state, remote_id, url, published_at, idempotency_key FROM publications WHERE post_id = ?")
     .bind(postId).first<Record<string, unknown>>();
   const http = report.status === "done" ? (report.outcome === "published" ? 200 : 502) : 409;

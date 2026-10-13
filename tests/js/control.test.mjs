@@ -705,3 +705,39 @@ test("an open slot carries its daily brief and says the angle is the owner's", (
     assert.equal(safeHttpsUrl(bad), null, String(bad));
   }
 });
+
+// LCE-061: a scheduled (or approved) post that cannot be published is never labelled as if it could be.
+test("list labels: Approved and Scheduled say 'not publishable' with the reason when a gate fails", () => {
+  const { statusLabel, canPublishNow } = lib;
+  const ready = { post_id: "p", state: "READY_TO_PUBLISH", text: "A clean post.\n" };
+  const sched = { consent_id: "c", slot_utc: "2026-10-20T08:30:00Z" };
+  const failQ = canPublishNow(ready, sched, {}, { ok: false, why: "Voice Gate is SOURCE_HEAVY" });
+  assert.deepEqual(statusLabel("SCHEDULED", failQ), { label: "Scheduled · not publishable", tone: "warn", title: "quality: Voice Gate is SOURCE_HEAVY" });
+  assert.equal(statusLabel("APPROVED", canPublishNow(ready, null, {}, null)).label, "Approved · not publishable");
+  assert.equal(statusLabel("SCHEDULED", canPublishNow(ready, sched, {}, { ok: true })).label, "Scheduled");
+  assert.equal(statusLabel("APPROVED", canPublishNow(ready, null, {}, { ok: true })).label, "Approved");
+  assert.equal(statusLabel("SCHEDULED", canPublishNow(ready, sched, { emergency_stop: true }, { ok: true })).label, "Scheduled · not publishable");
+  assert.equal(statusLabel("PUBLISHED", { ok: false, why: "x" }).label, "Published");              // other states unchanged
+  assert.equal(statusLabel("SCHEDULED").label, "Scheduled");                                      // no id: plain label
+});
+
+// LCE-061: the dashboard script is shipped as text, so nothing else parses it before production. It must be
+// valid module syntax, and every name it imports must be exported by the library.
+test("dashboard script: valid syntax and every import resolves", async () => {
+  const { readFileSync, writeFileSync, mkdtempSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const { spawnSync } = await import("node:child_process");
+  const root = new URL("../../cloud/src/ui/", import.meta.url);
+  const app = readFileSync(new URL("app.txt", root), "utf8");
+  const libSrc = readFileSync(new URL("lib.txt", root), "utf8");
+  const dir = mkdtempSync(join(tmpdir(), "lce-ui-"));
+  for (const [name, src] of [["app.mjs", app], ["lib.mjs", libSrc]]) {
+    writeFileSync(join(dir, name), src);
+    const r = spawnSync(process.execPath, ["--check", join(dir, name)], { encoding: "utf8" });
+    assert.equal(r.status, 0, `${name}: ${r.stderr}`);
+  }
+  const names = app.match(/import \{([^}]*)\} from/)[1].split(",").map((n) => n.trim()).filter(Boolean);
+  const missing = names.filter((n) => !new RegExp(`export (function|const|let|class) ${n}\\b`).test(libSrc));
+  assert.deepEqual(missing, []);
+});
