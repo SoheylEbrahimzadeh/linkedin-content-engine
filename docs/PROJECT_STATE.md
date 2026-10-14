@@ -814,3 +814,20 @@ schedule or publish them until withdraw → refresh → re-approval). 13 and 15 
   that block free of the production database and credentials and keeps the flag out of production.
 - Not done (owner decision, no cost incurred): a separate Preview D1 database; dashboard checks of the
   build command and Preview secrets.
+
+## LCE-068 (14 Oct, branch `lce-068-voice-gate-policy`, PR open, not merged or deployed): Voice Gate policy (owner Option A)
+- Root cause: the LCE-059 publication gate required Voice Gate PASS. PASS needs a review of natural English and
+  owner phrasing plus a 25% owner share, so every real post (including the two the owner approved and published,
+  6 and 12 Oct) was SOURCE_HEAVY and unpublishable, while the writing gate let SOURCE_HEAVY texts reach approval.
+- Owner decision 2026-10-14: SOURCE_HEAVY alone no longer blocks a hash-bound approved text. Still blocking, fail
+  closed (`cloud/src/quality.ts`, mirrored in `ui/lib.txt`): Humanity not PASS, any QA error (unsupported number,
+  missing source, personal claim without story, ...), Voice Gate FAIL or unknown/missing verdict, any invented
+  personal sentence, an owner-meaning failure, a result without these fields. Human approval and auto-publish
+  OFF unchanged.
+- Safety gap closed (`voice_gate.classify_sentences`): with owner material on a post but no referenced item, any
+  first-person sentence counted as the owner's; it now counts only if it matches that material.
+- Topic selection: `daily.brief` ranks items that touch a confirmed owner view first (`opinion_fit`: distinctive
+  shared concepts; generic and common radar words excluded). A fit is a preference, never permission to use a view.
+- Writer: GitHub Models was retired by GitHub (2026-07-30); the lce-data writer schedule is paused. A local
+  open-weights model on the 2-core runner (Qwen2.5-7B Q4) took 242 s per call and invented a first-person
+  experience in its sample: not usable.

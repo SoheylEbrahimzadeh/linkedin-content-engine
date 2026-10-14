@@ -41,16 +41,62 @@ def _key(plan_date: str, urls: list[str]) -> str:
     return hashlib.sha256((plan_date + "\n" + "\n".join(sorted(urls))).encode("utf-8")).hexdigest()
 
 
+MIN_FIT = 2           # distinctive shared concepts for an item to count as touching an owner view
+COMMON_SHARE = 0.08   # a concept found in more than this share of all radar items says nothing specific
+GENERIC = frozenset("""
+need new since suddenly use using used like way see want even may might after before good most making make
+matter actually where result ask idea opinion question approach situation understand without find resolve
+potential benefit change business company team system problem operation operate depend rely handle cost
+solution work working first last time year month day people thing really just still also get got give take
+""".split())
+
+
+def _distinctive(store: DataStore) -> callable:
+    """A concept filter: drops generic words and concepts found in too many radar items to mean anything."""
+    from lce.owner_scope import concepts
+
+    items = radar.load_items(store)
+    df: dict[str, int] = {}
+    for it in items:
+        for c in concepts(f"{it.get('title', '')} {it.get('excerpt', '')}"):
+            df[c] = df.get(c, 0) + 1
+    limit = max(3, COMMON_SHARE * len(items))
+    return lambda cs: {c for c in cs if c != "ai" and c not in GENERIC and df.get(c, 0) <= limit}
+
+
+def opinion_fit(item: dict, views: list[dict], distinctive=None) -> list[dict]:
+    """LCE-068: the owner-confirmed views an item genuinely touches: distinctive concepts shared by the item's
+    title and excerpt and the view's own words, strongest first. A fit is a reason to prefer the item, never
+    permission to use the view: whether a view applies stays a writer's (and finally the owner's) decision,
+    and every Voice Gate check still runs on the text. No view is ever created or extended here."""
+    from lce.owner_scope import concepts
+
+    keep = distinctive or (lambda cs: {c for c in cs if c != "ai" and c not in GENERIC})
+    have = keep(concepts(f"{item.get('title', '')} {item.get('excerpt', '')}"))
+    out = []
+    for v in views:
+        shared = have & keep(concepts(f"{v.get('text', '')} {v.get('original', '')}"))
+        if len(shared) >= MIN_FIT:
+            out.append({"id": v["id"], "shared": sorted(shared)})
+    return sorted(out, key=lambda f: (-len(f["shared"]), f["id"]))
+
+
 def brief(store: DataStore, plan_date: str, *, now=None) -> dict:
     """The brief for one calendar slot (read-only)."""
     now = now or clock.now()
     pk = radar.packet(store, plan_date, now=now, write=False)
-    evidence = [
-        {k: it[k] for k in ("title", "url", "source", "quality", "published_at", "score")}
-        for it in pk["fresh_items"]
-        if not it.get("used_by")                 # never re-serve a source an earlier post already used
-    ][:MAX_EVIDENCE]
     views = persona.opinion_for(store, {"pillar": pk["pillar"]})["candidates"]
+    full = {v["id"]: {**v, **persona.confirmed(store).get(v["id"], {})} for v in views}
+    fresh = [it for it in pk["fresh_items"] if not it.get("used_by")]   # never re-serve a source already used
+    distinctive = _distinctive(store)
+    fits = [opinion_fit(it, list(full.values()), distinctive) for it in fresh]
+    # LCE-068: items touching a confirmed view first (more shared concepts first), then the radar's order
+    order = sorted(range(len(fresh)), key=lambda i: (-(len(fits[i][0]["shared"]) if fits[i] else 0), i))
+    evidence = [
+        {**{k: fresh[i][k] for k in ("title", "url", "source", "quality", "published_at", "score")},
+         "opinion_fit": fits[i]}
+        for i in order
+    ][:MAX_EVIDENCE]
     status = "NEEDS_INPUT" if evidence else "NO_EVIDENCE"
     return {
         "plan_date": plan_date,
@@ -66,6 +112,8 @@ def brief(store: DataStore, plan_date: str, *, now=None) -> dict:
         "why": (
             "evidence is ready; a post needs your own angle (confirmed owner material), "
             "which is never generated"
+            + ("; items touching one of your confirmed views are listed first (opinion_fit)"
+               if any(e["opinion_fit"] for e in evidence) else "; none of the items touches a confirmed view")
             if evidence
             else "no fresh, relevant and unused source for this pillar yet; the next radar run may find one"
         ),
@@ -123,7 +171,7 @@ def briefs_view(store: DataStore) -> list[dict]:
             "why": b.get("why"),
             "prepared_at": b.get("prepared_at"),
             "evidence": [
-                {k: e.get(k) for k in ("title", "url", "source", "published_at")}
+                {k: e.get(k) for k in ("title", "url", "source", "published_at", "opinion_fit")}
                 for e in b.get("evidence") or []
             ],
             "owner_views_to_consider": b.get("owner_views_to_consider") or [],

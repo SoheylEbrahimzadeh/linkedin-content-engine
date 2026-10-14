@@ -127,4 +127,51 @@ def test_written_briefs_reach_the_dashboard_snapshot(store):
     assert set(briefs) == {s["plan_date"] for s in out["slots"]}
     b = next(x for x in briefs.values() if x["status"] == "NEEDS_INPUT")
     assert b["evidence"][0]["url"].startswith("https://") and b["questions"]
-    assert set(b["evidence"][0]) == {"title", "url", "source", "published_at"}   # only what is needed
+    # only what is needed, plus which confirmed views an item touches (LCE-068)
+    assert set(b["evidence"][0]) == {"title", "url", "source", "published_at", "opinion_fit"}
+
+
+# ── LCE-068: prefer items that genuinely touch a confirmed owner view; never invent one ──────────
+VIEW = {"id": "op-chatbot", "kind": "opinion",
+        "text": "Service desk chatbots are a good idea only after the guardrails are settled: "
+                "prompt injection, what the bot may say and which data it may touch."}
+
+
+def test_an_item_sharing_distinctive_concepts_with_a_view_fits():
+    item = {"title": "Vendor ships a service desk chatbot with prompt injection guardrails", "excerpt": ""}
+    fit = daily.opinion_fit(item, [VIEW])
+    assert [f["id"] for f in fit] == ["op-chatbot"]
+    assert {"chatbot", "guardrail"} <= set(fit[0]["shared"]) or len(fit[0]["shared"]) >= daily.MIN_FIT
+
+
+def test_generic_words_alone_are_not_a_fit():
+    item = {"title": "Why every team needs a new way to make good use of the system",
+            "excerpt": "It may matter."}
+    assert daily.opinion_fit(item, [VIEW]) == []
+
+
+def test_no_view_no_fit_and_nothing_is_created():
+    item = {"title": "Vendor ships a service desk chatbot with prompt injection guardrails", "excerpt": ""}
+    assert daily.opinion_fit(item, []) == []
+
+
+def test_brief_lists_fitting_items_first_and_only_as_candidates(store, monkeypatch):
+    fresh = [
+        {"title": "A big cloud migration report", "url": "https://e.org/1", "source": "S", "quality": 1,
+         "published_at": "2026-10-01", "score": 0.9, "excerpt": ""},
+        {"title": "Service desk chatbot gets prompt injection guardrails", "url": "https://e.org/2",
+         "source": "S", "quality": 1, "published_at": "2026-10-01", "score": 0.4, "excerpt": ""},
+    ]
+    packet = {"pillar": "itsm-it-operations", "fresh_items": fresh}
+    monkeypatch.setattr(radar, "packet", lambda *a, **k: packet)
+    monkeypatch.setattr(radar, "load_items", lambda s: [])
+    from lce import persona
+    monkeypatch.setattr(persona, "opinion_for", lambda s, p: {"candidates": [VIEW]})
+    monkeypatch.setattr(persona, "confirmed", lambda s, *a: {VIEW["id"]: VIEW})
+    b = daily.brief(store, "2026-10-20")
+    # the fit first, despite its lower radar score
+    assert [e["url"] for e in b["evidence"]] == ["https://e.org/2", "https://e.org/1"]
+    assert b["evidence"][0]["opinion_fit"][0]["id"] == "op-chatbot"
+    assert b["evidence"][1]["opinion_fit"] == []
+    assert b["status"] == "NEEDS_INPUT"                       # still evidence only: no text, no opinion used
+    assert "opinions_used" not in b and "text" not in b

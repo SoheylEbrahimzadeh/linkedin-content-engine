@@ -802,7 +802,7 @@ export function publishStatus({ post, cloudPost, consent, settings = {}, quality
     : cloudPost.state === "READY_TO_PUBLISH" ? (consent ? `in the publisher, scheduled for ${consent.slot_utc ?? "a time slot"}` : "in the publisher, not scheduled")
     : cloudPost.state.toLowerCase().replace(/_/g, " ");
   const q = !cloudPost || cloudPost.state === "WITHDRAWN" ? (quality?.ok ? "passes" : "not checked against a publisher text")
-    : quality?.ok ? "Humanity PASS, Voice Gate PASS" : quality?.why ?? "no quality result";
+    : quality?.why ?? "no quality result";        // LCE-068: the real result (e.g. "... Voice Gate SOURCE_HEAVY")
   const hint = publishNowHint({ post, cloudPost, consent, settings, pending, nowIso, tz, quality });
   const eligible = canPublishNow(cloudPost, consent, settings, quality).ok;
   return [
@@ -813,9 +813,12 @@ export function publishStatus({ post, cloudPost, consent, settings = {}, quality
   ];
 }
 
-/** LCE-059: the publication-time quality rule, identical to the Worker's (cloud/src/quality.ts): a result
- * from the pipeline mirror counts only for exactly the approved text, with Humanity PASS and Voice Gate PASS.
- * Missing, stale, mismatched or inconclusive results fail closed; SOURCE_HEAVY never passes. */
+/** LCE-059/068: the publication-time quality rule, identical to the Worker's (cloud/src/quality.ts): a result
+ * from the pipeline mirror counts only for exactly the approved text, with Humanity PASS, no QA error, Voice Gate
+ * PASS, SOURCE_HEAVY or REVIEW_NEEDED (never FAIL), no invented personal sentence and no owner-meaning failure.
+ * SOURCE_HEAVY alone does not block: the owner's approval of that exact text is the human reading (LCE-068).
+ * Missing, stale, mismatched or inconclusive results fail closed. */
+const PUBLISHABLE_VOICE = ["PASS", "SOURCE_HEAVY", "REVIEW_NEEDED"];
 export function qualityGate(pipePost, approvedHash) {
   const hq = pipePost?.humanity;
   if (!/^[0-9a-f]{64}$/.test(approvedHash ?? "")) return { ok: false, why: "no approved text to check quality against" };
@@ -824,13 +827,18 @@ export function qualityGate(pipePost, approvedHash) {
   if (!/^[0-9a-f]{64}$/.test(hq.content_hash ?? "")) return { ok: false, why: "the quality result is not tied to a text hash" };
   if (hq.content_hash !== approvedHash) return { ok: false, why: "the quality result is for a different text than the approved one" };
   if (hq.verdict !== "PASS") return { ok: false, why: `Humanity is ${hq.verdict ?? "missing"}, not PASS` };
-  const vg = hq.voice_gate?.verdict;
-  if (vg !== "PASS") {
-    return { ok: false, why: vg === "SOURCE_HEAVY"
-      ? "Voice Gate is SOURCE_HEAVY (not enough of your own confirmed view); add your real view and approve the new version"
-      : `Voice Gate is ${vg ?? "missing"}, not PASS` };
-  }
-  return { ok: true, why: "Humanity PASS and Voice Gate PASS for the approved text" };
+  if (!Array.isArray(hq.errors)) return { ok: false, why: "the quality result does not list its QA errors" };
+  if (hq.errors.length) return { ok: false, why: `QA errors in the approved text: ${hq.errors.join(", ")}` };
+  const g = hq.voice_gate;
+  const vg = g?.verdict;
+  if (!PUBLISHABLE_VOICE.includes(vg)) return { ok: false, why: `Voice Gate is ${vg ?? "missing"}` };
+  const invented = g?.counts?.invented_personal;
+  if (typeof invented !== "number") return { ok: false, why: "the Voice Gate result does not count invented sentences" };
+  if (invented > 0) return { ok: false, why: `Voice Gate found ${invented} invented personal sentence(s)` };
+  const meaning = g?.dimensions?.owner_grounded_meaning?.result;
+  if (typeof meaning !== "string") return { ok: false, why: "the Voice Gate result has no owner-grounded meaning check" };
+  if (meaning === "fail") return { ok: false, why: "Voice Gate: the owner's meaning is changed or invented" };
+  return { ok: true, why: `Humanity PASS, no QA error, nothing invented (Voice Gate ${vg}) for the approved text` };
 }
 
 /** LCE-061: the list label of a post. "Approved" or "Scheduled" alone must never suggest a post can be published
