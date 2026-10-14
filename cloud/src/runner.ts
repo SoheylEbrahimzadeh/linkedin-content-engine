@@ -134,7 +134,8 @@ async function preflight(env: Env, now: number, postId: string, approvedHash: st
   // LCE-053: the approved text is published unchanged, so a text that still shows an image/source label
   // (approved before the rule) is not published at all; the owner refreshes it and approves the clean text.
   if (visibleCredit(post.text)) return no("visible_image_credit");
-  // LCE-059: Humanity PASS and Voice Gate PASS for exactly the approved text, or nothing is published.
+  // LCE-059/068: for exactly the approved text: Humanity PASS, no QA error, nothing invented (Voice Gate not FAIL),
+  // or nothing is published (cloud/src/quality.ts).
   const quality = await qualityFor(env, post.post_id, post.approved_hash);
   if (!quality.ok) return no(`quality: ${quality.why}`);
   const img = await env.DB.prepare("SELECT data, sha256, alt_text FROM post_images WHERE post_id = ?")

@@ -687,6 +687,13 @@ test("publishStatus keeps repository, publisher, quality and eligibility apart",
   assert.match(sh["Publish now"], /^not available: quality: Voice Gate is SOURCE_HEAVY/);
   const ok = rowsOf({ post, cloudPost: { state: "READY_TO_PUBLISH", text: "Clean.\n", approved_hash: H }, quality: { ok: true, why: "p" } });
   assert.match(ok["Publish now"], /^available \(needs your typed confirmation\)/);
+  // LCE-068: a publishable SOURCE_HEAVY text shows its real result, never "Voice Gate PASS"
+  const shOk = rowsOf({ post, cloudPost: { state: "READY_TO_PUBLISH", text: "Clean.\n", approved_hash: H },
+    quality: lib.qualityGate({ humanity: { content_hash: H, verdict: "PASS", errors: [],
+      voice_gate: { verdict: "SOURCE_HEAVY", counts: { invented_personal: 0 }, dimensions: { owner_grounded_meaning: { result: "insufficient" } } } } }, H) });
+  assert.match(shOk["Quality (approved text)"], /Voice Gate SOURCE_HEAVY/);
+  assert.doesNotMatch(shOk["Quality (approved text)"], /Voice Gate PASS/);
+  assert.match(shOk["Publish now"], /^available \(needs your typed confirmation\)/);
   const stop = rowsOf({ post, cloudPost: { state: "READY_TO_PUBLISH", text: "Clean.\n", approved_hash: H }, quality: { ok: true, why: "p" },
     settings: { emergency_stop: true } });
   assert.match(stop["Publish now"], /emergency stop/);

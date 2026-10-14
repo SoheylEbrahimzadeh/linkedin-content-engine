@@ -802,7 +802,7 @@ export function publishStatus({ post, cloudPost, consent, settings = {}, quality
     : cloudPost.state === "READY_TO_PUBLISH" ? (consent ? `in the publisher, scheduled for ${consent.slot_utc ?? "a time slot"}` : "in the publisher, not scheduled")
     : cloudPost.state.toLowerCase().replace(/_/g, " ");
   const q = !cloudPost || cloudPost.state === "WITHDRAWN" ? (quality?.ok ? "passes" : "not checked against a publisher text")
-    : quality?.ok ? "Humanity PASS, Voice Gate PASS" : quality?.why ?? "no quality result";
+    : quality?.why ?? "no quality result";        // LCE-068: the real result (e.g. "... Voice Gate SOURCE_HEAVY")
   const hint = publishNowHint({ post, cloudPost, consent, settings, pending, nowIso, tz, quality });
   const eligible = canPublishNow(cloudPost, consent, settings, quality).ok;
   return [
