@@ -124,6 +124,11 @@ def classify_sentences(text: str, post: dict, golden_items: dict, stories: dict)
         if material and (first or own >= 0.34) and not attributed and not source_first:
             if scope and scope["verdict"] != "faithful":
                 kind, note = "invented_personal", f"{scope['verdict']}: {'; '.join(scope['reasons'])}"
+            elif scope is None and own < 0.34:
+                # LCE-068: having owner material on the post does not make every first-person sentence the
+                # owner's. A sentence that matches none of it is a personal position nobody confirmed.
+                kind = "invented_personal"
+                note = "first-person sentence that matches none of the owner's material"
             else:
                 kind = "owner"
         elif attributed or src >= 0.3:

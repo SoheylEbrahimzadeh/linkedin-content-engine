@@ -639,17 +639,27 @@ test("Publish now hint explains approval, the next private run and real blocks",
   assert.equal(publishNowHint({ ...base, post: { state: "REJECTED" } }), null);
 });
 
-// LCE-059: the browser quality rule equals the Worker's; every unusable result fails closed.
-test("quality gate: PASS + PASS for exactly the approved hash, everything else blocked", () => {
+// LCE-059/068: the browser quality rule equals the Worker's; every unusable result fails closed. SOURCE_HEAVY alone
+// does not block an approved text; FAIL, invented sentences and QA errors do.
+test("quality gate: exactly the approved hash, nothing invented, no QA error; SOURCE_HEAVY allowed, FAIL blocked", () => {
   const { qualityGate } = lib;
   const H = "a".repeat(64);
   const ok = (hq, h = H) => qualityGate({ humanity: hq }, h).ok;
-  const pass = { content_hash: H, verdict: "PASS", voice_gate: { verdict: "PASS" } };
+  const vg = (verdict, invented = 0, meaning = "insufficient") =>
+    ({ verdict, counts: { invented_personal: invented }, dimensions: { owner_grounded_meaning: { result: meaning } } });
+  const pass = { content_hash: H, verdict: "PASS", errors: [], voice_gate: vg("PASS") };
   assert.equal(ok(pass), true);
-  assert.equal(ok({ ...pass, voice_gate: { verdict: "SOURCE_HEAVY" } }), false);
-  assert.match(qualityGate({ humanity: { ...pass, voice_gate: { verdict: "SOURCE_HEAVY" } } }, H).why, /your own confirmed view/);
-  assert.equal(ok({ ...pass, voice_gate: { verdict: "FAIL" } }), false);
-  assert.equal(ok({ ...pass, voice_gate: { verdict: "REVIEW_NEEDED" } }), false);
+  assert.equal(ok({ ...pass, voice_gate: vg("SOURCE_HEAVY") }), true);
+  assert.equal(ok({ ...pass, voice_gate: vg("REVIEW_NEEDED", 0, "pass") }), true);
+  assert.equal(ok({ ...pass, voice_gate: vg("FAIL", 0, "fail") }), false);
+  assert.match(qualityGate({ humanity: { ...pass, voice_gate: vg("FAIL", 0, "fail") } }, H).why, /Voice Gate is FAIL/);
+  assert.equal(ok({ ...pass, voice_gate: vg("SOURCE_HEAVY", 1) }), false);                 // fabricated personal sentence
+  assert.match(qualityGate({ humanity: { ...pass, voice_gate: vg("SOURCE_HEAVY", 1) } }, H).why, /invented personal/);
+  assert.equal(ok({ ...pass, voice_gate: vg("SOURCE_HEAVY", 0, "fail") }), false);
+  assert.equal(ok({ ...pass, voice_gate: { verdict: "SOURCE_HEAVY" } }), false);            // no details: fail closed
+  assert.equal(ok({ ...pass, errors: ["claim.unsupported_number"] }), false);
+  assert.match(qualityGate({ humanity: { ...pass, errors: ["claim.unsupported_number"] } }, H).why, /unsupported_number/);
+  assert.equal(ok({ ...pass, errors: undefined }), false);
   assert.equal(ok({ ...pass, voice_gate: null }), false);
   assert.equal(ok({ ...pass, verdict: "FAIL" }), false);
   assert.equal(ok({ ...pass, verdict: "PARTIAL" }), false);

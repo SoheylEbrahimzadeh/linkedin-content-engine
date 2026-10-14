@@ -1,4 +1,5 @@
-// LCE-059: publication-time quality gate (Humanity PASS + Voice Gate PASS for exactly the approved text).
+// LCE-059/068: publication-time quality gate for exactly the approved text: Humanity PASS, no QA error, Voice Gate
+// PASS / SOURCE_HEAVY / REVIEW_NEEDED (never FAIL), nothing invented. SOURCE_HEAVY alone no longer blocks (LCE-068).
 // Deterministic: local D1 (miniflare) and a fake fetch; nothing is ever sent to LinkedIn.
 import { beforeEach, describe, expect, it } from "vitest";
 import { qualityVerdict } from "../src/quality";
@@ -19,9 +20,17 @@ beforeEach(async () => reset(e));
 // Every way the quality result can be unusable. Each must block both paths, before anything is sent.
 const OTHER = "A different text than the one approved.\n";
 const BLOCKED: [string, (h: string) => Promise<void>, RegExp][] = [
-  ["Voice Gate SOURCE_HEAVY", () => qualityPass(e, ID, TEXT, { voice: "SOURCE_HEAVY" }), /Voice Gate is SOURCE_HEAVY/],
-  ["Voice Gate FAIL", () => qualityPass(e, ID, TEXT, { voice: "FAIL" }), /Voice Gate is FAIL/],
-  ["Voice Gate REVIEW_NEEDED", () => qualityPass(e, ID, TEXT, { voice: "REVIEW_NEEDED" }), /Voice Gate is REVIEW_NEEDED/],
+  ["Voice Gate FAIL", () => qualityPass(e, ID, TEXT, { voice: "FAIL", meaning: "fail" }), /Voice Gate is FAIL/],
+  ["Voice Gate verdict missing", () => qualityPass(e, ID, TEXT, { voice: null }), /Voice Gate is missing/],
+  ["Voice Gate unknown verdict", () => qualityPass(e, ID, TEXT, { voice: "MAYBE" }), /Voice Gate is MAYBE/],
+  ["invented personal sentence (fabricated experience) even if the verdict says SOURCE_HEAVY",
+    () => qualityPass(e, ID, TEXT, { voice: "SOURCE_HEAVY", invented: 1 }), /1 invented personal sentence/],
+  ["owner meaning changed", () => qualityPass(e, ID, TEXT, { voice: "SOURCE_HEAVY", meaning: "fail" }), /meaning is changed or invented/],
+  ["invented-sentence count missing", () => qualityPass(e, ID, TEXT, { invented: null }), /does not count invented/],
+  ["unsupported number (QA error)", () => qualityPass(e, ID, TEXT, { voice: "SOURCE_HEAVY", errors: ["claim.unsupported_number"] }), /claim\.unsupported_number/],
+  ["personal claim without a story (QA error)", () => qualityPass(e, ID, TEXT, { errors: ["claim.personal_without_story"] }), /claim\.personal_without_story/],
+  ["source missing (QA error)", () => qualityPass(e, ID, TEXT, { errors: ["source.missing"] }), /source\.missing/],
+  ["QA error list missing", () => qualityPass(e, ID, TEXT, { errors: null }), /does not list its QA errors/],
   ["Humanity FAIL", () => qualityPass(e, ID, TEXT, { humanity: "FAIL" }), /Humanity is FAIL/],
   ["Humanity PARTIAL", () => qualityPass(e, ID, TEXT, { humanity: "PARTIAL" }), /Humanity is PARTIAL/],
   ["stale result (scored another text)", () => qualityPass(e, ID, OTHER, { hash: undefined }).then(() => undefined), /different text/],
@@ -38,6 +47,15 @@ describe("quality gate: manual Publish now", () => {
     await setSettings(e, { auto_publish: "false" });                 // the owner's model: auto-publish OFF
     return insertPost(e, ID);
   }
+
+  it.each(["SOURCE_HEAVY", "REVIEW_NEEDED"])("LCE-068: an approved %s text with nothing invented and no QA error publishes manually", async (voice) => {
+    const h = await ready();
+    await qualityPass(e, ID, TEXT, { voice });
+    const f = fakeFetch(userinfo(), created("urn:li:share:5902"));
+    const r = await publishNow(e, AT, "owner@example.com", ID, h, f.fn);
+    expect(r).toMatchObject({ status: "done", outcome: "published", http: 200 });
+    expect(posts(f)).toBe(1);
+  });
 
   it("PASS + PASS for the approved text publishes (auto-publish OFF)", async () => {
     const h = await ready();
@@ -133,23 +151,41 @@ describe("quality gate: scheduled publishing", () => {
 
 describe("quality rule (pure)", () => {
   const H = "a".repeat(64);
+  const vg = (verdict: unknown, invented: unknown = 0, meaning: unknown = "insufficient") =>
+    ({ verdict, counts: { invented_personal: invented }, dimensions: { owner_grounded_meaning: { result: meaning } } });
+  const ok = (over: object = {}) => ({ content_hash: H, verdict: "PASS", errors: [], voice_gate: vg("PASS"), ...over });
   it.each([
-    [{ content_hash: H, verdict: "PASS", voice_gate: { verdict: "PASS" } }, true],
-    [{ content_hash: H, verdict: "PASS", voice_gate: { verdict: "SOURCE_HEAVY" } }, false],
-    [{ content_hash: H, verdict: "PASS", voice_gate: null }, false],
-    [{ content_hash: H, verdict: "PASS" }, false],
-    [{ content_hash: H.toUpperCase(), verdict: "PASS", voice_gate: { verdict: "PASS" } }, false],
-    [{ content_hash: "b".repeat(64), verdict: "PASS", voice_gate: { verdict: "PASS" } }, false],
-    [{ verdict: "PASS", voice_gate: { verdict: "PASS" } }, false],
-    [{ content_hash: H, verdict: "pass", voice_gate: { verdict: "PASS" } }, false],
-    [{ content_hash: H, verdict: "PASS", voice_gate: { verdict: "PASS" }, error: "x" }, false],
+    [ok(), true],
+    [ok({ voice_gate: vg("SOURCE_HEAVY") }), true],                       // LCE-068: source-grounded, nothing invented
+    [ok({ voice_gate: vg("REVIEW_NEEDED", 0, "pass") }), true],
+    [ok({ voice_gate: vg("FAIL", 0, "fail") }), false],
+    [ok({ voice_gate: vg("FAIL") }), false],                              // FAIL blocks whatever the details say
+    [ok({ voice_gate: vg("SOURCE_HEAVY", 2) }), false],                   // invented personal sentences
+    [ok({ voice_gate: vg("PASS", 1) }), false],
+    [ok({ voice_gate: vg("SOURCE_HEAVY", 0, "fail") }), false],           // owner meaning changed
+    [ok({ voice_gate: vg("SOURCE_HEAVY", "0") }), false],                 // malformed count
+    [ok({ voice_gate: vg("SOURCE_HEAVY", 0, null) }), false],             // meaning check missing
+    [ok({ voice_gate: { verdict: "SOURCE_HEAVY" } }), false],             // an older result without the details
+    [ok({ voice_gate: vg("source_heavy") }), false],
+    [ok({ voice_gate: null }), false],
+    [ok({ voice_gate: undefined }), false],
+    [ok({ errors: ["claim.unsupported_number"] }), false],
+    [ok({ errors: ["claim.personal_without_story"], voice_gate: vg("SOURCE_HEAVY") }), false],
+    [ok({ errors: undefined }), false],
+    [ok({ errors: "none" }), false],
+    [ok({ content_hash: H.toUpperCase() }), false],
+    [ok({ content_hash: "b".repeat(64) }), false],
+    [ok({ content_hash: undefined }), false],
+    [ok({ verdict: "pass" }), false],
+    [ok({ verdict: "PARTIAL", voice_gate: vg("SOURCE_HEAVY") }), false],
+    [ok({ error: "x" }), false],
     [null, false],
     [undefined, false],
-  ])("%j → ok=%s", (q, ok) => {
-    expect(qualityVerdict(q as never, H).ok).toBe(ok);
+  ])("%j → ok=%s", (q, want) => {
+    expect(qualityVerdict(q as never, H).ok).toBe(want);
   });
   it("an invalid approved hash never passes", () => {
-    expect(qualityVerdict({ content_hash: "", verdict: "PASS", voice_gate: { verdict: "PASS" } }, "").ok).toBe(false);
+    expect(qualityVerdict(ok({ content_hash: "" }) as never, "").ok).toBe(false);
   });
 });
 
@@ -192,7 +228,8 @@ describe("Publish now on a scheduled post", () => {
   });
 
   it.each([
-    ["SOURCE_HEAVY", () => qualityPass(e, ID, TEXT, { voice: "SOURCE_HEAVY" })],
+    ["Voice Gate FAIL", () => qualityPass(e, ID, TEXT, { voice: "FAIL", meaning: "fail" })],
+    ["an invented personal sentence", () => qualityPass(e, ID, TEXT, { voice: "SOURCE_HEAVY", invented: 1 })],
     ["no quality result", async () => undefined],
   ])("quality gate (%s) still refuses, and the schedule is left untouched", async (_n, seed) => {
     const h = await scheduledPost();
@@ -274,7 +311,8 @@ describe("Publish now on a scheduled post: every rejection keeps the schedule", 
     ["stored image does not match its hash", { setup: async () => {
       await e.DB.prepare("INSERT INTO post_images (post_id, data, sha256, alt_text, bytes) VALUES (?, ?, ?, 'x', 4)")
         .bind(ID, new Uint8Array([1, 2, 3, 4]), "0".repeat(64)).run(); } }, /image_hash_mismatch/],
-    ["quality SOURCE_HEAVY", { setup: () => qualityPass(e, ID, TEXT, { voice: "SOURCE_HEAVY" }) }, /SOURCE_HEAVY/],
+    ["quality Voice Gate FAIL", { setup: () => qualityPass(e, ID, TEXT, { voice: "FAIL", meaning: "fail" }) }, /Voice Gate is FAIL/],
+    ["quality: invented personal sentence", { setup: () => qualityPass(e, ID, TEXT, { voice: "SOURCE_HEAVY", invented: 1 }) }, /invented personal/],
     ["quality result missing", { setup: async () => { await e.DB.prepare("DELETE FROM pipeline_snapshot").run(); } }, /no pipeline mirror/],
     ["LinkedIn identity not verified", { fetches: () => [new Response("{}", { status: 401 })] }, /identity not verified/],
     ["token belongs to another member", { fetches: () => [new Response(JSON.stringify({ sub: "Someone" }), { status: 200 })] }, /not the configured person_urn/],

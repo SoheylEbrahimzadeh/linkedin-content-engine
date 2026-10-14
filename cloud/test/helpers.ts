@@ -87,12 +87,18 @@ export async function rows<T = Record<string, unknown>>(e: Env, sql: string): Pr
 // LCE-059: a quality result in the pipeline mirror for one post (merged into any existing mirror). The
 // defaults describe a publishable post: Humanity PASS and Voice Gate PASS for exactly `text`.
 export async function qualityPass(e: Env, postId = "20261006-demo-post", text = TEXT,
-                                  q: { humanity?: unknown; voice?: unknown; hash?: string | null; raw?: unknown } = {}): Promise<void> {
+                                  q: { humanity?: unknown; voice?: unknown; hash?: string | null; raw?: unknown;
+                                       errors?: unknown; invented?: unknown; meaning?: unknown } = {}): Promise<void> {
   const row = await e.DB.prepare("SELECT body FROM pipeline_snapshot WHERE id = 1").first<{ body: string }>();
   const snap = row ? JSON.parse(row.body) : { schema: 1, meta: { mode: "real", generated_at: "2026-10-05T00:00:00+00:00" }, posts: [] };
   const hash = q.hash === undefined ? await contentHash(text) : q.hash;
   const humanity = q.raw !== undefined ? q.raw
-    : { verdict: q.humanity ?? "PASS", score: 10, ...(hash === null ? {} : { content_hash: hash }), voice_gate: { verdict: q.voice ?? "PASS" } };
+    : { verdict: q.humanity ?? "PASS", score: 10, ...(hash === null ? {} : { content_hash: hash }),
+        errors: q.errors === undefined ? [] : q.errors,
+        // the shape `lce humanity score` writes to the mirror (LCE-068 reads counts and dimensions)
+        voice_gate: { verdict: q.voice === undefined ? "PASS" : q.voice, counts: { source: 6, owner: 0, writer: 3, invented_personal: q.invented === undefined ? 0 : q.invented },
+                      dimensions: { natural_english: { result: "review" }, owner_grounded_meaning: { result: q.meaning === undefined ? "insufficient" : q.meaning },
+                                    owner_phrasing: { result: "insufficient" } } } };
   const others = (snap.posts ?? []).filter((p: { post_id: string }) => p.post_id !== postId);
   const mine = (snap.posts ?? []).find((p: { post_id: string }) => p.post_id === postId) ?? { post_id: postId, state: "READY_TO_PUBLISH", text };
   snap.posts = [...others, { ...mine, humanity }];

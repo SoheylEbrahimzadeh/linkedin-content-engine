@@ -713,3 +713,79 @@ def test_score_post_records_the_hash_of_the_text_it_scored(store):
     assert snap["humanity"]["content_hash"] == res["content_hash"]      # what the cloud mirror carries
     (store.post_dir(pid) / "post.md").write_text(current_text(store, pid) + "\nOne more line.\n", "utf-8")
     assert score_post(store, pid)["content_hash"] != res["content_hash"]
+
+
+# ── LCE-068: the fields the publication gate reads, and what must keep blocking ──────────
+def _fabrication_signal(res: dict) -> bool:
+    """The signals cloud/src/quality.ts blocks on whatever the Humanity score: a QA error, Voice Gate FAIL, an
+    invented personal sentence or a changed owner meaning (SOURCE_HEAVY alone is not one of them)."""
+    vg = res["voice_gate"]
+    return (bool(res["errors"]) or vg["verdict"] not in {"PASS", "SOURCE_HEAVY", "REVIEW_NEEDED"}
+            or vg["counts"]["invented_personal"] > 0
+            or vg["dimensions"]["owner_grounded_meaning"]["result"] == "fail")
+
+
+def test_mirror_carries_every_field_the_publication_gate_reads(store):
+    """SOURCE_HEAVY no longer blocks on its own (owner decision 2026-10-14), so the gate depends on the QA
+    errors, the invented-sentence count and the owner-meaning check being present in the mirror. A result
+    without them fails closed in the Worker; this test keeps them from disappearing silently."""
+    from conftest import awaiting_post
+
+    from lce.dashboard.snapshot import build_snapshot
+
+    pid = awaiting_post(store)
+    hq = next(p for p in build_snapshot(store, mode="real")["posts"] if p["post_id"] == pid)["humanity"]
+    assert isinstance(hq["errors"], list)
+    assert isinstance(hq["voice_gate"]["counts"]["invented_personal"], int)
+    assert isinstance(hq["voice_gate"]["dimensions"]["owner_grounded_meaning"]["result"], str)
+
+
+_SOURCE_GROUNDED = (
+    "InfoQ reports that coding agents refactored a 300,000-line C codebase in three weeks.\n\n"
+    "A replay harness checked the behavior after every change. Frame by frame.\n\n"
+    "Most legacy systems have no such check, the article notes, and that is exactly why refactoring "
+    "them has always been risky for the teams that own them.\n\n"
+    "Daniel Webb asks how big a diff can be if nobody reviews every line anymore.\n"
+)
+_CLAIMS = ["coding agents refactored a 300,000-line C codebase in three weeks",
+           "a replay harness that checked the behavior after every change, frame by frame",
+           "Most legacy systems have no such check, which is why refactoring them is risky",
+           "how big can a diff be if nobody reviews every line"]
+
+
+def _source_grounded_post(store, text: str) -> str:
+    from conftest import selected_post
+
+    from lce.posts import save_draft, save_humanized
+
+    pid = selected_post(store)
+    post = store.load_post(pid)
+    post["claims"] = [{"text": c, "source_url": "https://example.org/agents-refactor"} for c in _CLAIMS]
+    store.save_post(post)
+    save_draft(store, pid, text)
+    save_humanized(store, pid, text)
+    return pid
+
+
+def test_a_source_grounded_text_is_source_heavy_but_shows_no_fabrication(store):
+    """LCE-068: no owner sentence, every fact attributed. SOURCE_HEAVY, nothing the gate blocks on."""
+    from lce.humanity import score_post
+
+    res = score_post(store, _source_grounded_post(store, _SOURCE_GROUNDED))
+    assert res["voice_gate"]["verdict"] == "SOURCE_HEAVY", res["voice_gate"]["dimensions"]
+    assert not _fabrication_signal(res), (res["errors"], res["voice_gate"]["counts"])
+
+
+@pytest.mark.parametrize("line", [
+    # invented experience
+    "When I ran a refactor like this for a client last year, we had the same problem with tests.",
+    # invented judgement
+    "Every team should build a harness like this before touching legacy code.",
+    # unsupported number
+    "Teams that work this way ship 37% fewer regressions.",
+])
+def test_fabricated_content_keeps_blocking_publication(store, line):
+    from lce.humanity import score_post
+
+    pid = _source_grounded_post(store, _SOURCE_GROUNDED.rstrip() + "\n\n" + line + "\n")
+    assert _fabrication_signal(score_post(store, pid)), line
